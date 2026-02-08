@@ -1,0 +1,10 @@
+# Docker相关（本地生成的镜像/容器文件）
+.dockerignore
+docker-compose.override.yml
+# 项目无关文件
+__pycache__/
+*.pyc
+.env
+# 系统文件（跨平台避免冲突）
+.DS_Store  # Mac特有
+Thumbs.db  # Windows特有
