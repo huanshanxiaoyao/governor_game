@@ -8,7 +8,7 @@ services:
       # 关键：挂载本地代码到容器，实现“本地修改→容器实时生效”
       # Mac端：替换为 - /Users/你的用户名/Projects/docker-dev-project:/app
       # Windows/WSL端：替换为 - /home/你的用户名/Projects/docker-dev-project:/app
-      - 本地项目绝对路径:/app
+      - {PROJECT_HOST_PATH}:/app
     ports:
       # 端口映射，两边保持一致（本地端口:容器端口）
       - "8000:8000"
