@@ -1,15 +1,15 @@
-# 固定基础镜像版本，保证两边拉取的镜像完全一致
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
-# 设置工作目录（容器内固定路径，两边无差异）
+ENV TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# 复制依赖文件，先装依赖（利用Docker缓存，加快构建）
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 复制项目代码到容器（开发时通过挂载覆盖，这里是兜底）
-COPY . .
+COPY backend/ .
 
-# 启动命令（可通过docker-compose覆盖，更灵活）
-CMD ["python", "app.py"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

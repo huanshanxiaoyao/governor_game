@@ -1,23 +1,44 @@
-version: '3.8'  # 固定版本，保证兼容性
+version: '3.8'
 
-# 定义服务（可添加数据库/redis等依赖服务）
 services:
-  app:
-    build: .  # 基于当前目录的Dockerfile构建镜像
-    volumes:
-      # 关键：挂载本地代码到容器，实现“本地修改→容器实时生效”
-      # Mac端：替换为 - /Users/你的用户名/Projects/docker-dev-project:/app
-      # Windows/WSL端：替换为 - /home/你的用户名/Projects/docker-dev-project:/app
-      - {PROJECT_HOST_PATH}:/app
-    ports:
-      # 端口映射，两边保持一致（本地端口:容器端口）
-      - "8000:8000"
+  postgres:
+    image: postgres:15-alpine
     environment:
-      # 环境变量，两边统一（如数据库地址、调试模式）
-      - DEBUG=True
-      - PYTHONUNBUFFERED=1  # 保证容器日志实时输出
-    restart: always  # 容器异常退出时自动重启
+      POSTGRES_DB: mandarin_game
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-# 可选：如果有数据库，添加命名卷（跨平台数据持久化）
-# volumes:
-#   db_data:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      - DEBUG=True
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      - POSTGRES_DB=mandarin_game
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
+volumes:
+  postgres_data:
