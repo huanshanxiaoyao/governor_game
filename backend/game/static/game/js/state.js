@@ -13,6 +13,8 @@
     games: [],
     currentGame: null,
     lastReport: null,
+    activeNegotiation: null,
+    agents: [],
   };
 
   window.Game.seasonName = function (n) {
@@ -28,5 +30,18 @@
     Game.components.renderDashboard();
     Game.components.renderVillages();
     Game.components.renderInvestTab();
+    // Check for active negotiation
+    if (Game.components.checkActiveNegotiation) {
+      Game.components.checkActiveNegotiation();
+    }
+    // Load agents for village table and profile modal
+    if (Game.api && data && data.id) {
+      Game.api.getAgents(data.id).then(function (agents) {
+        Game.state.agents = agents;
+        Game.components.renderVillages();
+      }).catch(function () {
+        Game.state.agents = [];
+      });
+    }
   };
 })();

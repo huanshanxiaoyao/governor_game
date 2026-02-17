@@ -125,6 +125,33 @@
       });
   });
 
+  // ==================== Medical Level ====================
+  var medNames = ["无", "简易医馆", "县医署", "完善医疗"];
+  var medCosts = [0, 25, 50, 100];
+
+  el("medical-slider").addEventListener("input", function () {
+    var lv = parseInt(this.value);
+    el("medical-display").textContent = lv + "级 — " + medNames[lv] + "（" + medCosts[lv] + "两/年）";
+  });
+
+  el("btn-set-medical").addEventListener("click", function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var level = parseInt(el("medical-slider").value);
+
+    api.setMedicalLevel(g.id, level)
+      .then(function (data) {
+        components.showToast(data.message, "success");
+        return api.getGame(g.id);
+      })
+      .then(function (data) {
+        Game.setGame(data);
+      })
+      .catch(function (err) {
+        components.showToast(err.message, "error");
+      });
+  });
+
   // ==================== Investments ====================
   var pendingAction = null;
 
@@ -246,6 +273,198 @@
         btn.textContent = "推进季度";
       });
   });
+
+  // ==================== Negotiation ====================
+
+  // Open negotiation modal (from banner or report button)
+  document.addEventListener("click", function (e) {
+    var isBanner = e.target.id === "btn-open-negotiation" || e.target.closest("#btn-open-negotiation");
+    var isReport = e.target.id === "btn-report-negotiate" || e.target.closest("#btn-report-negotiate");
+
+    if (isBanner || isReport) {
+      var session = Game.state.activeNegotiation;
+      if (session) {
+        components.openNegotiationModal(session);
+      } else {
+        // Fetch it first
+        var g = Game.state.currentGame;
+        if (!g) return;
+        api.getActiveNegotiation(g.id).then(function (data) {
+          if (data.active) {
+            Game.state.activeNegotiation = data.session;
+            components.openNegotiationModal(data.session);
+          } else {
+            components.showToast("当前没有进行中的谈判", "info");
+          }
+        });
+      }
+    }
+  });
+
+  // Close negotiation modal
+  el("nego-close").addEventListener("click", function () {
+    el("negotiation-modal").classList.add("hidden");
+    // Refresh state in case negotiation resolved
+    var g = Game.state.currentGame;
+    if (g) {
+      api.getGame(g.id).then(function (data) {
+        Game.setGame(data);
+      });
+    }
+  });
+
+  // Send negotiation message
+  function sendNegotiationMessage() {
+    var g = Game.state.currentGame;
+    var session = Game.state.activeNegotiation;
+    if (!g || !session) return;
+
+    var input = el("nego-input");
+    var message = input.value.trim();
+    if (!message) return;
+
+    var sendBtn = el("nego-send");
+    sendBtn.disabled = true;
+    input.disabled = true;
+
+    // Show player message immediately
+    components.appendNegotiationMessage("player", message);
+    input.value = "";
+
+    api.sendNegotiationChat(g.id, session.id, message)
+      .then(function (result) {
+        // Show agent response
+        components.appendNegotiationMessage("agent", result.dialogue);
+
+        // Update subtitle
+        el("nego-subtitle").textContent =
+          result.agent_name + " 第" + result.round + "/" + result.max_rounds + "轮";
+
+        // Update session state
+        if (Game.state.activeNegotiation) {
+          Game.state.activeNegotiation.current_round = result.round;
+        }
+
+        // Check if resolved
+        if (result.status === "resolved") {
+          Game.state.activeNegotiation = null;
+          components.showNegotiationResolved(result);
+          components.showToast("谈判已结束", "info");
+          // Refresh game state to update treasury and dashboard
+          api.getGame(g.id).then(function (data) {
+            Game.setGame(data);
+          });
+        }
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "发言失败", "error");
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      });
+  }
+
+  el("nego-send").addEventListener("click", sendNegotiationMessage);
+  el("nego-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendNegotiationMessage();
+    }
+  });
+
+  // Start irrigation negotiation (from village buttons)
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".btn-irrigation-nego");
+    if (!btn) return;
+
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var villageName = btn.dataset.village;
+    btn.disabled = true;
+    btn.textContent = "发起中...";
+
+    api.startIrrigationNegotiation(g.id, villageName)
+      .then(function (session) {
+        Game.state.activeNegotiation = session;
+        components.renderNegotiationBanner();
+        components.renderIrrigationNegotiateSection();
+        components.openNegotiationModal(session);
+        components.showToast("已与" + villageName + "地主开始协商", "success");
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "协商发起失败", "error");
+        btn.disabled = false;
+        btn.textContent = villageName + "地主";
+      });
+  });
+
+  // ==================== Agent Profile ====================
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest(".agent-link");
+    if (!link) return;
+    var agentId = parseInt(link.dataset.agentId);
+    var agents = Game.state.agents || [];
+    for (var i = 0; i < agents.length; i++) {
+      if (agents[i].id === agentId) {
+        components.openAgentProfile(agents[i]);
+        return;
+      }
+    }
+  });
+
+  el("agent-profile-close").addEventListener("click", function () {
+    el("agent-profile-modal").classList.add("hidden");
+  });
+
+  // ==================== Event Logs (县志) ====================
+  function loadEventLogs() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var category = el("events-category-filter").value;
+    el("events-list").innerHTML = '<p class="hint">加载中...</p>';
+
+    api.getEventLogs(g.id, category, null, 100)
+      .then(function (logs) {
+        components.renderEventLogs(logs);
+      })
+      .catch(function (err) {
+        el("events-list").innerHTML = '<p class="hint">加载失败</p>';
+      });
+  }
+
+  el("events-category-filter").addEventListener("change", loadEventLogs);
+  el("btn-refresh-events").addEventListener("click", loadEventLogs);
+
+  // Auto-load when tab is activated
+  var origShowTab = Game.screens.showTab;
+  Game.screens.showTab = function (tabId) {
+    origShowTab(tabId);
+    if (tabId === "tab-events") {
+      loadEventLogs();
+    } else if (tabId === "tab-relationships") {
+      loadRelationships();
+    }
+  };
+
+  function loadRelationships() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var container = document.getElementById("relationships-list");
+    container.innerHTML = '<p class="hint">加载中...</p>';
+
+    api.getAgents(g.id)
+      .then(function (agents) {
+        components.renderRelationships(agents);
+      })
+      .catch(function () {
+        container.innerHTML = '<p class="hint">加载失败</p>';
+      });
+  }
 
   // ==================== Load Game List ====================
   function loadGameList() {

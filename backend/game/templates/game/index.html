@@ -76,17 +76,22 @@
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button class="tab-btn" data-tab="tab-report">季报</button>
+    <button class="tab-btn" data-tab="tab-relationships">人脉</button>
+    <button class="tab-btn" data-tab="tab-events">县志</button>
   </nav>
 
   <!-- Tab: Dashboard -->
   <div id="tab-dashboard" class="tab-content active">
+    <div id="negotiation-banner" class="negotiation-banner hidden"></div>
     <div id="stats-grid" class="stats-grid"></div>
     <div id="info-row" class="info-row"></div>
     <div id="environment-info"></div>
     <div id="disaster-alert" class="disaster-alert hidden"></div>
     <div id="investments-list"></div>
+    <div id="irrigation-negotiate-section" class="hidden"></div>
     <div id="markets-info"></div>
     <div id="player-info"></div>
+    <div id="promises-info"></div>
   </div>
 
   <!-- Tab: Villages -->
@@ -96,11 +101,14 @@
         <tr>
           <th>村庄</th>
           <th>人口</th>
+          <th>承载上限</th>
           <th>耕地(亩)</th>
           <th>地主占比</th>
           <th>民心</th>
           <th>治安</th>
           <th>村塾</th>
+          <th>地主</th>
+          <th>村民代表</th>
         </tr>
       </thead>
       <tbody id="village-tbody"></tbody>
@@ -115,6 +123,23 @@
         <input type="range" id="tax-slider" min="9" max="15" step="1" value="12">
         <span id="tax-display">12%</span>
         <button id="btn-set-tax" class="btn btn-primary btn-small">确认调整</button>
+      </div>
+    </div>
+
+    <div class="action-section">
+      <h3>医疗投入</h3>
+      <div class="medical-control">
+        <div class="medical-slider-row">
+          <input type="range" id="medical-slider" min="0" max="3" step="1" value="0">
+          <span id="medical-display">0级 — 无（0两/年）</span>
+          <button id="btn-set-medical" class="btn btn-primary btn-small">确认调整</button>
+        </div>
+        <div class="medical-levels-info">
+          <span>0: 无</span>
+          <span>1: 简易医馆 25两/年</span>
+          <span>2: 县医署 50两/年</span>
+          <span>3: 完善医疗 100两/年</span>
+        </div>
       </div>
     </div>
 
@@ -136,6 +161,32 @@
     </div>
   </div>
 
+  <!-- Tab: Relationships (人脉) -->
+  <div id="tab-relationships" class="tab-content hidden">
+    <div id="relationships-list">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+
+  <!-- Tab: Events (县志) -->
+  <div id="tab-events" class="tab-content hidden">
+    <div class="events-controls">
+      <select id="events-category-filter">
+        <option value="">全部分类</option>
+        <option value="INVESTMENT">投资</option>
+        <option value="TAX">税率</option>
+        <option value="NEGOTIATION">谈判</option>
+        <option value="DISASTER">灾害</option>
+        <option value="SETTLEMENT">结算</option>
+        <option value="ANNEXATION">兼并</option>
+        <option value="PROMISE">承诺</option>
+        <option value="SYSTEM">系统</option>
+      </select>
+      <button id="btn-refresh-events" class="btn btn-small">刷新</button>
+    </div>
+    <div id="events-list"></div>
+  </div>
+
   <!-- Tab: Report -->
   <div id="tab-report" class="tab-content hidden">
     <div id="report-content">
@@ -154,6 +205,36 @@
     <button id="btn-back-from-summary" class="btn btn-primary">返回游戏列表</button>
   </div>
 </section>
+
+<!-- ==================== Negotiation Chat Modal ==================== -->
+<div id="negotiation-modal" class="modal hidden">
+  <div class="modal-content nego-modal-content">
+    <div class="nego-header">
+      <div>
+        <h4 id="nego-title">谈判</h4>
+        <span id="nego-subtitle" class="nego-subtitle"></span>
+      </div>
+      <button id="nego-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="nego-messages" class="nego-messages"></div>
+    <div id="nego-resolved" class="nego-resolved hidden"></div>
+    <div id="nego-input-area" class="nego-input-area">
+      <input type="text" id="nego-input" class="nego-input" placeholder="输入你的话..." maxlength="500">
+      <button id="nego-send" class="btn btn-primary btn-small">发言</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Agent Profile Modal ==================== -->
+<div id="agent-profile-modal" class="modal hidden">
+  <div class="modal-content agent-profile-content">
+    <div class="agent-profile-header">
+      <h4>人物档案</h4>
+      <button id="agent-profile-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="agent-profile-body" class="agent-profile-body"></div>
+  </div>
+</div>
 
 <!-- ==================== Toast Container ==================== -->
 <div id="toast-container"></div>

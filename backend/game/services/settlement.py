@@ -1,221 +1,15 @@
-"""游戏核心业务逻辑"""
-import copy
+"""季度结算引擎"""
+
 import random
 
-from .models import EventLog
-
-
-class CountyService:
-    """县域初始化"""
-
-    @staticmethod
-    def create_initial_county():
-        """生成MVP中等难度县的初始 county_data JSONB"""
-        return {
-            # 县域核心指标
-            "morale": 50,           # 民心
-            "security": 55,         # 治安
-            "commercial": 35,       # 商业指数
-            "education": 25,        # 文教指数
-            "treasury": 400,        # 县库现金（两）
-            "tax_rate": 0.12,       # 当前税率 (12% base)
-            "irrigation_level": 0,  # 水利等级 (0/1/2)
-            "has_granary": False,   # 义仓
-            "bailiff_level": 0,     # 衙役等级 (0/1/2/3)
-            "admin_cost": 80,       # 年度行政开支
-
-            # 村庄 (6个 MVP)
-            "villages": [
-                {"name": "李家村", "population": 800, "farmland": 1600,
-                 "gentry_land_pct": 0.35, "morale": 50, "security": 55, "has_school": False},
-                {"name": "张家村", "population": 650, "farmland": 1300,
-                 "gentry_land_pct": 0.30, "morale": 52, "security": 58, "has_school": False},
-                {"name": "王家村", "population": 900, "farmland": 1800,
-                 "gentry_land_pct": 0.40, "morale": 48, "security": 50, "has_school": False},
-                {"name": "陈家村", "population": 550, "farmland": 1100,
-                 "gentry_land_pct": 0.25, "morale": 55, "security": 60, "has_school": False},
-                {"name": "赵家村", "population": 700, "farmland": 1400,
-                 "gentry_land_pct": 0.38, "morale": 45, "security": 52, "has_school": False},
-                {"name": "刘家村", "population": 400, "farmland": 800,
-                 "gentry_land_pct": 0.20, "morale": 53, "security": 57, "has_school": False},
-            ],
-            # Total: pop ~4000, farmland ~8000, avg gentry ~31%
-
-            # 集市 (2个 MVP)
-            "markets": [
-                {"name": "东关集", "merchants": 15, "trade_index": 35},
-                {"name": "西街市", "merchants": 10, "trade_index": 30},
-            ],
-
-            # 全局环境 (doc 06 §2)
-            "environment": {
-                "agriculture_suitability": 0.7,  # 农业适宜度
-                "flood_risk": 0.4,               # 水患风险度
-                "border_threat": 0.2,            # 边患风险度
-            },
-
-            # 灾害状态
-            "disaster_this_year": None,  # or {"type": "flood", "severity": 0.5, "relieved": False}
-
-            # 投资追踪
-            "active_investments": [],  # 进行中的项目
-        }
-
-
-class InvestmentService:
-    """投资行动处理"""
-
-    # 投资类型定义: cost, delay_seasons, requires_target_village
-    INVESTMENT_TYPES = {
-        "reclaim_land": {
-            "cost": 50,
-            "delay_seasons": None,  # completes at next autumn
-            "requires_village": True,
-            "description": "开垦荒地",
-        },
-        "build_irrigation": {
-            "cost": 100,
-            "delay_seasons": 8,  # 2 years = 8 seasons
-            "requires_village": False,
-            "description": "修建水利",
-        },
-        "expand_school": {
-            "cost": 80,
-            "delay_seasons": 8,  # 2 years
-            "requires_village": False,
-            "description": "扩建县学",
-        },
-        "fund_village_school": {
-            "cost": 30,
-            "delay_seasons": 4,  # 1 year
-            "requires_village": True,
-            "description": "资助村塾",
-        },
-        "hire_bailiffs": {
-            "cost": 40,
-            "delay_seasons": 0,  # immediate
-            "requires_village": False,
-            "description": "增设衙役",
-        },
-        "repair_roads": {
-            "cost": 60,
-            "delay_seasons": 1,  # 1 season
-            "requires_village": False,
-            "description": "修缮道路",
-        },
-        "build_granary": {
-            "cost": 70,
-            "delay_seasons": 0,  # immediate
-            "requires_village": False,
-            "description": "开设义仓",
-        },
-        "relief": {
-            "cost": 80,
-            "delay_seasons": 0,  # immediate
-            "requires_village": False,
-            "description": "赈灾救济",
-        },
-    }
-
-    @classmethod
-    def execute(cls, game, action, target_village=None):
-        """
-        Execute an investment action.
-        Returns (success: bool, message: str).
-        """
-        if action not in cls.INVESTMENT_TYPES:
-            return False, f"未知的投资类型: {action}"
-
-        spec = cls.INVESTMENT_TYPES[action]
-        county = game.county_data
-
-        if game.current_season > 12:
-            return False, "游戏已结束，无法投资"
-
-        # Validate treasury
-        if county["treasury"] < spec["cost"]:
-            return False, f"县库资金不足，需要{spec['cost']}两，当前{county['treasury']}两"
-
-        # Validate target village if required
-        village_idx = None
-        if spec["requires_village"]:
-            if target_village is None:
-                return False, f"{spec['description']}需要指定目标村庄"
-            village_names = [v["name"] for v in county["villages"]]
-            if target_village not in village_names:
-                return False, f"村庄 '{target_village}' 不存在"
-            village_idx = village_names.index(target_village)
-
-        # Action-specific validation
-        if action == "hire_bailiffs" and county["bailiff_level"] >= 3:
-            return False, "衙役已达最高等级(3)"
-        if action == "build_irrigation" and county["irrigation_level"] >= 2:
-            return False, "水利已达最高等级(2)"
-        if action == "build_granary" and county["has_granary"]:
-            return False, "义仓已建成"
-        if action == "relief":
-            if county.get("disaster_this_year") is None:
-                return False, "当前无灾害，无需赈灾"
-            if county["disaster_this_year"].get("relieved"):
-                return False, "已进行过赈灾救济"
-        if action == "fund_village_school":
-            if county["villages"][village_idx]["has_school"]:
-                return False, f"{target_village}已有村塾"
-
-        # Deduct cost
-        county["treasury"] -= spec["cost"]
-
-        # Apply immediate or delayed effects
-        if action == "hire_bailiffs":
-            county["bailiff_level"] += 1
-            county["security"] = min(100, county["security"] + 8)
-            county["admin_cost"] += 40
-            game.county_data = county
-            game.save()
-            return True, f"衙役等级提升至{county['bailiff_level']}，治安+8，年行政开支+40两"
-
-        if action == "build_granary":
-            county["has_granary"] = True
-            county["morale"] = min(100, county["morale"] + 5)
-            game.county_data = county
-            game.save()
-            return True, "义仓建成，民心+5，灾害时损失减半"
-
-        if action == "relief":
-            county["disaster_this_year"]["relieved"] = True
-            county["morale"] = min(100, county["morale"] + 8)
-            game.county_data = county
-            game.save()
-            return True, "赈灾救济已实施，民心+8，秋季灾害损失减半"
-
-        # Delayed investments: compute completion season
-        current = game.current_season
-        if action == "reclaim_land":
-            # Completes at next autumn: seasons 3, 7, 11
-            autumn_seasons = [s for s in [3, 7, 11] if s > current]
-            if not autumn_seasons:
-                completion = 13  # won't complete in this game
-            else:
-                completion = autumn_seasons[0]
-        else:
-            completion = current + spec["delay_seasons"]
-
-        investment = {
-            "action": action,
-            "started_season": current,
-            "completion_season": completion,
-            "description": spec["description"],
-        }
-        if village_idx is not None:
-            investment["target_village"] = target_village
-
-        county["active_investments"].append(investment)
-        game.county_data = county
-        game.save()
-
-        if completion > 12:
-            return True, f"{spec['description']}已启动（花费{spec['cost']}两），但将在游戏结束后才完成"
-        return True, f"{spec['description']}已启动（花费{spec['cost']}两），预计第{completion}季度完成"
+from ..models import Agent, EventLog, NegotiationSession
+from .constants import (
+    MAX_YIELD_PER_MU,
+    ANNUAL_CONSUMPTION,
+    BASE_GROWTH_RATE,
+    GROWTH_RATE_CLAMP,
+    MEDICAL_COSTS,
+)
 
 
 class SettlementService:
@@ -244,14 +38,16 @@ class SettlementService:
         if season in (2, 6, 10):
             cls._summer_disaster_check(game, county, report)
 
-        # 4. Population change (doc 06 §4.6)
-        cls._update_population(county, report)
+        # 4. (Population growth now handled annually at autumn)
 
         # 5. Morale change (doc 06 §4.5)
         cls._update_morale(county, report)
 
         # 6. Security change (doc 06 §4.5)
         cls._update_security(county, report)
+
+        # 6b. Annexation event check (per-village gentry)
+        cls._check_annexation_events(game, county, report)
 
         # 7. [Autumn] Agricultural output + tax (seasons 3, 7, 11)
         if season in (3, 7, 11):
@@ -260,6 +56,15 @@ class SettlementService:
         # 8. [Winter] Annual snapshot + clear disaster (seasons 4, 8, 12)
         if season in (4, 8, 12):
             cls._winter_settlement(county, season, report)
+
+        # 8b. Check promises
+        from ..promise_service import PromiseService
+        try:
+            promise_events = PromiseService.check_promises(game)
+            report['events'].extend(promise_events)
+        except Exception as e:
+            import logging
+            logging.getLogger('game').warning("Promise check failed (non-fatal): %s", e)
 
         # 9. Advance season counter
         game.current_season = season + 1
@@ -274,6 +79,21 @@ class SettlementService:
 
         game.county_data = county
         game.save()
+
+        # Log settlement summary
+        log_data = {'events': report.get('events', [])}
+        if report.get('autumn'):
+            log_data['autumn'] = report['autumn']
+        if report.get('winter_snapshot'):
+            log_data['winter_snapshot'] = report['winter_snapshot']
+        EventLog.objects.create(
+            game=game,
+            season=season,
+            event_type='season_settlement',
+            category='SETTLEMENT',
+            description=f"第{season}季度结算",
+            data=log_data,
+        )
 
         return report
 
@@ -297,8 +117,14 @@ class SettlementService:
             village_name = inv["target_village"]
             for v in county["villages"]:
                 if v["name"] == village_name:
-                    v["farmland"] += 200
-                    report["events"].append(f"{village_name}开垦完成，耕地+200亩")
+                    old_farmland = v["farmland"]
+                    old_pct = v.get("gentry_land_pct", 0.3)
+                    gentry_land = old_farmland * old_pct
+                    v["farmland"] += 800
+                    v["gentry_land_pct"] = round(gentry_land / v["farmland"], 4)
+                    report["events"].append(
+                        f"{village_name}开垦完成，耕地+800亩，"
+                        f"地主占比{old_pct:.0%}→{v['gentry_land_pct']:.0%}")
                     break
 
         elif action == "build_irrigation":
@@ -351,6 +177,9 @@ class SettlementService:
     def _summer_disaster_check(cls, game, county, report):
         """Summer: roll for disasters (doc 06 §3)."""
         env = county["environment"]
+        medical_level = county.get("medical_level", 0)
+        # Medical multiplier: 0.85 per level (applies to plague prob & severity)
+        medical_mult = 0.85 ** medical_level
 
         # Disaster candidates: (type, probability, severity_range, morale_hit)
         disaster_table = [
@@ -375,8 +204,8 @@ class SettlementService:
             ),
             (
                 "plague",
-                0.05,
-                (0.05, 0.15),  # population loss fraction
+                0.05 * medical_mult,  # reduced probability by medical level
+                (0.05, 0.15),  # population loss fraction (severity also reduced)
                 -15,
             ),
         ]
@@ -384,6 +213,10 @@ class SettlementService:
         for dtype, prob, sev_range, morale_hit in disaster_table:
             if random.random() < prob:
                 severity = random.uniform(sev_range[0], sev_range[1])
+
+                # Plague severity reduced by medical level
+                if dtype == "plague":
+                    severity *= medical_mult
 
                 county["disaster_this_year"] = {
                     "type": dtype,
@@ -401,7 +234,8 @@ class SettlementService:
                     village["population"] = max(0, village["population"] - pop_loss)
                     report["events"].append(
                         f"疫病突袭！{village['name']}染疫，"
-                        f"人口减少{pop_loss}人，民心-{abs(morale_hit)}")
+                        f"人口减少{pop_loss}人，民心-{abs(morale_hit)}"
+                        f"{'（医疗减损）' if medical_level > 0 else ''}")
                 else:
                     narrative = {
                         "flood": f"夏季洪水泛滥，预计秋收损失{severity:.0%}，民心-{abs(morale_hit)}",
@@ -415,43 +249,105 @@ class SettlementService:
                     game=game,
                     season=game.current_season,
                     event_type=f"disaster_{dtype}",
-                    choice="",
+                    category='DISASTER',
+                    description=report["events"][-1],
+                    data={
+                        'disaster_type': dtype,
+                        'severity': round(severity, 3),
+                    },
                 )
 
                 break  # only one disaster per year
 
+    @staticmethod
+    def _calculate_village_ceiling(village, county):
+        """Calculate population ceiling (carrying capacity) for a village."""
+        env = county.get("environment", {})
+        ag_suit = env.get("agriculture_suitability", 0.7)
+        irrigation = county.get("irrigation_level", 0)
+        tax_rate = county.get("tax_rate", 0.12)
+        gentry_pct = village.get("gentry_land_pct", 0.3)
+
+        effective_farmland = village["farmland"] * (1 - gentry_pct)
+        irrigation_bonus = 1 + min(0.20, irrigation * 0.05)
+        ceiling = (effective_farmland * ag_suit * MAX_YIELD_PER_MU
+                   * irrigation_bonus * (1 - tax_rate) / ANNUAL_CONSUMPTION)
+        return int(ceiling)
+
+    @staticmethod
+    def _capacity_modifier(pop, ceiling):
+        """Logistic capacity modifier for population growth."""
+        if ceiling <= 0:
+            return -0.5
+        ratio = (ceiling - pop) / ceiling
+        if ratio > 0:
+            return ratio ** 0.5  # diminishing boost as capacity fills
+        else:
+            return ratio * 2.0  # aggressive decline when overcrowded
+
     @classmethod
-    def _update_population(cls, county, report):
-        """Calculate population change per doc 06 §4.6."""
+    def _annual_population_update(cls, county, report):
+        """Annual population growth — called once per year at autumn."""
+        medical_level = county.get("medical_level", 0)
         total_pop_before = sum(v["population"] for v in county["villages"])
+        village_details = []
 
         for v in county["villages"]:
             pop = v["population"]
-            # Natural growth: 0.5% per season
-            growth = int(pop * 0.005)
+            ceiling = cls._calculate_village_ceiling(v, county)
+            v["ceiling"] = ceiling
 
-            # Inflow: if commercial > 50, +10~30 distributed across villages
+            # Morale modifier: ×1.01 per point above 50, ×0.99 per point below
+            morale_mult = 1.01 ** (v.get("morale", 50) - 50)
+
+            # Medical modifier: ×1.05 per level
+            medical_mult = 1.05 ** medical_level
+
+            # Capacity modifier
+            cap_mod = cls._capacity_modifier(pop, ceiling)
+
+            # Combined growth rate, clamped
+            growth_rate = BASE_GROWTH_RATE * morale_mult * medical_mult * cap_mod
+            growth_rate = max(-GROWTH_RATE_CLAMP, min(GROWTH_RATE_CLAMP, growth_rate))
+            delta_growth = int(pop * growth_rate)
+
+            # Separate additive factors
             inflow = 0
             if county["commercial"] > 50:
-                # Proportional share of 20 people total inflow
                 share = pop / max(total_pop_before, 1)
                 inflow = int(20 * share)
 
-            # Outflow: if morale < 30, 2% loss; if security < 20, extra 3%
             outflow = 0
-            if county["morale"] < 30:
-                outflow += int(pop * 0.02)
             if county["security"] < 20:
-                outflow += int(pop * 0.03)
+                outflow = int(pop * 0.03)
 
-            v["population"] = max(0, pop + growth + inflow - outflow)
+            new_pop = max(0, pop + delta_growth + inflow - outflow)
+            change = new_pop - pop
+            v["population"] = new_pop
+
+            village_details.append({
+                "name": v["name"],
+                "pop_before": pop,
+                "ceiling": ceiling,
+                "growth_rate": round(growth_rate * 100, 2),
+                "delta_growth": delta_growth,
+                "inflow": inflow,
+                "outflow": outflow,
+                "pop_after": new_pop,
+            })
 
         total_pop_after = sum(v["population"] for v in county["villages"])
-        change = total_pop_after - total_pop_before
-        if change != 0:
-            report["events"].append(
-                f"人口变化: {'+' if change > 0 else ''}{change} "
-                f"(总人口: {total_pop_after})")
+        total_change = total_pop_after - total_pop_before
+
+        report["population_update"] = {
+            "villages": village_details,
+            "total_before": total_pop_before,
+            "total_after": total_pop_after,
+            "total_change": total_change,
+        }
+        report["events"].append(
+            f"年度人口变化: {'+' if total_change >= 0 else ''}{total_change} "
+            f"(总人口: {total_pop_after})")
 
     @classmethod
     def _update_morale(cls, county, report):
@@ -503,14 +399,17 @@ class SettlementService:
 
     @classmethod
     def _autumn_settlement(cls, county, report):
-        """Autumn: calculate agricultural output and tax revenue (doc 06 §4.1-4.2)."""
+        """Autumn: annual population update, agricultural output and tax revenue."""
+        # Annual population update (once per year at autumn)
+        cls._annual_population_update(county, report)
+
         env = county["environment"]
         suitability = env["agriculture_suitability"]
         irrigation_bonus = county["irrigation_level"] * 0.15  # 0/0.15/0.3
 
-        # Agricultural output per village (doc 06 §4.1)
-        # village_output = farmland * base_yield * suitability * (1 + irrigation_bonus)
-        base_yield = 2  # 两/亩
+        # Agricultural output per village
+        # base_yield 0.5 两/亩 (was 2.0, reduced because farmland ×4)
+        base_yield = 0.5  # 两/亩
         total_agri_output = 0
         for v in county["villages"]:
             output = v["farmland"] * base_yield * suitability * (1 + irrigation_bonus)
@@ -532,14 +431,12 @@ class SettlementService:
                 f"{'（义仓减损）' if county['has_granary'] else ''}"
                 f"{'（赈灾减损）' if disaster.get('relieved') else ''}")
 
-        # Agricultural tax (doc 06 §4.2)
-        # collection_efficiency based on morale (0.7 ~ 1.0)
+        # Agricultural tax
         morale_factor = county["morale"] / 100
         collection_efficiency = 0.7 + 0.3 * morale_factor  # ranges 0.7-1.0
         agri_tax = total_agri_output * county["tax_rate"] * collection_efficiency
 
-        # Commercial tax (doc 06 §4.2)
-        # per market: merchants * 5 * trade_index/50
+        # Commercial tax
         commercial_tax = 0
         for m in county["markets"]:
             commercial_tax += m["merchants"] * 5 * m["trade_index"] / 50
@@ -553,8 +450,12 @@ class SettlementService:
         # Annual admin cost (deducted once per year at autumn)
         admin = county["admin_cost"]
 
+        # Annual medical cost
+        medical_level = county.get("medical_level", 0)
+        medical_cost = MEDICAL_COSTS.get(medical_level, 0)
+
         # Net change to treasury
-        net = retained - admin
+        net = retained - admin - medical_cost
         county["treasury"] += net
 
         report["autumn"] = {
@@ -564,13 +465,16 @@ class SettlementService:
             "total_tax": round(total_tax, 1),
             "remit_to_central": round(remit, 1),
             "admin_cost": admin,
+            "medical_cost": medical_cost,
             "net_treasury_change": round(net, 1),
             "treasury_after": round(county["treasury"], 1),
         }
         report["events"].append(
             f"秋季结算: 农业产出{round(total_agri_output)}两, "
             f"税收{round(total_tax)}两, 上缴{round(remit)}两, "
-            f"行政开支{admin}两, 县库净变化{round(net)}两")
+            f"行政开支{admin}两"
+            f"{f', 医疗开支{medical_cost}两' if medical_cost > 0 else ''}"
+            f", 县库净变化{round(net)}两")
 
     @classmethod
     def _winter_settlement(cls, county, season, report):
@@ -609,6 +513,7 @@ class SettlementService:
             "irrigation_level": county["irrigation_level"],
             "has_granary": county["has_granary"],
             "bailiff_level": county["bailiff_level"],
+            "medical_level": county.get("medical_level", 0),
             "villages": [
                 {
                     "name": v["name"],
@@ -619,6 +524,98 @@ class SettlementService:
                 for v in county["villages"]
             ],
         }
+
+    @classmethod
+    def _check_annexation_events(cls, game, county, report):
+        """Check if any village gentry triggers a land annexation event."""
+        # Skip if active negotiation already exists
+        if NegotiationSession.objects.filter(game=game, status='active').exists():
+            return
+
+        has_disaster = county.get('disaster_this_year') is not None
+
+        for v in county['villages']:
+            # Probability formula
+            prob = 0.08
+            if v['morale'] < 40:
+                prob += 0.10
+            if v['morale'] < 25:
+                prob += 0.15
+            if v.get('gentry_land_pct', 0) > 0.35:
+                prob += 0.05
+            if has_disaster:
+                prob += 0.10
+            if v['morale'] > 60:
+                prob -= 0.05
+            prob = max(0.0, min(0.5, prob))
+
+            if random.random() >= prob:
+                continue
+
+            # Find matching gentry agent by village_name
+            village_name = v['name']
+            gentry = Agent.objects.filter(
+                game=game,
+                role='GENTRY',
+                attributes__village_name=village_name,
+            ).first()
+            if gentry is None:
+                continue
+
+            # Determine proposed increase
+            proposed_increase = round(random.uniform(0.03, 0.08), 2)
+
+            from ..negotiation_service import NegotiationService
+            context_data = {
+                'village_name': village_name,
+                'current_pct': v.get('gentry_land_pct', 0.3),
+                'proposed_pct_increase': proposed_increase,
+                'morale_at_trigger': v['morale'],
+            }
+            session, err = NegotiationService.start_negotiation(
+                game, gentry, 'ANNEXATION', context_data,
+            )
+            if err:
+                break
+
+            # Append notification to pending_events
+            notification = {
+                'type': 'ANNEXATION',
+                'message': (
+                    f'{village_name}的地主{gentry.name}趁民心低迷，'
+                    f'正大肆收购村民田地！请前往与其交涉。'
+                ),
+                'negotiation_id': session.id,
+                'village_name': village_name,
+                'agent_name': gentry.name,
+            }
+            if not isinstance(game.pending_events, list):
+                game.pending_events = []
+            game.pending_events.append(notification)
+
+            report['events'].append(
+                f'【地主兼并】{village_name}的{gentry.name}趁机收购村民田地，'
+                f'需与其谈判交涉'
+            )
+
+            EventLog.objects.create(
+                game=game,
+                season=game.current_season,
+                event_type='annexation_trigger',
+                category='ANNEXATION',
+                description=(
+                    f'{village_name}的地主{gentry.name}趁民心低迷，'
+                    f'大肆收购村民田地'
+                ),
+                data={
+                    'village_name': village_name,
+                    'agent_name': gentry.name,
+                    'proposed_increase': proposed_increase,
+                },
+            )
+
+            # Only one annexation per season advance
+            break
 
     @classmethod
     def get_summary(cls, game):

@@ -371,6 +371,36 @@ body {
   text-align: center;
 }
 
+/* === Medical Control === */
+.medical-control {
+  padding: 12px;
+  background: #ede7d9;
+  border-radius: 6px;
+}
+.medical-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.medical-slider-row input[type="range"] {
+  flex: 1;
+  max-width: 200px;
+  accent-color: #6b8f4a;
+}
+#medical-display {
+  font-weight: bold;
+  font-size: 0.95em;
+  min-width: 180px;
+}
+.medical-levels-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8em;
+  color: #8a7a5a;
+}
+
 /* === Investment Cards === */
 .invest-grid {
   display: grid;
@@ -464,6 +494,18 @@ body {
   font-size: 0.93em;
   background: #fffdf7;
 }
+.report-event-urgent {
+  border-left-color: #c0392b;
+  background: #fef9e7;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+}
+.report-nego-btn {
+  flex-shrink: 0;
+  margin-left: 12px;
+}
 .report-section {
   margin-bottom: 16px;
 }
@@ -552,6 +594,415 @@ body {
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* === Negotiation Banner === */
+.negotiation-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #fef9e7;
+  border: 2px solid #d4a017;
+  border-radius: 6px;
+  animation: banner-pulse 2s ease-in-out infinite;
+}
+.negotiation-banner.hidden { display: none !important; }
+.nego-banner-text {
+  font-size: 0.95em;
+  color: #5c4a2a;
+}
+@keyframes banner-pulse {
+  0%, 100% { border-color: #d4a017; }
+  50% { border-color: #c0392b; }
+}
+
+/* === Negotiation Modal === */
+.nego-modal-content {
+  width: 520px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.nego-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #d5ceb8;
+}
+.nego-header h4 {
+  margin: 0;
+  color: #5c4a2a;
+}
+.nego-subtitle {
+  font-size: 0.85em;
+  color: #8a7a5a;
+}
+.nego-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-height: 250px;
+  max-height: 400px;
+  background: #f8f4ec;
+}
+.nego-msg {
+  margin-bottom: 12px;
+  max-width: 85%;
+}
+.nego-msg-player {
+  margin-left: auto;
+  text-align: right;
+}
+.nego-msg-agent {
+  margin-right: auto;
+}
+.nego-msg-label {
+  display: block;
+  font-size: 0.75em;
+  color: #8a7a5a;
+  margin-bottom: 2px;
+}
+.nego-msg-content {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.93em;
+  line-height: 1.5;
+  text-align: left;
+}
+.nego-msg-player .nego-msg-content {
+  background: #6b8f4a;
+  color: #fff;
+  border-bottom-right-radius: 2px;
+}
+.nego-msg-agent .nego-msg-content {
+  background: #fffdf7;
+  border: 1px solid #d5ceb8;
+  color: #3a3428;
+  border-bottom-left-radius: 2px;
+}
+.nego-input-area {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #d5ceb8;
+}
+.nego-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  font-size: 0.95em;
+  background: #fffdf7;
+}
+.nego-input:focus {
+  outline: none;
+  border-color: #6b8f4a;
+}
+.nego-resolved {
+  padding: 16px 20px;
+  text-align: center;
+}
+.nego-outcome {
+  padding: 16px;
+  background: #ede7d9;
+  border-radius: 6px;
+  font-size: 0.95em;
+  color: #5c4a2a;
+}
+.nego-outcome strong { display: block; margin-bottom: 4px; }
+
+/* === Irrigation Negotiate Section === */
+#irrigation-negotiate-section {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #eaf4e0;
+  border: 1px solid #b8d4a0;
+  border-radius: 6px;
+}
+.irrigation-village-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn-irrigation-nego {
+  background: #6b8f4a;
+  color: #fff;
+  border-color: #5a7a3a;
+}
+.btn-irrigation-nego:hover { background: #5a7a3a; }
+
+/* === Event Log (县志) === */
+.events-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.events-controls select {
+  padding: 6px 10px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  background: #fffdf7;
+  font-size: 0.9em;
+}
+.event-log-item {
+  padding: 10px 14px;
+  border: 1px solid #d5ceb8;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: #fffdf7;
+}
+.event-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.event-log-category {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.75em;
+  color: #fff;
+  font-weight: bold;
+}
+.event-log-season {
+  font-size: 0.8em;
+  color: #8a7a5a;
+}
+.event-log-desc {
+  font-size: 0.9em;
+  color: #3a3428;
+  line-height: 1.5;
+}
+
+/* === Promises === */
+#promises-info {
+  margin-bottom: 16px;
+}
+.promise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.promise-item {
+  padding: 10px 14px;
+  border: 1px solid #d5ceb8;
+  border-left: 3px solid #8e44ad;
+  border-radius: 4px;
+  background: #fffdf7;
+  font-size: 0.9em;
+}
+.promise-item.promise-urgent {
+  border-left-color: #c0392b;
+  background: #fef9e7;
+}
+.promise-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.promise-type {
+  font-weight: bold;
+  color: #8e44ad;
+}
+.promise-deadline {
+  font-size: 0.85em;
+  color: #8a7a5a;
+}
+.promise-desc {
+  color: #3a3428;
+  margin-bottom: 2px;
+}
+.promise-agent {
+  font-size: 0.8em;
+  color: #8a7a5a;
+}
+
+/* === Relationships (人脉) === */
+#relationships-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.relationship-card {
+  padding: 14px 16px;
+  border: 1px solid #d5ceb8;
+  border-radius: 6px;
+  background: #fffdf7;
+}
+.relationship-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.relationship-name {
+  font-weight: bold;
+  color: #5c4a2a;
+}
+.relationship-role {
+  font-size: 0.85em;
+  color: #8a7a5a;
+}
+.affinity-bar {
+  height: 8px;
+  background: #ede7d9;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  position: relative;
+}
+.affinity-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.affinity-value {
+  font-size: 0.85em;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.affinity-low { color: #c0392b; }
+.affinity-mid { color: #d4a017; }
+.affinity-high { color: #27ae60; }
+.memory-list {
+  font-size: 0.8em;
+  color: #8a7a5a;
+  margin-top: 6px;
+}
+.memory-list-item {
+  padding: 2px 0;
+  border-top: 1px dashed #ede7d9;
+}
+.memory-list-item:first-child {
+  border-top: none;
+}
+
+/* === Agent Link === */
+.agent-link {
+  color: #2e86c1;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.agent-link:hover {
+  color: #1a5276;
+}
+
+/* === Agent Profile Modal === */
+.agent-profile-content {
+  width: 520px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.agent-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #d5ceb8;
+}
+.agent-profile-header h4 {
+  margin: 0;
+  color: #5c4a2a;
+}
+.agent-profile-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  max-height: 70vh;
+}
+.profile-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ede7d9;
+}
+.profile-section:last-child {
+  border-bottom: none;
+}
+.profile-section h3 {
+  font-size: 1.2em;
+  color: #5c4a2a;
+  margin-bottom: 4px;
+}
+.profile-section h4 {
+  font-size: 0.95em;
+  color: #5c4a2a;
+  margin-bottom: 8px;
+}
+.profile-role {
+  font-size: 0.9em;
+  color: #8a7a5a;
+  margin-bottom: 8px;
+}
+.profile-bio {
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: #3a3428;
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.profile-stat {
+  background: #f0ece2;
+  border-radius: 4px;
+  padding: 8px 10px;
+  text-align: center;
+}
+.profile-stat-label {
+  display: block;
+  font-size: 0.8em;
+  color: #8a7a5a;
+  margin-bottom: 2px;
+}
+.profile-stat-value {
+  display: block;
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #5c4a2a;
+}
+.profile-goals {
+  list-style: disc;
+  padding-left: 20px;
+  font-size: 0.9em;
+  color: #3a3428;
+}
+.profile-goals li {
+  margin-bottom: 4px;
+}
+.profile-backstory {
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: #3a3428;
+}
+.profile-memory {
+  font-size: 0.85em;
+  color: #5c4a2a;
+}
+.profile-memory-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed #ede7d9;
+}
+.profile-memory-item:last-child {
+  border-bottom: none;
+}
+
+/* === Village Deltas === */
+.delta-positive { color: #27ae60; font-size: 0.8em; }
+.delta-negative { color: #c0392b; font-size: 0.8em; }
+.delta-neutral { color: #8a7a5a; font-size: 0.8em; }
 
 /* === Responsive === */
 @media (max-width: 600px) {

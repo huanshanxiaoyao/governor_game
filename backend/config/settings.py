@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'corsheaders',
     # Local
     'game',
+    'llm',
 ]
 
 MIDDLEWARE = [
@@ -110,3 +111,49 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# LLM Providers
+LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'openai')
+
+LLM_PROVIDERS = {
+    'openai': {
+        'base_url': 'https://api.openai.com/v1',
+        'api_key': os.getenv('OPENAI_API_KEY', ''),
+        'default_model': os.getenv('OPENAI_MODEL', 'gpt-4o'),
+    },
+    'qwen': {
+        'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        'api_key': os.getenv('QWEN_API_KEY', ''),
+        'default_model': os.getenv('QWEN_MODEL', 'qwen-plus'),
+    },
+    'deepseek': {
+        'base_url': 'https://api.deepseek.com/v1',
+        'api_key': os.getenv('DEEPSEEK_API_KEY', ''),
+        'default_model': os.getenv('DEEPSEEK_MODEL', 'deepseek-chat'),
+    },
+}
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'llm': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+    },
+}
