@@ -89,6 +89,33 @@ body {
   font-size: 1.1em;
   margin-top: 16px;
 }
+.precompute-status {
+  margin-top: 10px;
+  font-size: 0.85em;
+  color: #6b5e4f;
+}
+.precompute-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed #e0d8c8;
+  animation: fadeIn 0.4s ease-in;
+}
+.precompute-done::before {
+  content: "\2714 ";
+  color: #5a8a3c;
+}
+.precompute-all-done {
+  font-weight: bold;
+  color: #5a8a3c;
+  margin-top: 4px;
+  border-bottom: none;
+}
+.precompute-all-done::before {
+  content: "\2605 ";
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* === Error === */
 .error-msg {
@@ -1004,10 +1031,246 @@ body {
 .delta-negative { color: #c0392b; font-size: 0.8em; }
 .delta-neutral { color: #8a7a5a; font-size: 0.8em; }
 
+/* === Staff (幕僚) Tab === */
+.staff-section {
+  margin-bottom: 20px;
+}
+.staff-section h3 {
+  font-size: 1.1em;
+  color: #5c4a2a;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #d5ceb8;
+}
+.staff-card {
+  padding: 14px 16px;
+  border: 1px solid #d5ceb8;
+  border-radius: 6px;
+  background: #fffdf7;
+}
+.staff-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.staff-name {
+  font-weight: bold;
+  color: #5c4a2a;
+  font-size: 1.05em;
+}
+.staff-role {
+  font-size: 0.85em;
+  color: #8a7a5a;
+}
+.staff-bio {
+  font-size: 0.9em;
+  color: #6b5d45;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.staff-meta {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 0.9em;
+}
+.staff-question-badge {
+  background: #e8dcc8;
+  padding: 2px 10px;
+  border-radius: 10px;
+  color: #5c4a2a;
+  font-weight: 500;
+}
+
+.liufang-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.liufang-card {
+  padding: 10px 12px;
+  border: 1px solid #d5ceb8;
+  border-radius: 6px;
+  background: #fffdf7;
+}
+.liufang-name {
+  font-weight: bold;
+  color: #5c4a2a;
+  margin-bottom: 4px;
+}
+.liufang-desc {
+  font-size: 0.82em;
+  color: #8a7a5a;
+  line-height: 1.4;
+}
+
+/* === Neighbors (邻县) === */
+.neighbors-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.neighbor-card {
+  border: 1px solid #d5ceb8;
+  border-radius: 6px;
+  padding: 14px 16px;
+  background: #fffdf7;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.neighbor-card:hover {
+  border-color: #6b8f4a;
+  background: #f5f8f0;
+}
+.neighbor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.neighbor-county-name {
+  font-weight: bold;
+  font-size: 1.05em;
+  color: #5c4a2a;
+}
+.neighbor-type-tag {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #ede7d9;
+  color: #8a7a5a;
+}
+.neighbor-governor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.neighbor-governor-name {
+  font-size: 0.9em;
+  color: #5c4a2a;
+}
+.neighbor-style-tag {
+  display: inline-block;
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: bold;
+}
+.neighbor-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.85em;
+  color: #5c4a2a;
+  margin-bottom: 6px;
+}
+.neighbor-analysis {
+  font-size: 0.8em;
+  color: #8a7a5a;
+  font-style: italic;
+  line-height: 1.4;
+  border-top: 1px dashed #ede7d9;
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+/* === Neighbor Detail Modal === */
+.neighbor-detail-content {
+  width: 600px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.neighbor-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #d5ceb8;
+}
+.neighbor-detail-header h4 {
+  margin: 0;
+  color: #5c4a2a;
+  font-size: 1.1em;
+}
+.neighbor-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  max-height: 70vh;
+}
+.nd-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ede7d9;
+}
+.nd-section:last-child {
+  border-bottom: none;
+}
+.nd-section h4 {
+  font-size: 0.95em;
+  color: #5c4a2a;
+  margin-bottom: 8px;
+}
+.nd-governor-card {
+  padding: 10px 14px;
+  background: #f0ece2;
+  border-radius: 6px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+.nd-governor-card p {
+  margin-top: 6px;
+  color: #3a3428;
+}
+.nd-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 6px;
+}
+.nd-stat {
+  background: #f0ece2;
+  border-radius: 4px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.nd-stat-label {
+  display: block;
+  font-size: 0.75em;
+  color: #8a7a5a;
+}
+.nd-stat-value {
+  display: block;
+  font-size: 0.95em;
+  font-weight: bold;
+  color: #5c4a2a;
+}
+.nd-market {
+  font-size: 0.9em;
+  color: #5c4a2a;
+  padding: 4px 0;
+}
+.nd-reasoning {
+  font-size: 0.9em;
+  color: #3a3428;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: #f8f4ec;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
 /* === Responsive === */
 @media (max-width: 600px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .invest-grid { grid-template-columns: 1fr; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .background-choices { flex-direction: column; }
+  .liufang-grid { grid-template-columns: repeat(2, 1fr); }
 }

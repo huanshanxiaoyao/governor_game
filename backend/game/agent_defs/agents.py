@@ -91,6 +91,46 @@ MVP_AGENTS = [
         },
     },
     {
+        "name": "周正卿",
+        "role": "DEPUTY",
+        "role_title": "县丞",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 6,
+            "charisma": 5,
+            "loyalty": 6,
+
+            "personality": {
+                "openness": 0.4,
+                "conscientiousness": 0.9,
+                "agreeableness": 0.5,
+            },
+
+            "ideology": {
+                "reform_vs_tradition": 0.4,
+                "people_vs_authority": 0.4,
+                "pragmatic_vs_idealist": 0.7,
+            },
+
+            "reputation": {
+                "scholarly": 45,
+                "political": 55,
+                "popular": 35,
+            },
+
+            "goals": [
+                "维持县政平稳运转，不出差错",
+                "积攒资历，日后谋求升迁",
+            ],
+
+            "bio": "周正卿，年四十二，八品县丞。举人出身，在县衙任职十余年，熟稳公务流程。为人谨慎务实，做事循规蹈矩，是县令不可或缺的副手。",
+            "backstory": "周正卿出身小吏之家，自幼在衙门耳濡目染。中举后未能更进一步，便在县衙扎下根来。历经三任县令，深谙官场生存之道：不出头、不犯错、稳扎稳打。虽无大才，却胜在勤勉可靠。对新任县令持观望态度，既盼有所作为，又怕被牵连。",
+
+            "memory": [],
+            "player_affinity": 55,
+        },
+    },
+    {
         "name": "李秀才",
         "role": "GENTRY",
         "role_title": "耆老",

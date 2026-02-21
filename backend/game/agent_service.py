@@ -20,6 +20,7 @@ class AgentService:
     @classmethod
     def initialize_agents(cls, game):
         """为新游戏创建16个NPC (4固定 + 6村庄地主 + 6村民代表) 及其关系网络"""
+        import copy
         name_to_agent = {}
 
         for defn in MVP_AGENTS:
@@ -29,9 +30,25 @@ class AgentService:
                 role=defn['role'],
                 role_title=defn['role_title'],
                 tier=defn['tier'],
-                attributes=defn['attributes'],
+                attributes=copy.deepcopy(defn['attributes']),
             )
             name_to_agent[defn['name']] = agent
+
+        # 将地主和村民代表的 village_name 重新映射到实际生成的村庄
+        actual_villages = [v["name"] for v in game.county_data.get("villages", [])]
+        all_agents = list(name_to_agent.values())
+        gentry_agents = [a for a in all_agents
+                         if a.role == 'GENTRY' and a.role_title == '地主']
+        villager_agents = [a for a in all_agents
+                          if a.role == 'VILLAGER' and a.role_title == '村民代表']
+
+        for i, vname in enumerate(actual_villages):
+            if i < len(gentry_agents):
+                gentry_agents[i].attributes['village_name'] = vname
+                gentry_agents[i].save(update_fields=['attributes'])
+            if i < len(villager_agents):
+                villager_agents[i].attributes['village_name'] = vname
+                villager_agents[i].save(update_fields=['attributes'])
 
         for a_name, b_name, affinity, data in MVP_RELATIONSHIPS:
             Relationship.objects.create(
@@ -41,11 +58,63 @@ class AgentService:
                 data=data,
             )
 
-        return list(name_to_agent.values())
+        return all_agents
 
     # ------------------------------------------------------------------
     # 2. Context Building
     # ------------------------------------------------------------------
+
+    COUNTY_TYPE_DESCS = {
+        "fiscal_core": "本县为江南财赋重地，田多税重，上缴压力极大。地主占地比高，平民徭役负担重。商业较为繁荣，但需警惕入不敷出。",
+        "clan_governance": "本县为山区宗族之地，宗族势力根深蒂固。社会秩序稳定、征税效率高，但改革阻力大、商业薄弱。",
+        "coastal": "本县为沿海偏僻之地，人少地少，财政紧张。一次灾害即可能令县库见底，治安堪忧，需精打细算。",
+        "disaster_prone": "本县地处黄淮之间，水患频繁，民心低迷。需持续投入水利和赈灾，否则灾年农税骤降而上缴不减。",
+    }
+
+    GAME_KNOWLEDGE_TEMPLATE = (
+        '【治县要略 — 你作为师爷应熟知的治理之道】\n'
+        '\n'
+        '一、财政收支\n'
+        '- 县库收入来自三大税源：田赋（农业税）、徭役折银、商税\n'
+        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好\n'
+        '- 徭役只征自耕农和佃户，绅衿地主依制免役；地主占地越多，应役人口越少，徭役收入越低\n'
+        '- 商税取决于集市商户多寡和商业繁荣程度\n'
+        '- 每年秋季需向上级缴纳定额赋税（上缴比例因地而异），剩余方为县用\n'
+        '- 行政开支、衙役俸禄、医疗开支均在秋季扣除\n'
+        '\n'
+        '二、民心与治安\n'
+        '- 民心和治安每季度都会自然衰减\n'
+        '- 文教兴盛有助于民心回升；衙役充足有助于治安维持\n'
+        '- 民心低落时地主容易趁机兼并田地；治安低迷则百姓流离失所\n'
+        '- 全县民心与各村民心相互影响、联动变化\n'
+        '\n'
+        '三、投资施政\n'
+        '- 开垦荒地可增加耕地、降低地主占地比，有利于农民\n'
+        '- 修建水利可减轻水患、提高产量，但需要时日；可与地主协商分担费用\n'
+        '- 扩建县学提升文教，间接促进民心恢复\n'
+        '- 增设衙役立竿见影提升治安，但会永久增加行政开支\n'
+        '- 修缮道路可促进商业繁荣\n'
+        '- 义仓可减轻灾害损失；赈灾可在灾后安抚民心\n'
+        '\n'
+        '四、灾害与风险\n'
+        '- 水灾、旱灾、蝗灾、疫病可能在夏季发生\n'
+        '- 水利设施可降低水患概率；义仓和赈灾可减轻灾害损失\n'
+        '- 医疗投入可降低疫病风险\n'
+        '\n'
+        '五、人口\n'
+        '- 人口承载力取决于耕地（非地主占有部分）、农事丰歉和税率\n'
+        '- 商业繁荣可吸引人口流入；治安低迷则导致人口外流\n'
+        '\n'
+        '六、县域特色\n'
+        '- {county_type_desc}\n'
+    )
+
+    @classmethod
+    def _build_game_knowledge(cls, game):
+        """构建治县要略文本（仅供师爷/县丞使用）"""
+        county_type = game.county_data.get('county_type', '')
+        county_type_desc = cls.COUNTY_TYPE_DESCS.get(county_type, '')
+        return cls.GAME_KNOWLEDGE_TEMPLATE.format(county_type_desc=county_type_desc)
 
     @classmethod
     def build_system_context(cls, agent, game):
@@ -55,6 +124,11 @@ class AgentService:
         village_summary = ''
         if village_name:
             village_summary = cls._get_village_summary(game, village_name)
+
+        # 师爷和县丞获得治县要略
+        game_knowledge = ''
+        if agent.role in ('ADVISOR', 'DEPUTY'):
+            game_knowledge = cls._build_game_knowledge(game)
 
         return {
             'agent_name': agent.name,
@@ -67,6 +141,7 @@ class AgentService:
             'memory_desc': cls._describe_recent_memory(agent),
             'county_summary': cls._summarize_county(game),
             'village_summary': village_summary,
+            'game_knowledge': game_knowledge,
             'season': game.current_season,
             'affinity': attrs.get('player_affinity', 50),
         }
@@ -189,6 +264,18 @@ class AgentService:
     @classmethod
     def chat_with_agent(cls, game, agent, player_message):
         """与NPC对话的完整流程"""
+        # 0. 师爷问策次数限制
+        if agent.role == 'ADVISOR':
+            county = game.county_data
+            level = county.get('advisor_level', 1)
+            used = county.get('advisor_questions_used', 0)
+            if used >= level:
+                return {
+                    'error': '本季度师爷已无余力回答更多问题，请推进到下一季度',
+                    'questions_used': used,
+                    'questions_limit': level,
+                }
+
         # 1. 保存玩家消息
         DialogueMessage.objects.create(
             game=game,
@@ -208,13 +295,21 @@ class AgentService:
         else:
             result = cls._chat_light(ctx, game, agent)
 
+        # 4. 师爷问策次数计数
+        if agent.role == 'ADVISOR' and 'error' not in result:
+            county = game.county_data
+            county['advisor_questions_used'] = county.get('advisor_questions_used', 0) + 1
+            game.county_data = county
+            game.save(update_fields=['county_data'])
+
         return result
 
     @classmethod
     def _chat_full(cls, ctx, game, agent):
         """FULL agent: LLM JSON对话"""
+        template_name = 'advisor_chat_json' if agent.role == 'ADVISOR' else 'agent_full_chat_json'
         system_prompt, user_prompt = PromptRegistry.render(
-            'agent_full_chat_json', **ctx,
+            template_name, **ctx,
         )
 
         # 构建消息列表 (system + 最近历史 + 当前)

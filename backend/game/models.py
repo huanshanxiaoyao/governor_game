@@ -67,6 +67,7 @@ class Agent(models.Model):
 
     ROLE_CHOICES = [
         ('ADVISOR', '师爷'),
+        ('DEPUTY', '县丞'),
         ('PREFECT', '知府'),
         ('GENTRY', '士绅'),
         ('VILLAGER', '村民'),
@@ -254,3 +255,62 @@ class Promise(models.Model):
 
     def __str__(self):
         return f"Promise #{self.id} [{self.get_promise_type_display()}] G#{self.game_id} ({self.get_status_display()})"
+
+
+class NeighborCounty(models.Model):
+    """邻县 — AI知县治理的县"""
+    STYLE_CHOICES = [
+        ('minben', '民本型'),
+        ('zhengji', '政绩型'),
+        ('baoshou', '保守型'),
+        ('jinqu', '进取型'),
+        ('yuanhua', '圆滑型'),
+    ]
+
+    game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='neighbors')
+    county_name = models.CharField(max_length=100, help_text='邻县名称')
+    governor_name = models.CharField(max_length=50, help_text='AI知县姓名')
+    governor_style = models.CharField(max_length=20, choices=STYLE_CHOICES, help_text='施政风格')
+    governor_bio = models.TextField(blank=True, default='', help_text='知县人设描述')
+    county_data = models.JSONField(default=dict, help_text='同玩家county_data结构')
+    last_reasoning = models.TextField(blank=True, default='', help_text='上季度LLM决策reasoning')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'neighbor_counties'
+        indexes = [
+            models.Index(fields=['game']),
+        ]
+
+    def __str__(self):
+        return f"{self.county_name} ({self.governor_name}) - Game#{self.game_id}"
+
+
+class NeighborEventLog(models.Model):
+    """邻县事件记录"""
+    CATEGORY_CHOICES = [
+        ('SETTLEMENT', '结算'),
+        ('DISASTER', '灾害'),
+        ('INVESTMENT', '投资'),
+        ('TAX', '税率'),
+        ('AI_DECISION', 'AI决策'),
+    ]
+
+    neighbor_county = models.ForeignKey(
+        NeighborCounty, on_delete=models.CASCADE, related_name='event_logs',
+    )
+    season = models.IntegerField(help_text='触发季度')
+    event_type = models.CharField(max_length=100, help_text='事件类型')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='SETTLEMENT')
+    description = models.TextField(blank=True, default='')
+    data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'neighbor_event_logs'
+        indexes = [
+            models.Index(fields=['neighbor_county', 'season']),
+        ]
+
+    def __str__(self):
+        return f"Neighbor#{self.neighbor_county_id} S{self.season}: [{self.category}] {self.event_type}"

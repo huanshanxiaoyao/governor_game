@@ -11,6 +11,7 @@ urlpatterns = [
     path("games/<int:game_id>/tax-rate/", views.TaxRateView.as_view(), name="game-tax-rate"),
     path("games/<int:game_id>/medical-level/", views.MedicalLevelView.as_view(), name="game-medical-level"),
     path("games/<int:game_id>/summary/", views.GameSummaryView.as_view(), name="game-summary"),
+    path("games/<int:game_id>/staff/", views.StaffInfoView.as_view(), name="game-staff"),
     path("games/<int:game_id>/agents/", views.AgentListView.as_view(), name="game-agents"),
     path("games/<int:game_id>/agents/<int:agent_id>/chat/", views.AgentChatView.as_view(), name="agent-chat"),
     # Event logs
@@ -21,4 +22,9 @@ urlpatterns = [
     path("games/<int:game_id>/negotiations/active/", views.ActiveNegotiationView.as_view(), name="negotiation-active"),
     path("games/<int:game_id>/negotiations/start-irrigation/", views.StartIrrigationNegotiationView.as_view(), name="negotiation-start-irrigation"),
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
+    # Neighbor counties
+    path("games/<int:game_id>/neighbors/precompute/", views.NeighborPrecomputeView.as_view(), name="neighbor-precompute"),
+    path("games/<int:game_id>/neighbors/", views.NeighborListView.as_view(), name="neighbor-list"),
+    path("games/<int:game_id>/neighbors/<int:neighbor_id>/", views.NeighborDetailView.as_view(), name="neighbor-detail"),
+    path("games/<int:game_id>/neighbors/<int:neighbor_id>/events/", views.NeighborEventsView.as_view(), name="neighbor-events"),
 ]

@@ -77,6 +77,8 @@
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button class="tab-btn" data-tab="tab-report">季报</button>
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
+    <button class="tab-btn" data-tab="tab-staff">幕僚</button>
+    <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
   </nav>
 
@@ -134,12 +136,7 @@
           <span id="medical-display">0级 — 无（0两/年）</span>
           <button id="btn-set-medical" class="btn btn-primary btn-small">确认调整</button>
         </div>
-        <div class="medical-levels-info">
-          <span>0: 无</span>
-          <span>1: 简易医馆 25两/年</span>
-          <span>2: 县医署 50两/年</span>
-          <span>3: 完善医疗 100两/年</span>
-        </div>
+        <div id="medical-levels-info" class="medical-levels-info"></div>
       </div>
     </div>
 
@@ -164,6 +161,20 @@
   <!-- Tab: Relationships (人脉) -->
   <div id="tab-relationships" class="tab-content hidden">
     <div id="relationships-list">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+
+  <!-- Tab: Staff (幕僚) -->
+  <div id="tab-staff" class="tab-content hidden">
+    <div id="staff-content">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+
+  <!-- Tab: Neighbors (邻县) -->
+  <div id="tab-neighbors" class="tab-content hidden">
+    <div id="neighbors-list">
       <p class="hint">加载中...</p>
     </div>
   </div>
@@ -193,6 +204,7 @@
       <p class="hint">推进季度后将在此显示季报</p>
     </div>
     <button id="btn-advance" class="btn btn-primary btn-advance">推进季度</button>
+    <div id="neighbor-precompute-status" class="precompute-status"></div>
   </div>
 </section>
 
@@ -236,13 +248,45 @@
   </div>
 </div>
 
+<!-- ==================== Staff Chat Modal ==================== -->
+<div id="staff-chat-modal" class="modal hidden">
+  <div class="modal-content nego-modal-content">
+    <div class="nego-header">
+      <div>
+        <h4 id="staff-chat-title">对话</h4>
+        <span id="staff-chat-subtitle" class="nego-subtitle"></span>
+      </div>
+      <button id="staff-chat-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="staff-chat-messages" class="nego-messages"></div>
+    <div id="staff-chat-input-area" class="nego-input-area">
+      <input type="text" id="staff-chat-input" class="nego-input" placeholder="输入你的话..." maxlength="500">
+      <button id="staff-chat-send" class="btn btn-primary btn-small">发言</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Neighbor Detail Modal ==================== -->
+<div id="neighbor-detail-modal" class="modal hidden">
+  <div class="modal-content neighbor-detail-content">
+    <div class="neighbor-detail-header">
+      <h4 id="neighbor-detail-title">邻县详情</h4>
+      <button id="neighbor-detail-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="neighbor-detail-body" class="neighbor-detail-body"></div>
+  </div>
+</div>
+
 <!-- ==================== Toast Container ==================== -->
 <div id="toast-container"></div>
 
 <!-- Scripts -->
 <script src="{% static 'game/js/api.js' %}"></script>
 <script src="{% static 'game/js/state.js' %}"></script>
-<script src="{% static 'game/js/components.js' %}"></script>
+<script src="{% static 'game/js/components-core.js' %}"></script>
+<script src="{% static 'game/js/components-county.js' %}"></script>
+<script src="{% static 'game/js/components-social.js' %}"></script>
+<script src="{% static 'game/js/components-neighbors.js' %}"></script>
 <script src="{% static 'game/js/screens.js' %}"></script>
 <script src="{% static 'game/js/app.js' %}"></script>
 

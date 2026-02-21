@@ -8,12 +8,45 @@ from .constants import (
     ANNUAL_CONSUMPTION,
     BASE_GROWTH_RATE,
     GROWTH_RATE_CLAMP,
-    MEDICAL_COSTS,
+    calculate_medical_cost,
+    CORVEE_PER_CAPITA,
+    GENTRY_POP_RATIO_COEFF,
 )
 
 
 class SettlementService:
     """季度结算引擎"""
+
+    @classmethod
+    def settle_county(cls, county, season, report):
+        """
+        纯county_data级物理结算 — 邻县和玩家共用。
+        不涉及 game/Agent/EventLog/NegotiationSession/Promise 等数据库操作。
+        """
+        # 1. [Spring] Environment drift
+        if season in (1, 5, 9):
+            cls._drift_environment(county, report)
+
+        # 2. Check & apply completed investments (data-only, no game)
+        cls._apply_completed_investments(county, season, report)
+
+        # 3. [Summer] Disaster check (data-only)
+        if season in (2, 6, 10):
+            cls._disaster_check_data(county, report)
+
+        # 4. Morale change
+        cls._update_morale(county, report)
+
+        # 5. Security change
+        cls._update_security(county, report)
+
+        # 6. [Autumn] Agricultural output + tax
+        if season in (3, 7, 11):
+            cls._autumn_settlement(county, report)
+
+        # 7. [Winter] Annual snapshot + clear disaster
+        if season in (4, 8, 12):
+            cls._winter_settlement(county, season, report)
 
     @classmethod
     def advance_season(cls, game):
@@ -27,14 +60,17 @@ class SettlementService:
         season = game.current_season
         report = {"season": season, "events": []}
 
+        # 0. Reset per-season counters
+        county["advisor_questions_used"] = 0
+
         # 1. [Spring] Environment drift
         if season in (1, 5, 9):
             cls._drift_environment(county, report)
 
-        # 2. Check & apply completed investments
-        cls._apply_completed_investments(county, season, report)
+        # 2. Check & apply completed investments (with Agent updates)
+        cls._apply_completed_investments(county, season, report, game=game)
 
-        # 3. [Summer] Disaster check
+        # 3. [Summer] Disaster check (with EventLog)
         if season in (2, 6, 10):
             cls._summer_disaster_check(game, county, report)
 
@@ -98,19 +134,23 @@ class SettlementService:
         return report
 
     @classmethod
-    def _apply_completed_investments(cls, county, season, report):
-        """Apply effects of investments that complete this season."""
+    def _apply_completed_investments(cls, county, season, report, game=None):
+        """Apply effects of investments that complete this season.
+        When game is provided, also updates Agent models (player path).
+        """
         remaining = []
         for inv in county["active_investments"]:
             if inv["completion_season"] <= season:
-                cls._apply_investment_effect(county, inv, report)
+                cls._apply_investment_effect(county, inv, report, game=game)
             else:
                 remaining.append(inv)
         county["active_investments"] = remaining
 
     @classmethod
-    def _apply_investment_effect(cls, county, inv, report):
-        """Apply the effect of a single completed investment."""
+    def _apply_investment_effect(cls, county, inv, report, game=None):
+        """Apply the effect of a single completed investment.
+        When game is provided, also updates Agent affinity/memory for reclaim_land.
+        """
         action = inv["action"]
 
         if action == "reclaim_land":
@@ -122,9 +162,30 @@ class SettlementService:
                     gentry_land = old_farmland * old_pct
                     v["farmland"] += 800
                     v["gentry_land_pct"] = round(gentry_land / v["farmland"], 4)
+                    v["morale"] = min(100, v["morale"] + 5)
                     report["events"].append(
-                        f"{village_name}开垦完成，耕地+800亩，"
+                        f"{village_name}开垦完成，耕地+800亩，民心+5，"
                         f"地主占比{old_pct:.0%}→{v['gentry_land_pct']:.0%}")
+                    # Agent updates only when game is provided (player path)
+                    if game is not None:
+                        villager = Agent.objects.filter(
+                            game=game,
+                            role='VILLAGER',
+                            attributes__village_name=village_name,
+                        ).first()
+                        if villager:
+                            attrs = villager.attributes
+                            attrs['player_affinity'] = min(
+                                99, attrs.get('player_affinity', 50) + 5)
+                            memory = attrs.get('memory', [])
+                            memory.append(
+                                f"第{game.current_season}季度，知县大人下令开垦荒地，"
+                                f"{village_name}百姓新增耕地，感激不已")
+                            if len(memory) > 20:
+                                memory = memory[-20:]
+                            attrs['memory'] = memory
+                            villager.attributes = attrs
+                            villager.save(update_fields=['attributes'])
                     break
 
         elif action == "build_irrigation":
@@ -172,6 +233,58 @@ class SettlementService:
 
         if env["border_threat"] >= 0.5:
             report["events"].append("北方边报频传，朝中气氛紧张")
+
+    @classmethod
+    def _disaster_check_data(cls, county, report):
+        """Summer disaster check — pure data, no EventLog creation."""
+        env = county["environment"]
+        medical_level = county.get("medical_level", 0)
+        medical_mult = 0.85 ** medical_level
+
+        disaster_table = [
+            (
+                "flood",
+                max(0.02 if env["flood_risk"] > 0 else 0,
+                    env["flood_risk"] * 0.3 * (1 - county["irrigation_level"] * 0.5)),
+                (0.4, 0.7),
+                -10,
+            ),
+            ("drought", 0.15 * (1 - env["agriculture_suitability"]), (0.3, 0.6), -8),
+            ("locust", 0.08, (0.2, 0.4), -5),
+            ("plague", 0.05 * medical_mult, (0.05, 0.15), -15),
+        ]
+
+        DISASTER_NAMES = {"flood": "洪灾", "drought": "旱灾", "locust": "蝗灾", "plague": "疫病"}
+
+        for dtype, prob, sev_range, morale_hit in disaster_table:
+            if random.random() < prob:
+                severity = random.uniform(sev_range[0], sev_range[1])
+                if dtype == "plague":
+                    severity *= medical_mult
+
+                county["disaster_this_year"] = {
+                    "type": dtype,
+                    "severity": round(severity, 3),
+                    "relieved": False,
+                }
+                county["morale"] = max(0, county["morale"] + morale_hit)
+
+                if dtype == "plague":
+                    village = random.choice(county["villages"])
+                    pop_loss = int(village["population"] * severity)
+                    village["population"] = max(0, village["population"] - pop_loss)
+                    report["events"].append(
+                        f"疫病突袭！{village['name']}染疫，"
+                        f"人口减少{pop_loss}人，民心-{abs(morale_hit)}"
+                        f"{'（医疗减损）' if medical_level > 0 else ''}")
+                else:
+                    narrative = {
+                        "flood": f"夏季洪水泛滥，预计秋收损失{severity:.0%}，民心-{abs(morale_hit)}",
+                        "drought": f"旱灾肆虐，田地干裂，预计秋收损失{severity:.0%}，民心-{abs(morale_hit)}",
+                        "locust": f"蝗灾来袭，遮天蔽日，预计秋收损失{severity:.0%}，民心-{abs(morale_hit)}",
+                    }
+                    report["events"].append(narrative[dtype])
+                break
 
     @classmethod
     def _summer_disaster_check(cls, game, county, report):
@@ -351,7 +464,7 @@ class SettlementService:
 
     @classmethod
     def _update_morale(cls, county, report):
-        """Calculate morale change per doc 06 §4.5."""
+        """Calculate morale change per doc 06 §4.5, with county↔village sync."""
         old = county["morale"]
 
         # Base decay: -1
@@ -365,6 +478,15 @@ class SettlementService:
             delta -= 3
 
         county["morale"] = max(0, min(100, county["morale"] + delta))
+        county_delta = county["morale"] - old
+
+        # County → Village propagation: 县级变化的50%传导到各村
+        if county_delta != 0:
+            for v in county["villages"]:
+                v["morale"] = max(0, min(100, v["morale"] + county_delta * 0.5))
+
+        # Village → County aggregation: 按人口权重加权平均，与当前县级民心混合
+        cls._sync_county_from_villages(county, "morale")
 
         actual_change = county["morale"] - old
         if actual_change != 0:
@@ -374,7 +496,7 @@ class SettlementService:
 
     @classmethod
     def _update_security(cls, county, report):
-        """Calculate security change per doc 06 §4.5."""
+        """Calculate security change per doc 06 §4.5, with county↔village sync."""
         old = county["security"]
 
         # Base decay: -1
@@ -390,12 +512,34 @@ class SettlementService:
             delta -= 2
 
         county["security"] = max(0, min(100, county["security"] + delta))
+        county_delta = county["security"] - old
+
+        # County → Village propagation
+        if county_delta != 0:
+            for v in county["villages"]:
+                v["security"] = max(0, min(100, v["security"] + county_delta * 0.5))
+
+        # Village → County aggregation
+        cls._sync_county_from_villages(county, "security")
 
         actual_change = county["security"] - old
         if actual_change != 0:
             report["events"].append(
                 f"治安变化: {'+' if actual_change > 0 else ''}"
                 f"{actual_change:.1f} (当前: {county['security']:.1f})")
+
+    @staticmethod
+    def _sync_county_from_villages(county, field):
+        """按人口权重将各村指标汇聚到县级，与当前县值混合(70%村均/30%县值)"""
+        villages = county["villages"]
+        total_pop = sum(v.get("population", 0) for v in villages)
+        if total_pop <= 0:
+            return
+        weighted_sum = sum(
+            v.get(field, 50) * v.get("population", 0) for v in villages)
+        weighted_avg = weighted_sum / total_pop
+        county[field] = max(0, min(100,
+            round(0.7 * weighted_avg + 0.3 * county[field], 1)))
 
     @classmethod
     def _autumn_settlement(cls, county, report):
@@ -431,28 +575,36 @@ class SettlementService:
                 f"{'（义仓减损）' if county['has_granary'] else ''}"
                 f"{'（赈灾减损）' if disaster.get('relieved') else ''}")
 
-        # Agricultural tax
+        # Agricultural tax (doc 06a §4.1)
         morale_factor = county["morale"] / 100
         collection_efficiency = 0.7 + 0.3 * morale_factor  # ranges 0.7-1.0
         agri_tax = total_agri_output * county["tax_rate"] * collection_efficiency
 
-        # Commercial tax
+        # Corvée tax (doc 06a §4.2) — 地主免役，仅对平民征收
+        total_pop = sum(v["population"] for v in county["villages"])
+        gentry_ratio = county.get("gentry_land_ratio", 0.35)
+        gentry_pop_ratio = gentry_ratio * GENTRY_POP_RATIO_COEFF
+        liable_pop = total_pop * (1 - gentry_pop_ratio)
+        corvee_tax = liable_pop * CORVEE_PER_CAPITA
+
+        # Commercial tax (doc 06a §4.3)
         commercial_tax = 0
         for m in county["markets"]:
             commercial_tax += m["merchants"] * 5 * m["trade_index"] / 50
 
-        total_tax = agri_tax + commercial_tax
+        total_tax = agri_tax + corvee_tax + commercial_tax
 
-        # Central remittance: 65% of total tax
-        remit = total_tax * 0.65
+        # Central remittance (doc 06a §4.4) — 上缴比例按县域类型
+        remit_ratio = county.get("remit_ratio", 0.65)
+        remit = total_tax * remit_ratio
         retained = total_tax - remit
 
         # Annual admin cost (deducted once per year at autumn)
         admin = county["admin_cost"]
 
-        # Annual medical cost
+        # Annual medical cost (per-capita, scaled by price index)
         medical_level = county.get("medical_level", 0)
-        medical_cost = MEDICAL_COSTS.get(medical_level, 0)
+        medical_cost = calculate_medical_cost(medical_level, total_pop, county.get("price_index", 1.0))
 
         # Net change to treasury
         net = retained - admin - medical_cost
@@ -461,8 +613,10 @@ class SettlementService:
         report["autumn"] = {
             "total_agri_output": round(total_agri_output, 1),
             "agri_tax": round(agri_tax, 1),
+            "corvee_tax": round(corvee_tax, 1),
             "commercial_tax": round(commercial_tax, 1),
             "total_tax": round(total_tax, 1),
+            "remit_ratio": remit_ratio,
             "remit_to_central": round(remit, 1),
             "admin_cost": admin,
             "medical_cost": medical_cost,
@@ -471,7 +625,9 @@ class SettlementService:
         }
         report["events"].append(
             f"秋季结算: 农业产出{round(total_agri_output)}两, "
-            f"税收{round(total_tax)}两, 上缴{round(remit)}两, "
+            f"农业税{round(agri_tax)}两, 徭役折银{round(corvee_tax)}两, "
+            f"商业税{round(commercial_tax)}两, "
+            f"上缴{round(remit)}两({remit_ratio:.0%}), "
             f"行政开支{admin}两"
             f"{f', 医疗开支{medical_cost}两' if medical_cost > 0 else ''}"
             f", 县库净变化{round(net)}两")

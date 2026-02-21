@@ -4,7 +4,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Agent, EventLog, GameState, NegotiationSession, PlayerProfile, Promise
+from .models import (
+    Agent, EventLog, GameState, NeighborCounty, NeighborEventLog,
+    NegotiationSession, PlayerProfile, Promise,
+)
 from .serializers import (
     ChatMessageSerializer,
     CreateGameSerializer,
@@ -13,6 +16,8 @@ from .serializers import (
     GameListSerializer,
     InvestActionSerializer,
     MedicalLevelSerializer,
+    NeighborCountySummarySerializer,
+    NeighborEventLogSerializer,
     NegotiationChatSerializer,
     NegotiationSessionSerializer,
     PromiseSerializer,
@@ -21,7 +26,7 @@ from .serializers import (
 )
 from .agent_service import AgentService
 from .negotiation_service import NegotiationService
-from .services import CountyService, InvestmentService, SettlementService
+from .services import CountyService, InvestmentService, NeighborService, SettlementService
 
 
 class LoginView(APIView):
@@ -64,9 +69,10 @@ class GameListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
 
         background = serializer.validated_data["background"]
+        county_type = serializer.validated_data.get("county_type")
 
         # Create game with initial county data
-        county_data = CountyService.create_initial_county()
+        county_data = CountyService.create_initial_county(county_type=county_type)
         # Store initial village snapshot for delta display
         county_data['initial_villages'] = copy.deepcopy(county_data['villages'])
 
@@ -87,6 +93,9 @@ class GameListCreateView(APIView):
 
         # Initialize NPC agents
         AgentService.initialize_agents(game)
+
+        # Create AI-governed neighbor counties
+        NeighborService.create_neighbors(game)
 
         detail = GameDetailSerializer(game)
         return Response(detail.data, status=status.HTTP_201_CREATED)
@@ -160,8 +169,55 @@ class AdvanceSeasonView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        season = game.current_season
         report = SettlementService.advance_season(game)
+
+        # Advance neighbor counties (LLM decisions + settlement)
+        try:
+            NeighborService.advance_all(game, season)
+        except Exception:
+            import logging
+            logging.getLogger('game').warning(
+                "Neighbor advance failed (non-fatal)", exc_info=True)
+
         return Response(report)
+
+
+class NeighborPrecomputeView(APIView):
+    """
+    POST /api/games/{id}/neighbors/precompute/  — 后台预计算邻县AI决策
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        import threading
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        if game.current_season > 12:
+            return Response({"status": "game_over"})
+
+        next_season = game.current_season
+        threading.Thread(
+            target=NeighborService.precompute_decisions,
+            args=(game.id, next_season),
+            daemon=True,
+        ).start()
+
+        return Response({"status": "started", "season": next_season},
+                        status=status.HTTP_202_ACCEPTED)
+
+    def get(self, request, game_id):
+        """GET — 查询预计算进度"""
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        result = NeighborService.get_precompute_status(game.id, game.current_season)
+        return Response(result)
 
 
 class TaxRateView(APIView):
@@ -232,7 +288,7 @@ class MedicalLevelView(APIView):
         serializer = MedicalLevelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        from .services import MEDICAL_COSTS, MEDICAL_NAMES
+        from .services import MEDICAL_NAMES, calculate_medical_cost
 
         new_level = serializer.validated_data["medical_level"]
         county = game.county_data
@@ -241,9 +297,11 @@ class MedicalLevelView(APIView):
         game.county_data = county
         game.save()
 
-        cost = MEDICAL_COSTS.get(new_level, 0)
+        total_pop = sum(v["population"] for v in county.get("villages", []))
+        price_index = county.get("price_index", 1.0)
+        cost = calculate_medical_cost(new_level, total_pop, price_index)
         name = MEDICAL_NAMES.get(new_level, "无")
-        message = f"医疗等级调整为{new_level}级（{name}），年度开支{cost}两"
+        message = f"医疗等级调整为{new_level}级（{name}），预计年度开支{cost}两"
 
         EventLog.objects.create(
             game=game,
@@ -300,6 +358,78 @@ class AgentListView(APIView):
         return Response(agents)
 
 
+class StaffInfoView(APIView):
+    """
+    GET /api/games/{id}/staff/  — get staff (幕僚) info
+    """
+    permission_classes = [IsAuthenticated]
+
+    LIUFANG = [
+        {"name": "吏房", "desc": "掌管官吏考核、任免文书"},
+        {"name": "户房", "desc": "掌管户籍、田赋、钱粮征收"},
+        {"name": "礼房", "desc": "掌管科举、祭祀、教化"},
+        {"name": "兵房", "desc": "掌管兵丁、驿站、治安巡防"},
+        {"name": "刑房", "desc": "掌管刑狱、诉讼、缉捕"},
+        {"name": "工房", "desc": "掌管营建、水利、工匠"},
+    ]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        county = game.county_data
+        advisor_level = county.get("advisor_level", 1)
+
+        # Advisor (师爷)
+        advisor_data = None
+        try:
+            advisor = Agent.objects.get(game=game, role='ADVISOR')
+            advisor_data = {
+                "agent_id": advisor.id,
+                "name": advisor.name,
+                "role_title": advisor.role_title,
+                "level": advisor_level,
+                "questions_used": county.get("advisor_questions_used", 0),
+                "questions_limit": advisor_level,
+                "bio": advisor.attributes.get("bio", ""),
+                "affinity": advisor.attributes.get("player_affinity", 50),
+            }
+        except Agent.DoesNotExist:
+            pass
+
+        # Deputy (县丞)
+        deputy_data = None
+        try:
+            deputy = Agent.objects.get(game=game, role='DEPUTY')
+            deputy_data = {
+                "agent_id": deputy.id,
+                "name": deputy.name,
+                "role_title": deputy.role_title,
+                "bio": deputy.attributes.get("bio", ""),
+                "affinity": deputy.attributes.get("player_affinity", 50),
+            }
+        except Agent.DoesNotExist:
+            pass
+
+        # Bailiffs (衙役)
+        bailiff_level = county.get("bailiff_level", 0)
+        bailiff_data = {
+            "level": bailiff_level,
+            "count": 4 + 4 * bailiff_level,
+            "max_level": 3,
+            "base_count": 4,
+        }
+
+        return Response({
+            "advisor": advisor_data,
+            "deputy": deputy_data,
+            "bailiffs": bailiff_data,
+            "liufang": self.LIUFANG,
+        })
+
+
 class AgentChatView(APIView):
     """
     POST /api/games/{id}/agents/{agent_id}/chat/  — send message to NPC
@@ -344,6 +474,12 @@ class AgentChatView(APIView):
 
         player_message = serializer.validated_data["message"]
         result = AgentService.chat_with_agent(game, agent, player_message)
+
+        if 'error' in result:
+            return Response(
+                {"error": result["error"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response({
             "agent_name": agent.name,
@@ -570,3 +706,69 @@ class StartIrrigationNegotiationView(APIView):
             NegotiationSessionSerializer(session).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class NeighborListView(APIView):
+    """
+    GET /api/games/{id}/neighbors/  — list neighbor counties
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        neighbors = NeighborCounty.objects.filter(game=game).order_by('id')
+        serializer = NeighborCountySummarySerializer(neighbors, many=True)
+        return Response(serializer.data)
+
+
+class NeighborDetailView(APIView):
+    """
+    GET /api/games/{id}/neighbors/{nid}/  — neighbor county detail
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id, neighbor_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            neighbor = NeighborCounty.objects.get(id=neighbor_id, game=game)
+        except NeighborCounty.DoesNotExist:
+            return Response({"error": "邻县不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = NeighborCountySummarySerializer(neighbor)
+        return Response(serializer.data)
+
+
+class NeighborEventsView(APIView):
+    """
+    GET /api/games/{id}/neighbors/{nid}/events/  — neighbor event logs
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id, neighbor_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            neighbor = NeighborCounty.objects.get(id=neighbor_id, game=game)
+        except NeighborCounty.DoesNotExist:
+            return Response({"error": "邻县不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = NeighborEventLog.objects.filter(
+            neighbor_county=neighbor,
+        ).order_by('-created_at')
+
+        limit = min(int(request.query_params.get('limit', 50)), 200)
+        qs = qs[:limit]
+
+        serializer = NeighborEventLogSerializer(qs, many=True)
+        return Response(serializer.data)

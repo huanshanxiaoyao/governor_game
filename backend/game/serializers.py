@@ -1,11 +1,28 @@
 from rest_framework import serializers
-from .models import EventLog, GameState, NegotiationSession, PlayerProfile, Promise
+from .models import (
+    EventLog, GameState, NeighborCounty, NeighborEventLog,
+    NegotiationSession, PlayerProfile, Promise,
+)
+
+COUNTY_TYPE_CHOICES = [
+    ("fiscal_core", "财赋核心型"),
+    ("clan_governance", "宗族治理型"),
+    ("coastal", "沿海治理型"),
+    ("disaster_prone", "黄淮灾荒型"),
+]
 
 
 class CreateGameSerializer(serializers.Serializer):
     background = serializers.ChoiceField(
         choices=PlayerProfile.BACKGROUND_CHOICES,
         help_text="出身背景: HUMBLE/SCHOLAR/OFFICIAL",
+    )
+    county_type = serializers.ChoiceField(
+        choices=COUNTY_TYPE_CHOICES,
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="县域类型（不传则随机）: fiscal_core/clan_governance/coastal/disaster_prone",
     )
 
 
@@ -128,6 +145,33 @@ class PromiseSerializer(serializers.ModelSerializer):
             'description', 'status', 'status_display',
             'season_made', 'deadline_season', 'context',
             'agent_name', 'created_at', 'resolved_at',
+        ]
+
+
+class NeighborCountySummarySerializer(serializers.ModelSerializer):
+    governor_style_display = serializers.CharField(
+        source='get_governor_style_display', read_only=True,
+    )
+    county_type_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NeighborCounty
+        fields = [
+            'id', 'county_name', 'governor_name', 'governor_style',
+            'governor_style_display', 'governor_bio', 'county_type_name',
+            'county_data', 'last_reasoning',
+        ]
+
+    def get_county_type_name(self, obj):
+        return obj.county_data.get('county_type_name', '')
+
+
+class NeighborEventLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NeighborEventLog
+        fields = [
+            'id', 'season', 'event_type', 'category',
+            'description', 'data', 'created_at',
         ]
 
 

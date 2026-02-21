@@ -59,6 +59,12 @@
     advance: function (id) {
       return request("POST", "/api/games/" + id + "/advance/", {});
     },
+    precomputeNeighbors: function (id) {
+      return request("POST", "/api/games/" + id + "/neighbors/precompute/", {});
+    },
+    getPrecomputeStatus: function (id) {
+      return request("GET", "/api/games/" + id + "/neighbors/precompute/");
+    },
     setTaxRate: function (id, rate) {
       return request("POST", "/api/games/" + id + "/tax-rate/", { tax_rate: rate });
     },
@@ -81,14 +87,35 @@
     startIrrigationNegotiation: function (gameId, villageName) {
       return request("POST", "/api/games/" + gameId + "/negotiations/start-irrigation/", { village_name: villageName });
     },
+    // Staff
+    getStaff: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/staff/");
+    },
     // Agents
     getAgents: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/agents/");
+    },
+    chatWithAgent: function (gameId, agentId, message) {
+      return request("POST", "/api/games/" + gameId + "/agents/" + agentId + "/chat/", { message: message });
+    },
+    getAgentChatHistory: function (gameId, agentId) {
+      return request("GET", "/api/games/" + gameId + "/agents/" + agentId + "/chat/");
     },
     // Promises
     getPromises: function (gameId, promiseStatus) {
       var qs = promiseStatus ? "?status=" + encodeURIComponent(promiseStatus) : "";
       return request("GET", "/api/games/" + gameId + "/promises/" + qs);
+    },
+    // Neighbors
+    getNeighbors: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/neighbors/");
+    },
+    getNeighborDetail: function (gameId, neighborId) {
+      return request("GET", "/api/games/" + gameId + "/neighbors/" + neighborId + "/");
+    },
+    getNeighborEvents: function (gameId, neighborId, limit) {
+      var qs = limit ? "?limit=" + limit : "";
+      return request("GET", "/api/games/" + gameId + "/neighbors/" + neighborId + "/events/" + qs);
     },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {

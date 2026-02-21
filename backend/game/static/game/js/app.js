@@ -126,12 +126,14 @@
   });
 
   // ==================== Medical Level ====================
-  var medNames = ["无", "简易医馆", "县医署", "完善医疗"];
-  var medCosts = [0, 25, 50, 100];
-
   el("medical-slider").addEventListener("input", function () {
     var lv = parseInt(this.value);
-    el("medical-display").textContent = lv + "级 — " + medNames[lv] + "（" + medCosts[lv] + "两/年）";
+    var g = Game.state.currentGame;
+    var cost = 0;
+    if (g && g.county_data) {
+      cost = components.calcMedicalCost(lv, g.county_data);
+    }
+    el("medical-display").textContent = lv + "级 — " + components.MEDICAL_NAMES[lv] + "（" + cost + "两/年）";
   });
 
   el("btn-set-medical").addEventListener("click", function () {
@@ -229,6 +231,50 @@
   }
 
   // ==================== Advance Season ====================
+
+  // 邻县预计算轮询
+  var _precomputeTimer = null;
+  function startPrecomputePolling(gameId) {
+    stopPrecomputePolling();
+    var statusEl = el("neighbor-precompute-status");
+    if (statusEl) statusEl.innerHTML = "";
+    var seen = {};
+
+    _precomputeTimer = setInterval(function () {
+      api.getPrecomputeStatus(gameId)
+        .then(function (data) {
+          if (!statusEl) return;
+          // 显示每个新完成的邻县
+          (data.completed || []).forEach(function (n) {
+            if (!seen[n.neighbor_id]) {
+              seen[n.neighbor_id] = true;
+              var item = document.createElement("div");
+              item.className = "precompute-item precompute-done";
+              item.textContent = n.county_name + " " + n.governor_name + "知县已完成本轮施政";
+              statusEl.appendChild(item);
+            }
+          });
+          if (data.status === "done") {
+            stopPrecomputePolling();
+            var allDone = document.createElement("div");
+            allDone.className = "precompute-item precompute-all-done";
+            allDone.textContent = "各邻县施政决策已就绪";
+            statusEl.appendChild(allDone);
+          }
+        })
+        .catch(function () {
+          stopPrecomputePolling();
+        });
+    }, 3000);
+  }
+
+  function stopPrecomputePolling() {
+    if (_precomputeTimer) {
+      clearInterval(_precomputeTimer);
+      _precomputeTimer = null;
+    }
+  }
+
   el("btn-advance").addEventListener("click", function () {
     var g = Game.state.currentGame;
     if (!g || g.current_season > 12) return;
@@ -236,6 +282,7 @@
     var btn = el("btn-advance");
     btn.disabled = true;
     btn.textContent = "推进中...";
+    stopPrecomputePolling();
 
     api.advance(g.id)
       .then(function (report) {
@@ -245,25 +292,24 @@
 
         if (report.game_over) {
           components.showToast("三年任期已满！", "info");
-          // Fetch full summary
           return api.getSummary(g.id).then(function (summary) {
             Game.state.lastReport.fullSummary = summary;
-            // Update button to go to summary
             btn.textContent = "查看任期总结";
             btn.disabled = false;
             btn.onclick = function () {
               components.renderSummary(summary);
               screens.show("screen-summary");
-              // Reset handler
               btn.onclick = null;
             };
           });
         } else {
-          // Refresh game state
           return api.getGame(g.id).then(function (data) {
             Game.setGame(data);
             btn.disabled = false;
             btn.textContent = "推进季度";
+            // 触发后台预计算 + 开始轮询进度
+            api.precomputeNeighbors(g.id).catch(function () {});
+            startPrecomputePolling(g.id);
           });
         }
       })
@@ -447,6 +493,10 @@
       loadEventLogs();
     } else if (tabId === "tab-relationships") {
       loadRelationships();
+    } else if (tabId === "tab-staff") {
+      loadStaffInfo();
+    } else if (tabId === "tab-neighbors") {
+      loadNeighbors();
     }
   };
 
@@ -465,6 +515,117 @@
         container.innerHTML = '<p class="hint">加载失败</p>';
       });
   }
+
+  // ==================== Staff (幕僚) ====================
+  function loadStaffInfo() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var container = document.getElementById("staff-content");
+    container.innerHTML = '<p class="hint">加载中...</p>';
+
+    api.getStaff(g.id)
+      .then(function (data) {
+        components.renderStaffTab(data);
+      })
+      .catch(function () {
+        container.innerHTML = '<p class="hint">加载失败</p>';
+      });
+  }
+
+  // Staff chat button click (delegated)
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".btn-staff-chat");
+    if (!btn || btn.disabled) return;
+    var agentId = parseInt(btn.dataset.agentId);
+    var agentName = btn.dataset.agentName;
+    components.openStaffChat(agentId, agentName);
+  });
+
+  // Staff chat close
+  el("staff-chat-close").addEventListener("click", function () {
+    el("staff-chat-modal").classList.add("hidden");
+    // Refresh staff info (question count may have changed)
+    loadStaffInfo();
+  });
+
+  // Staff chat send
+  function sendStaffChatMessage() {
+    var g = Game.state.currentGame;
+    var modal = el("staff-chat-modal");
+    var agentId = parseInt(modal.dataset.agentId);
+    if (!g || !agentId) return;
+
+    var input = el("staff-chat-input");
+    var message = input.value.trim();
+    if (!message) return;
+
+    var sendBtn = el("staff-chat-send");
+    sendBtn.disabled = true;
+    input.disabled = true;
+
+    // Show player message immediately
+    components.appendStaffChatMessage("player", message);
+    input.value = "";
+
+    api.chatWithAgent(g.id, agentId, message)
+      .then(function (result) {
+        components.appendStaffChatMessage("agent", result.dialogue);
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "对话失败", "error");
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      });
+  }
+
+  el("staff-chat-send").addEventListener("click", sendStaffChatMessage);
+  el("staff-chat-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendStaffChatMessage();
+    }
+  });
+
+  // ==================== Neighbors (邻县) ====================
+  function loadNeighbors() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var container = document.getElementById("neighbors-list");
+    container.innerHTML = '<p class="hint">加载中...</p>';
+
+    api.getNeighbors(g.id)
+      .then(function (neighbors) {
+        Game.state.neighbors = neighbors;
+        components.renderNeighborsList(neighbors);
+      })
+      .catch(function () {
+        container.innerHTML = '<p class="hint">加载失败</p>';
+      });
+  }
+
+  // Neighbor card click → open detail modal
+  document.addEventListener("click", function (e) {
+    var card = e.target.closest(".neighbor-card");
+    if (!card) return;
+    var neighborId = parseInt(card.dataset.neighborId);
+    var neighbors = Game.state.neighbors || [];
+    for (var i = 0; i < neighbors.length; i++) {
+      if (neighbors[i].id === neighborId) {
+        components.openNeighborDetail(neighbors[i]);
+        return;
+      }
+    }
+  });
+
+  // Close neighbor detail modal
+  el("neighbor-detail-close").addEventListener("click", function () {
+    el("neighbor-detail-modal").classList.add("hidden");
+  });
 
   // ==================== Load Game List ====================
   function loadGameList() {

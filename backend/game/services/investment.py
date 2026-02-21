@@ -59,62 +59,95 @@ class InvestmentService:
     }
 
     @classmethod
-    def execute(cls, game, action, target_village=None):
+    def validate(cls, county, action, target_village=None):
         """
-        Execute an investment action.
-        Returns (success: bool, message: str).
+        验证投资操作是否合法。
+        Returns (is_valid: bool, reason: str). reason 为空字符串表示合法。
         """
         if action not in cls.INVESTMENT_TYPES:
             return False, f"未知的投资类型: {action}"
 
         spec = cls.INVESTMENT_TYPES[action]
-        county = game.county_data
+        price_index = county.get("price_index", 1.0)
+        actual_cost = round(spec["cost"] * price_index)
 
-        if game.current_season > 12:
-            return False, "游戏已结束，无法投资"
+        # 资金检查
+        if county.get("treasury", 0) < actual_cost:
+            return False, f"资金不足，需要{actual_cost}两，当前{round(county.get('treasury', 0))}两"
 
-        # Validate treasury
-        if county["treasury"] < spec["cost"]:
-            return False, f"县库资金不足，需要{spec['cost']}两，当前{county['treasury']}两"
+        # 同类在建检查
+        active_actions = [inv["action"] for inv in county.get("active_investments", [])]
+        if action == "build_irrigation" and "build_irrigation" in active_actions:
+            return False, "水利工程建设中"
+        if action == "expand_school" and "expand_school" in active_actions:
+            return False, "县学扩建中"
 
-        # Validate target village if required
-        village_idx = None
-        if spec["requires_village"]:
-            if target_village is None:
-                return False, f"{spec['description']}需要指定目标村庄"
-            village_names = [v["name"] for v in county["villages"]]
-            if target_village not in village_names:
-                return False, f"村庄 '{target_village}' 不存在"
-            village_idx = village_names.index(target_village)
-
-        # Action-specific validation
-        if action == "hire_bailiffs" and county["bailiff_level"] >= 3:
-            return False, "衙役已达最高等级(3)"
-        if action == "build_irrigation" and county["irrigation_level"] >= 2:
+        # 等级/状态上限检查
+        if action == "build_irrigation" and county.get("irrigation_level", 0) >= 2:
             return False, "水利已达最高等级(2)"
-        if action == "build_granary" and county["has_granary"]:
+        if action == "hire_bailiffs" and county.get("bailiff_level", 0) >= 3:
+            return False, "衙役已达最高等级(3)"
+        if action == "build_granary" and county.get("has_granary", False):
             return False, "义仓已建成"
         if action == "relief":
             if county.get("disaster_this_year") is None:
                 return False, "当前无灾害，无需赈灾"
             if county["disaster_this_year"].get("relieved"):
                 return False, "已进行过赈灾救济"
-        if action == "fund_village_school":
-            if county["villages"][village_idx]["has_school"]:
-                return False, f"{target_village}已有村塾"
+
+        # 村庄目标检查
+        if spec["requires_village"]:
+            if target_village is None:
+                return False, f"{spec['description']}需要指定目标村庄"
+            village_names = [v["name"] for v in county.get("villages", [])]
+            if target_village not in village_names:
+                return False, f"村庄 '{target_village}' 不存在"
+            if action == "fund_village_school":
+                for v in county.get("villages", []):
+                    if v["name"] == target_village and v.get("has_school"):
+                        return False, f"{target_village}已有村塾"
+
+        return True, ""
+
+    @classmethod
+    def execute(cls, game, action, target_village=None):
+        """
+        Execute an investment action.
+        Returns (success: bool, message: str).
+        """
+        county = game.county_data
+
+        if game.current_season > 12:
+            return False, "游戏已结束，无法投资"
+
+        # Validate
+        is_valid, reason = cls.validate(county, action, target_village)
+        if not is_valid:
+            return False, reason
+
+        spec = cls.INVESTMENT_TYPES[action]
+        price_index = county.get("price_index", 1.0)
+        actual_cost = round(spec["cost"] * price_index)
+
+        # Find village index if needed
+        village_idx = None
+        if spec["requires_village"] and target_village:
+            village_names = [v["name"] for v in county["villages"]]
+            village_idx = village_names.index(target_village)
 
         # Deduct cost
-        county["treasury"] -= spec["cost"]
+        county["treasury"] -= actual_cost
 
         # Apply immediate or delayed effects
         if action == "hire_bailiffs":
             county["bailiff_level"] += 1
             county["security"] = min(100, county["security"] + 8)
-            county["admin_cost"] += 40
+            admin_increase = round(40 * price_index)
+            county["admin_cost"] += admin_increase
             game.county_data = county
             game.save()
-            msg = f"衙役等级提升至{county['bailiff_level']}，治安+8，年行政开支+40两"
-            cls._log_investment(game, action, msg, spec["cost"], target_village, county["treasury"])
+            msg = f"衙役等级提升至{county['bailiff_level']}，治安+8，年行政开支+{admin_increase}两"
+            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
             return True, msg
 
         if action == "build_granary":
@@ -123,7 +156,7 @@ class InvestmentService:
             game.county_data = county
             game.save()
             msg = "义仓建成，民心+5，灾害时损失减半"
-            cls._log_investment(game, action, msg, spec["cost"], target_village, county["treasury"])
+            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
             return True, msg
 
         if action == "relief":
@@ -132,7 +165,7 @@ class InvestmentService:
             game.county_data = county
             game.save()
             msg = "赈灾救济已实施，民心+8，秋季灾害损失减半"
-            cls._log_investment(game, action, msg, spec["cost"], target_village, county["treasury"])
+            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
             return True, msg
 
         # Delayed investments: compute completion season
@@ -161,14 +194,14 @@ class InvestmentService:
         game.save()
 
         if completion > 12:
-            msg = f"{spec['description']}已启动（花费{spec['cost']}两），但将在游戏结束后才完成"
+            msg = f"{spec['description']}已启动（花费{actual_cost}两），但将在游戏结束后才完成"
         else:
-            msg = f"{spec['description']}已启动（花费{spec['cost']}两），预计第{completion}季度完成"
+            msg = f"{spec['description']}已启动（花费{actual_cost}两），预计第{completion}季度完成"
 
         if action == 'build_irrigation':
             msg += '。您可以与各村地主协商，请其出资分担费用。'
 
-        cls._log_investment(game, action, msg, spec["cost"], target_village, county["treasury"])
+        cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
         return True, msg
 
     @classmethod
