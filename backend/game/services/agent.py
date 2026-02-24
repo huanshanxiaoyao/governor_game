@@ -1,8 +1,8 @@
 """Agent 服务层 — 初始化、上下文构建、对话处理"""
 import logging
 
-from .agent_defs import MVP_AGENTS, MVP_RELATIONSHIPS
-from .models import Agent, DialogueMessage, Relationship
+from ..agent_defs import MVP_AGENTS, MVP_RELATIONSHIPS
+from ..models import Agent, DialogueMessage, Relationship
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -83,7 +83,7 @@ class AgentService:
         '- 行政开支、衙役俸禄、医疗开支均在秋季扣除\n'
         '\n'
         '二、民心与治安\n'
-        '- 民心和治安每季度都会自然衰减\n'
+        '- 民心和治安每月都会自然衰减\n'
         '- 文教兴盛有助于民心回升；衙役充足有助于治安维持\n'
         '- 民心低落时地主容易趁机兼并田地；治安低迷则百姓流离失所\n'
         '- 全县民心与各村民心相互影响、联动变化\n'
@@ -94,11 +94,11 @@ class AgentService:
         '- 扩建县学提升文教，间接促进民心恢复\n'
         '- 增设衙役立竿见影提升治安，但会永久增加行政开支\n'
         '- 修缮道路可促进商业繁荣\n'
-        '- 义仓可减轻灾害损失；赈灾可在灾后安抚民心\n'
+        '- 义仓和赈灾可减轻灾害人口损失；赈灾可在灾后安抚民心\n'
         '\n'
         '四、灾害与风险\n'
         '- 水灾、旱灾、蝗灾、疫病可能在夏季发生\n'
-        '- 水利设施可降低水患概率；义仓和赈灾可减轻灾害损失\n'
+        '- 水利设施可降低水患概率并减轻秋收减产；义仓和赈灾不影响秋收减产，仅影响人口损失\n'
         '- 医疗投入可降低疫病风险\n'
         '\n'
         '五、人口\n'
@@ -271,7 +271,7 @@ class AgentService:
             used = county.get('advisor_questions_used', 0)
             if used >= level:
                 return {
-                    'error': '本季度师爷已无余力回答更多问题，请推进到下一季度',
+                    'error': '本月师爷已无余力回答更多问题，请推进到下一月',
                     'questions_used': used,
                     'questions_limit': level,
                 }

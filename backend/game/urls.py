@@ -9,8 +9,9 @@ urlpatterns = [
     path("games/<int:game_id>/invest/", views.InvestView.as_view(), name="game-invest"),
     path("games/<int:game_id>/advance/", views.AdvanceSeasonView.as_view(), name="game-advance"),
     path("games/<int:game_id>/tax-rate/", views.TaxRateView.as_view(), name="game-tax-rate"),
-    path("games/<int:game_id>/medical-level/", views.MedicalLevelView.as_view(), name="game-medical-level"),
+    path("games/<int:game_id>/commercial-tax-rate/", views.CommercialTaxRateView.as_view(), name="game-commercial-tax-rate"),
     path("games/<int:game_id>/summary/", views.GameSummaryView.as_view(), name="game-summary"),
+    path("games/<int:game_id>/summary-v2/", views.GameSummaryV2View.as_view(), name="game-summary-v2"),
     path("games/<int:game_id>/staff/", views.StaffInfoView.as_view(), name="game-staff"),
     path("games/<int:game_id>/agents/", views.AgentListView.as_view(), name="game-agents"),
     path("games/<int:game_id>/agents/<int:agent_id>/chat/", views.AgentChatView.as_view(), name="agent-chat"),
@@ -27,4 +28,5 @@ urlpatterns = [
     path("games/<int:game_id>/neighbors/", views.NeighborListView.as_view(), name="neighbor-list"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/", views.NeighborDetailView.as_view(), name="neighbor-detail"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/events/", views.NeighborEventsView.as_view(), name="neighbor-events"),
+    path("games/<int:game_id>/neighbors/<int:neighbor_id>/summary-v2/", views.NeighborSummaryV2View.as_view(), name="neighbor-summary-v2"),
 ]

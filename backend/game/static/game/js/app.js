@@ -11,6 +11,27 @@
   // Helpers
   function el(id) { return document.getElementById(id); }
 
+  function loadSummaryPayload(gameId) {
+    return api.getSummaryV2(gameId)
+      .then(function (summary) {
+        return { version: "v2", data: summary };
+      })
+      .catch(function () {
+        return api.getSummary(gameId).then(function (summary) {
+          return { version: "v1", data: summary };
+        });
+      });
+  }
+
+  function renderSummaryPayload(payload) {
+    if (payload && payload.version === "v2" && components.renderSummaryV2) {
+      components.renderSummaryV2(payload.data);
+    } else {
+      components.renderSummary(payload.data);
+    }
+    screens.show("screen-summary");
+  }
+
   // ==================== Login ====================
   el("login-form").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -68,11 +89,10 @@
 
     api.getGame(gameId)
       .then(function (data) {
-        if (data.current_season > 12) {
+        if (data.current_season > Game.MAX_MONTH) {
           // Game is over — show summary
-          return api.getSummary(data.id).then(function (summary) {
-            components.renderSummary(summary);
-            screens.show("screen-summary");
+          return loadSummaryPayload(data.id).then(function (payload) {
+            renderSummaryPayload(payload);
           });
         }
         Game.setGame(data);
@@ -125,23 +145,17 @@
       });
   });
 
-  // ==================== Medical Level ====================
-  el("medical-slider").addEventListener("input", function () {
-    var lv = parseInt(this.value);
-    var g = Game.state.currentGame;
-    var cost = 0;
-    if (g && g.county_data) {
-      cost = components.calcMedicalCost(lv, g.county_data);
-    }
-    el("medical-display").textContent = lv + "级 — " + components.MEDICAL_NAMES[lv] + "（" + cost + "两/年）";
+  // ==================== Commercial Tax Rate ====================
+  el("commercial-tax-slider").addEventListener("input", function () {
+    el("commercial-tax-display").textContent = this.value + "%";
   });
 
-  el("btn-set-medical").addEventListener("click", function () {
+  el("btn-set-commercial-tax").addEventListener("click", function () {
     var g = Game.state.currentGame;
     if (!g) return;
-    var level = parseInt(el("medical-slider").value);
+    var rate = parseFloat(el("commercial-tax-slider").value) / 100;
 
-    api.setMedicalLevel(g.id, level)
+    api.setCommercialTaxRate(g.id, rate)
       .then(function (data) {
         components.showToast(data.message, "success");
         return api.getGame(g.id);
@@ -277,7 +291,7 @@
 
   el("btn-advance").addEventListener("click", function () {
     var g = Game.state.currentGame;
-    if (!g || g.current_season > 12) return;
+    if (!g || g.current_season > Game.MAX_MONTH) return;
 
     var btn = el("btn-advance");
     btn.disabled = true;
@@ -292,13 +306,12 @@
 
         if (report.game_over) {
           components.showToast("三年任期已满！", "info");
-          return api.getSummary(g.id).then(function (summary) {
-            Game.state.lastReport.fullSummary = summary;
+          return loadSummaryPayload(g.id).then(function (payload) {
+            Game.state.lastReport.fullSummary = payload;
             btn.textContent = "查看任期总结";
             btn.disabled = false;
             btn.onclick = function () {
-              components.renderSummary(summary);
-              screens.show("screen-summary");
+              renderSummaryPayload(payload);
               btn.onclick = null;
             };
           });
@@ -306,7 +319,7 @@
           return api.getGame(g.id).then(function (data) {
             Game.setGame(data);
             btn.disabled = false;
-            btn.textContent = "推进季度";
+            btn.textContent = "推进月份";
             // 触发后台预计算 + 开始轮询进度
             api.precomputeNeighbors(g.id).catch(function () {});
             startPrecomputePolling(g.id);
@@ -316,7 +329,7 @@
       .catch(function (err) {
         components.showToast(err.message, "error");
         btn.disabled = false;
-        btn.textContent = "推进季度";
+        btn.textContent = "推进月份";
       });
   });
 
@@ -620,6 +633,37 @@
         return;
       }
     }
+  });
+
+  // Summary v2: on-demand neighbor term report
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".summary2-neighbor-report-btn");
+    if (!btn) return;
+
+    var gameId = parseInt(btn.dataset.gameId, 10);
+    var neighborId = parseInt(btn.dataset.neighborId, 10);
+    if (!gameId || !neighborId) {
+      components.showToast("缺少邻县报告参数", "error");
+      return;
+    }
+
+    var oldText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "生成中...";
+
+    api.getNeighborSummaryV2(gameId, neighborId)
+      .then(function (report) {
+        if (components.openNeighborTermReport) {
+          components.openNeighborTermReport(report);
+        }
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "生成邻县任期报告失败", "error");
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      });
   });
 
   // Close neighbor detail modal

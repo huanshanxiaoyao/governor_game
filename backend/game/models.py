@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 class GameState(models.Model):
     """游戏存档 - 核心表"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='games')
-    current_season = models.IntegerField(default=1, help_text='当前季度 (1-12)')
+    current_season = models.IntegerField(default=1, help_text='当前月份 (1-36)')
     county_data = models.JSONField(default=dict, help_text='所有县域数据')
     pending_events = models.JSONField(default=list, help_text='待处理事件')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -122,7 +122,7 @@ class EventLog(models.Model):
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='event_logs')
-    season = models.IntegerField(help_text='触发季度')
+    season = models.IntegerField(help_text='触发月份')
     event_type = models.CharField(max_length=100, help_text='事件类型')
     category = models.CharField(
         max_length=20, choices=CATEGORY_CHOICES, default='SYSTEM',
@@ -161,7 +161,7 @@ class NegotiationSession(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
     current_round = models.IntegerField(default=0)
     max_rounds = models.IntegerField(help_text='ANNEXATION=8, IRRIGATION=12')
-    season = models.IntegerField(help_text='触发时的季度')
+    season = models.IntegerField(help_text='触发时的月份')
     context_data = models.JSONField(default=dict, help_text='事件参数')
     outcome = models.JSONField(default=dict, blank=True, help_text='结算结果')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -198,7 +198,7 @@ class DialogueMessage(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name='dialogue_messages')
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, help_text='消息角色')
     content = models.TextField(help_text='消息内容')
-    season = models.IntegerField(help_text='对话时的季度')
+    season = models.IntegerField(help_text='对话时的月份')
     metadata = models.JSONField(default=dict, blank=True, help_text='附加数据 (reasoning, attitude_change等)')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -240,8 +240,8 @@ class Promise(models.Model):
     promise_type = models.CharField(max_length=20, choices=PROMISE_TYPES, help_text='承诺类型')
     description = models.TextField(help_text='人类可读描述')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
-    season_made = models.IntegerField(help_text='承诺时的季度')
-    deadline_season = models.IntegerField(help_text='履约截止季度')
+    season_made = models.IntegerField(help_text='承诺时的月份')
+    deadline_season = models.IntegerField(help_text='履约截止月份')
     context = models.JSONField(default=dict, blank=True, help_text='承诺上下文参数')
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -273,7 +273,7 @@ class NeighborCounty(models.Model):
     governor_style = models.CharField(max_length=20, choices=STYLE_CHOICES, help_text='施政风格')
     governor_bio = models.TextField(blank=True, default='', help_text='知县人设描述')
     county_data = models.JSONField(default=dict, help_text='同玩家county_data结构')
-    last_reasoning = models.TextField(blank=True, default='', help_text='上季度LLM决策reasoning')
+    last_reasoning = models.TextField(blank=True, default='', help_text='上月LLM决策reasoning')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -299,7 +299,7 @@ class NeighborEventLog(models.Model):
     neighbor_county = models.ForeignKey(
         NeighborCounty, on_delete=models.CASCADE, related_name='event_logs',
     )
-    season = models.IntegerField(help_text='触发季度')
+    season = models.IntegerField(help_text='触发月份')
     event_type = models.CharField(max_length=100, help_text='事件类型')
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='SETTLEMENT')
     description = models.TextField(blank=True, default='')

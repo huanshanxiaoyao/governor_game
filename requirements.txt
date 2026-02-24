@@ -8,3 +8,5 @@ python-dotenv==1.0.0
 django-cors-headers==4.3.1
 flask==3.0.0
 gunicorn
+pytest>=7.0
+pytest-django>=4.5

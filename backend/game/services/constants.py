@@ -2,18 +2,117 @@
 
 import random as _random
 
+# ===== 时间系统 =====
+MONTHS_PER_YEAR = 12
+MAX_MONTH = 36  # 3年任期 = 36个月
+
+MONTH_NAMES = [
+    "正月", "二月", "三月", "四月", "五月", "六月",
+    "七月", "八月", "九月", "十月", "冬月", "腊月",
+]
+
+
+def month_of_year(month):
+    """月份 (1-36) → 当年第几月 (1-12)"""
+    return (month - 1) % MONTHS_PER_YEAR + 1
+
+
+def year_of(month):
+    """月份 (1-36) → 第几年 (1-3)"""
+    return (month - 1) // MONTHS_PER_YEAR + 1
+
+
+def month_name(month):
+    """月份 (1-36) → '第X年·正月' 格式"""
+    y = year_of(month)
+    m = month_of_year(month)
+    return f"第{y}年·{MONTH_NAMES[m - 1]}"
+
+
 MAX_YIELD_PER_MU = 200       # 斤/亩
 ANNUAL_CONSUMPTION = 300     # 斤/人/年
 BASE_GROWTH_RATE = 0.015     # 1.5% annual natural growth
 GROWTH_RATE_CLAMP = 0.025    # ±2.5% max
-MEDICAL_COST_PER_THOUSAND = {0: 0, 1: 5, 2: 12, 3: 22}
-MEDICAL_NAMES = {0: "无", 1: "简易医馆", 2: "县医署", 3: "完善医疗"}
+
+# ===== 基础设施等级系统 (doc 06a §1.1b) =====
+INFRA_MAX_LEVEL = 3
+
+# 基建类型定义: base_cost(C), base_maint(M), base_months(级1), scale_type
+INFRA_TYPES = {
+    "school": {"base_cost": 80, "base_maint": 15, "base_months": 2, "scale": "pi"},
+    "irrigation": {"base_cost": 20, "base_maint": 10, "base_months": 8, "scale": "farmland_pi"},
+    "medical": {"base_cost": 12, "base_maint": 5, "base_months": 2, "scale": "pop_pi"},
+}
+
+# 各级工期月数 [级1, 级2, 级3]
+INFRA_BUILD_MONTHS = {
+    "school": [2, 3, 5],
+    "irrigation": [8, 12, 18],
+    "medical": [2, 3, 5],
+}
+
+# 水利灾害减损率 [level 0, 1, 2, 3]
+IRRIGATION_DAMAGE_REDUCTION = [0, 0.15, 0.30, 0.60]
+
+# 灾害人口损失减免系数（乘到人口损失上；值越小减免越强）
+GRANARY_POP_LOSS_MULTIPLIER = 0.65
+RELIEF_POP_LOSS_MULTIPLIER = 0.65
+
+# 商税地方留存比例（独立于 remit_ratio）
+COMMERCIAL_TAX_RETENTION = 0.60
+
+# 过度消费机制 (doc 06a §2.3)
+EXCESS_CONSUMPTION_THRESHOLD = 15  # 每月人均余粮(斤)触发阈值
+
+# 人口迁移（邻县竞争，doc 06a §3.1）
+MIGRATION_SIGNIFICANT_DIFF = 15  # 显著领先/落后阈值（含边界）
+MIGRATION_PARITY_DIFF = 10       # 持平阈值（严格小于）
+MIGRATION_RATE_BY_DIM_COUNT = {
+    1: 0.005,  # 1项显著领先/落后
+    2: 0.015,  # 2项显著领先/落后
+    3: 0.020,  # 3项显著领先/落后
+    4: 0.025,  # 4项显著领先/落后
+}
+MIGRATION_FLOW_CAP_RATE = 0.05   # 单年人口迁移总量上限（占本县人口）
+MIGRATION_COMPETITION_DIMS = ("morale", "security", "commercial", "education")
 
 
-def calculate_medical_cost(level, population, price_index):
-    """计算年度医疗开支 = 每千人费用 × (人口/1000) × 物价指数"""
-    per_thousand = MEDICAL_COST_PER_THOUSAND.get(level, 0)
-    return round(per_thousand * (population / 1000) * price_index)
+def calculate_infra_scale(infra_type, county):
+    """计算基建缩放因子"""
+    pi = county.get("price_index", 1.0)
+    spec = INFRA_TYPES[infra_type]
+    if spec["scale"] == "pi":
+        return pi
+    elif spec["scale"] == "farmland_pi":
+        total_farmland = sum(v["farmland"] for v in county.get("villages", []))
+        return (total_farmland / 10000) * pi
+    elif spec["scale"] == "pop_pi":
+        total_pop = sum(v["population"] for v in county.get("villages", []))
+        return (total_pop / 1000) * pi
+    return pi
+
+
+def calculate_infra_cost(infra_type, target_level, county):
+    """计算基建升级投资费用 = base_cost × scale × 2^(target_level-1)"""
+    spec = INFRA_TYPES[infra_type]
+    scale = calculate_infra_scale(infra_type, county)
+    return round(spec["base_cost"] * scale * (2 ** (target_level - 1)))
+
+
+def calculate_infra_maint(infra_type, level, county):
+    """计算基建年度维护费用 = base_maint × scale × 2^(level-1)，level 0 时为 0"""
+    if level <= 0:
+        return 0
+    spec = INFRA_TYPES[infra_type]
+    scale = calculate_infra_scale(infra_type, county)
+    return round(spec["base_maint"] * scale * (2 ** (level - 1)))
+
+
+def calculate_infra_months(infra_type, target_level):
+    """计算基建升级工期"""
+    months = INFRA_BUILD_MONTHS.get(infra_type, [4, 6, 9])
+    idx = max(0, min(target_level - 1, len(months) - 1))
+    return months[idx]
 
 # 徭役折银 (doc 06a §4.2)
 CORVEE_PER_CAPITA = 0.3          # 两/人·年
@@ -82,7 +181,7 @@ COUNTY_TYPES = {
         "agriculture_suitability": 0.55,
         "flood_risk": 0.4,
         "border_threat": 0.5,
-        "admin_cost": 100,
+        "admin_cost": 110,
         "village_count": 4,
         "market_count": 2,
         "price_index": 0.9,      # 偏远物价低
@@ -107,6 +206,59 @@ COUNTY_TYPES = {
         "market_count": 1,
         "price_index": 0.8,      # 中部稍低
     },
+}
+
+# 行政开支明细（各县域类型基础值）
+ADMIN_COST_DETAIL = {
+    "fiscal_core": {
+        "official_salary": 50,   # 官员俸禄（知县+典史等）
+        "deputy_salary": 25,     # 县丞俸禄
+        "advisor_fee": 30,       # 师爷束脩
+        "clerks_cost": 30,       # 六房书办
+        "bailiff_cost": 16,      # 衙役饷银（基础4人 × 4两）
+        "school_cost": 24,       # 县学经费
+        "office_cost": 25,       # 衙署杂费
+    },
+    "clan_governance": {
+        "official_salary": 40,
+        "deputy_salary": 20,
+        "advisor_fee": 25,
+        "clerks_cost": 20,       # 宗族分担部分管理
+        "bailiff_cost": 12,      # 基础4人 × 3两
+        "school_cost": 18,
+        "office_cost": 15,
+    },
+    "coastal": {
+        "official_salary": 30,   # 偏远小县
+        "deputy_salary": 15,
+        "advisor_fee": 20,
+        "clerks_cost": 15,       # 人少事少
+        "bailiff_cost": 8,       # 基础4人 × 2两
+        "school_cost": 10,       # 最简陋
+        "office_cost": 12,
+    },
+    "disaster_prone": {
+        "official_salary": 35,
+        "deputy_salary": 18,
+        "advisor_fee": 22,
+        "clerks_cost": 18,
+        "bailiff_cost": 10,      # 基础4人 × 2.5两
+        "school_cost": 15,
+        "office_cost": 12,
+    },
+}
+
+# 行政开支项目中文标签
+ADMIN_COST_LABELS = {
+    "official_salary": "官员俸禄",
+    "deputy_salary": "县丞俸禄",
+    "advisor_fee": "师爷束脩",
+    "clerks_cost": "六房书办",
+    "bailiff_cost": "衙役饷银",
+    "school_cost": "县学经费",
+    "office_cost": "衙署杂费",
+    "irrigation_maint": "水利维护",
+    "medical_maint": "医疗维护",
 }
 
 # 各类型的村庄名称池

@@ -7,10 +7,11 @@ from llm.client import LLMClient
 from llm.prompts import PromptRegistry
 from .constants import (
     GOVERNOR_STYLES,
-    MEDICAL_COST_PER_THOUSAND,
-    MEDICAL_NAMES,
-    calculate_medical_cost,
+    INFRA_MAX_LEVEL,
+    MAX_MONTH,
     generate_governor_profile,
+    month_name,
+    calculate_infra_cost,
 )
 from .investment import InvestmentService
 
@@ -21,35 +22,45 @@ _MAX_MEMORY = 8
 
 
 class AIGovernorService:
-    """AI知县每季度通过LLM做出施政决策，LLM失败时规则引擎兜底"""
+    """AI知县每月通过LLM做出施政决策，LLM失败时规则引擎兜底"""
 
     GAME_KNOWLEDGE_TEMPLATE = (
         '【治县要略】\n'
         '\n'
         '一、财政收支\n'
         '- 县库收入来自三大税源：田赋（农业税）、徭役折银、商税\n'
-        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好\n'
-        '- 徭役只征自耕农和佃户，绅衿地主依制免役\n'
-        '- 每年秋季需向上级缴纳定额赋税，剩余方为县用\n'
-        '- 行政开支、衙役俸禄、医疗开支均在秋季扣除\n'
+        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好，秋季一次征收\n'
+        '- 徭役只征自耕农和佃户，绅衿地主依制免役，正月和五月各征半年\n'
+        '- 商税按月征收，= 全县月GMV × 商税税率（可调1%~5%），地方留存60%\n'
+        '- 田赋和徭役按上缴比例上缴\n'
+        '- 行政开支（含基建维护）在秋季一次性扣除\n'
         '\n'
         '二、民心与治安\n'
-        '- 民心和治安每季度都会自然衰减\n'
+        '- 民心和治安每月都会自然衰减\n'
         '- 文教兴盛有助于民心回升；衙役充足有助于治安维持\n'
         '- 治安低迷则百姓流离失所\n'
         '\n'
         '三、投资施政\n'
         '- 开垦荒地可增加耕地、降低地主占地比\n'
-        '- 修建水利可减轻水患、提高产量\n'
-        '- 扩建县学提升文教，间接促进民心恢复\n'
+        '- 修建水利可减轻水患、提高产量（每级+15%产出，灾害减损15%/30%/60%）\n'
+        '- 扩建县学提升文教+10，间接促进民心恢复\n'
+        '- 建设医疗可降低疫病风险和人口损失\n'
+        '- 基建（水利/县学/医疗）最高3级，升级费用翻倍，同类不可同时建设\n'
         '- 增设衙役立竿见影提升治安，但会永久增加行政开支\n'
-        '- 修缮道路可促进商业繁荣\n'
-        '- 义仓可减轻灾害损失；赈灾可在灾后安抚民心\n'
+        '- 修缮道路可提升商业值，但收益逐次递减（首次+8，之后逐次-1）\n'
+        '- 义仓和赈灾可减轻灾害人口损失；赈灾还可在灾后安抚民心\n'
         '\n'
         '四、灾害与风险\n'
         '- 水灾、旱灾、蝗灾、疫病可能在夏季发生\n'
-        '- 水利设施可降低水患概率；义仓和赈灾可减轻灾害损失\n'
-        '- 医疗投入可降低疫病风险\n'
+        '- 灾害会立即打击商业值，并通过粮食预期恶化压低GMV\n'
+        '- 水利设施可减轻洪灾概率和秋收损失；义仓和赈灾不影响秋收减产，仅影响人口损失\n'
+        '- 医疗设施可降低疫病风险和严重度\n'
+        '\n'
+        '五、商业动态\n'
+        '- 商业值(commercial)代表商业发展水平（道路修缮+、灾害-），在GMV计算中作为单商户基础贸易额\n'
+        '- 集市月GMV = 商户数 × commercial × 需求系数，即时计算\n'
+        '- 需求系数 = clamp(1 + 月均余粮/20, 0.1, 2.0)：余粮充裕时需求旺盛，短缺时萎缩\n'
+        '- 商税 = 全县月GMV × 商税税率（默认3%，可调1%~5%），地方留存60%\n'
     )
 
     COUNTY_TYPE_DESCS = {
@@ -84,9 +95,6 @@ class AIGovernorService:
             if not executed.get('tax_done'):
                 fb_events = cls._fallback_tax(neighbor, county, profile)
                 events.extend(fb_events)
-            if not executed.get('medical_done'):
-                fb_events = cls._fallback_medical(neighbor, county, profile)
-                events.extend(fb_events)
 
             # 保存 analysis 到 last_reasoning（前端展示用）
             analysis = llm_result.get('analysis', '')
@@ -100,7 +108,7 @@ class AIGovernorService:
                         neighbor.county_name)
             events = cls._rule_based_decisions(neighbor, county, season, profile)
             # 规则引擎没有 analysis，用简短描述
-            neighbor.last_reasoning = f"（第{season}季：规则引擎自动决策）"
+            neighbor.last_reasoning = f"（{month_name(season)}：规则引擎自动决策）"
 
         # 追加记忆
         cls._append_memory(county, season, events)
@@ -169,14 +177,7 @@ class AIGovernorService:
         # 构建可用投资清单
         available_text, available_actions = cls._build_available_investments(county)
 
-        # 医疗费用动态描述
-        price_index = county.get('price_index', 1.0)
         total_pop = sum(v["population"] for v in county.get("villages", []))
-        medical_costs_parts = []
-        for lvl in range(4):
-            cost = calculate_medical_cost(lvl, total_pop, price_index)
-            medical_costs_parts.append(f"{lvl}级({MEDICAL_NAMES[lvl]}): {cost}两/年")
-        medical_costs_desc = "、".join(medical_costs_parts)
 
         # 县情摘要
         county_summary = (
@@ -186,11 +187,12 @@ class AIGovernorService:
             f"商业: {round(county.get('commercial', 30))}, "
             f"文教: {round(county.get('education', 30))}, "
             f"税率: {county.get('tax_rate', 0.12):.0%}, "
-            f"水利等级: {county.get('irrigation_level', 0)}/2, "
+            f"县学等级: {county.get('school_level', 1)}/3, "
+            f"水利等级: {county.get('irrigation_level', 0)}/3, "
+            f"医疗等级: {county.get('medical_level', 0)}/3, "
             f"衙役等级: {county.get('bailiff_level', 0)}/3, "
             f"义仓: {'有' if county.get('has_granary') else '无'}, "
-            f"医疗等级: {county.get('medical_level', 0)}, "
-            f"行政开支: {county.get('admin_cost', 0)}两/年"
+            f"行政开支: {county.get('admin_cost', 0)}两/年(含基建维护)"
         )
 
         # 村庄摘要
@@ -207,8 +209,9 @@ class AIGovernorService:
         # 集市摘要
         markets_lines = []
         for m in county.get("markets", []):
+            gmv = m.get('gmv', 0)
             markets_lines.append(
-                f"  {m['name']}: 商户{m['merchants']}, 贸易指数{m['trade_index']}")
+                f"  {m['name']}: 商户{m['merchants']}, 月贸易额{gmv}两")
         markets_summary = "\n".join(markets_lines) or "无"
 
         # 灾害
@@ -231,14 +234,16 @@ class AIGovernorService:
                 label = inv["description"]
                 if inv.get("target_village"):
                     label += f"（{inv['target_village']}）"
-                inv_lines.append(f"  {label} → 第{inv['completion_season']}季完成")
+                cs = inv['completion_season']
+                inv_lines.append(
+                    f"  {label} → {month_name(cs) if cs <= MAX_MONTH else '任期后'}完成")
             investments_summary = "\n".join(inv_lines)
         else:
             investments_summary = "无"
 
         game_knowledge = cls.GAME_KNOWLEDGE_TEMPLATE
         if county_type_desc:
-            game_knowledge += f"\n五、县域特色\n- {county_type_desc}\n"
+            game_knowledge += f"\n六、县域特色\n- {county_type_desc}\n"
 
         return {
             'governor_name': neighbor.governor_name,
@@ -252,8 +257,6 @@ class AIGovernorService:
             'game_knowledge': game_knowledge,
             'available_investments': available_text,
             'tax_rate': f"{county.get('tax_rate', 0.12):.0%}",
-            'medical_level': county.get('medical_level', 0),
-            'medical_costs_desc': medical_costs_desc,
             'season': season,
             'county_summary': county_summary,
             'villages_summary': villages_summary,
@@ -270,7 +273,7 @@ class AIGovernorService:
         available_actions = []
 
         for action, spec in InvestmentService.INVESTMENT_TYPES.items():
-            actual_cost = round(spec['cost'] * price_index)
+            actual_cost = InvestmentService.get_actual_cost(county, action)
             # 对需要村庄的投资，用 None 做基本可用性检查（忽略村庄相关错误）
             is_valid, reason = InvestmentService.validate(county, action, None)
 
@@ -378,7 +381,7 @@ class AIGovernorService:
     def _execute_decisions(cls, neighbor, county, season, result):
         """验证并执行LLM返回的决策，返回 (events, executed_flags)"""
         events = []
-        executed = {'investment_done': False, 'tax_done': False, 'medical_done': False}
+        executed = {'investment_done': False, 'tax_done': False}
         decisions = result.get('decisions', {})
         if not isinstance(decisions, dict):
             return events, executed
@@ -432,22 +435,6 @@ class AIGovernorService:
             except (ValueError, TypeError):
                 pass
 
-        # 3. 调整医疗等级
-        new_medical = decisions.get('medical_level')
-        if new_medical is not None:
-            try:
-                new_medical = int(new_medical)
-                new_medical = max(0, min(3, new_medical))
-                old_medical = county.get('medical_level', 0)
-                if new_medical != old_medical:
-                    county['medical_level'] = new_medical
-                    events.append(
-                        f"{neighbor.governor_name}调整医疗等级: "
-                        f"{old_medical} → {new_medical}")
-                executed['medical_done'] = True
-            except (ValueError, TypeError):
-                pass
-
         return events, executed
 
     @classmethod
@@ -459,7 +446,7 @@ class AIGovernorService:
 
         spec = InvestmentService.INVESTMENT_TYPES[investment]
         price_index = county.get('price_index', 1.0)
-        actual_cost = round(spec['cost'] * price_index)
+        actual_cost = InvestmentService.get_actual_cost(county, investment)
 
         # 扣费
         county["treasury"] -= actual_cost
@@ -471,6 +458,8 @@ class AIGovernorService:
             county["security"] = min(100, county["security"] + 8)
             admin_increase = round(40 * price_index)
             county["admin_cost"] += admin_increase
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["bailiff_cost"] += admin_increase
             events.append(
                 f"{neighbor.governor_name}增设衙役，等级升至{county['bailiff_level']}，"
                 f"治安+8，花费{actual_cost}两")
@@ -478,19 +467,22 @@ class AIGovernorService:
             county["has_granary"] = True
             county["morale"] = min(100, county["morale"] + 5)
             events.append(
-                f"{neighbor.governor_name}建成义仓，民心+5，花费{actual_cost}两")
+                f"{neighbor.governor_name}建成义仓，民心+5，"
+                f"秋季灾害人口损失×0.65，花费{actual_cost}两")
         elif investment == "relief":
             county["disaster_this_year"]["relieved"] = True
             county["morale"] = min(100, county["morale"] + 8)
             events.append(
-                f"{neighbor.governor_name}实施赈灾，民心+8，花费{actual_cost}两")
+                f"{neighbor.governor_name}实施赈灾，民心+8，"
+                f"秋季灾害人口损失×0.65，花费{actual_cost}两")
         else:
             # 延迟投资
             if investment == "reclaim_land":
-                autumn_seasons = [s for s in [3, 7, 11] if s > season]
-                completion = autumn_seasons[0] if autumn_seasons else 13
+                harvest_months = [m for m in [9, 21, 33] if m > season]
+                completion = harvest_months[0] if harvest_months else MAX_MONTH + 1
             else:
-                completion = season + spec.get("delay_seasons", 4)
+                delay = InvestmentService.get_delay_months(county, investment)
+                completion = season + delay
 
             inv_record = {
                 "action": investment,
@@ -502,10 +494,11 @@ class AIGovernorService:
                 inv_record["target_village"] = target_village
 
             county["active_investments"].append(inv_record)
+            comp_text = month_name(completion) if completion <= MAX_MONTH else "任期后"
             events.append(
                 f"{neighbor.governor_name}投资{spec['description']}"
                 f"{'（' + target_village + '）' if target_village else ''}，"
-                f"花费{actual_cost}两，预计第{completion}季完成")
+                f"花费{actual_cost}两，预计{comp_text}完成")
 
         return events
 
@@ -517,7 +510,6 @@ class AIGovernorService:
         events = []
         events.extend(cls._fallback_investment(neighbor, county, season, profile))
         events.extend(cls._fallback_tax(neighbor, county, profile))
-        events.extend(cls._fallback_medical(neighbor, county, profile))
         return events
 
     @classmethod
@@ -559,7 +551,7 @@ class AIGovernorService:
 
             for action in available_actions:
                 spec = InvestmentService.INVESTMENT_TYPES[action]
-                actual_cost = round(spec['cost'] * price_index)
+                actual_cost = InvestmentService.get_actual_cost(county, action)
                 if actual_cost > treasury:
                     continue
 
@@ -583,6 +575,9 @@ class AIGovernorService:
                     score = (35 if max_gentry > 0.5 else 15) + welfare_w * 20
                 elif action == "repair_roads":
                     score = (35 if commercial < 35 else 20 if commercial < 50 else 5) + reputation_w * 15
+                elif action == "build_medical":
+                    medical_level = county.get("medical_level", 0)
+                    score = (45 if medical_level == 0 else 25 if medical_level == 1 else 10) + welfare_w * 20
                 elif action == "build_granary":
                     score = (40 if flood_risk > 0.3 else 20) + welfare_w * 15
                 elif action == "fund_village_school":
@@ -663,40 +658,6 @@ class AIGovernorService:
                 f"{old_tax:.0%} → {new_tax:.0%}")
         return events
 
-    @classmethod
-    def _fallback_medical(cls, neighbor, county, profile):
-        """规则引擎决定医疗等级"""
-        goals = profile.get("goals", {})
-        welfare_w = goals.get("welfare", 0.2)
-        treasury = county.get("treasury", 0)
-        old_medical = county.get("medical_level", 0)
-        price_index = county.get("price_index", 1.0)
-        total_pop = sum(v["population"] for v in county.get("villages", []))
-
-        # welfare目标高 → 倾向高等级
-        if welfare_w > 0.3:
-            target = 2
-        elif welfare_w > 0.2:
-            target = 1
-        else:
-            target = old_medical
-
-        # 检查费用是否承受得起（年费不超 treasury 的 15%）
-        for lvl in range(target, -1, -1):
-            annual_cost = calculate_medical_cost(lvl, total_pop, price_index)
-            if annual_cost <= treasury * 0.15 or lvl == 0:
-                target = lvl
-                break
-
-        target = max(0, min(3, target))
-        events = []
-        if target != old_medical:
-            county['medical_level'] = target
-            events.append(
-                f"{neighbor.governor_name}调整医疗等级: "
-                f"{old_medical} → {target}")
-        return events
-
     # ==================== 记忆系统 ====================
 
     @classmethod
@@ -719,7 +680,7 @@ class AIGovernorService:
         tax_rate = county.get("tax_rate", 0.12)
 
         entry = (
-            f"第{season}季: {inv_desc}, "
+            f"{month_name(season)}: {inv_desc}, "
             f"税率{tax_rate:.0%}, 县库{treasury}两, 民心{morale}"
         )
 

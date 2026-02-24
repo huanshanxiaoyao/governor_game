@@ -3,7 +3,7 @@ import logging
 
 from django.utils import timezone
 
-from .models import EventLog, Promise
+from ..models import EventLog, Promise
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -90,7 +90,7 @@ class PromiseService:
                 season=game.current_season,
                 event_type='promise_made',
                 category='PROMISE',
-                description=f'县令向{agent.name}承诺：{promise.description}（截止第{deadline_season}季度）',
+                description=f'县令向{agent.name}承诺：{promise.description}（截止第{deadline_season}月）',
                 data={
                     'promise_id': promise.id,
                     'promise_type': promise_type,
@@ -216,7 +216,7 @@ class PromiseService:
         player = getattr(game, 'player', None)
         if player is None:
             try:
-                from .models import PlayerProfile
+                from ..models import PlayerProfile
                 player = PlayerProfile.objects.get(game=game)
             except Exception:
                 return

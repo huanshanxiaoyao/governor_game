@@ -6,7 +6,11 @@
 
   window.Game = window.Game || {};
 
-  var SEASON_NAMES = ["春", "夏", "秋", "冬"];
+  var MONTH_NAMES = [
+    "正月", "二月", "三月", "四月", "五月", "六月",
+    "七月", "八月", "九月", "十月", "冬月", "腊月"
+  ];
+  var MAX_MONTH = 36;
 
   window.Game.state = {
     user: null,
@@ -17,11 +21,13 @@
     agents: [],
   };
 
+  window.Game.MAX_MONTH = MAX_MONTH;
+
   window.Game.seasonName = function (n) {
-    if (n > 12) return "任期结束";
-    var year = Math.ceil(n / 4);
-    var idx = (n - 1) % 4;
-    return "第" + year + "年 · " + SEASON_NAMES[idx] + "（第" + n + "季度）";
+    if (n > MAX_MONTH) return "任期结束";
+    var year = Math.ceil(n / 12);
+    var idx = (n - 1) % 12;
+    return "第" + year + "年·" + MONTH_NAMES[idx] + "（第" + n + "月）";
   };
 
   window.Game.setGame = function (data) {

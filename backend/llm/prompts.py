@@ -111,7 +111,7 @@ PromptRegistry.register(
         '{village_summary}'
         '{game_knowledge}\n'
         '你必须始终以"{agent_name}"的身份和口吻说话，保持角色一致性。\n'
-        '当前是第{season}季度。玩家是新上任的县令（你称其为"大人"）。\n'
+        '当前是第{season}月。玩家是新上任的县令（你称其为"大人"）。\n'
         '你对县令的好感度为{affinity}/100。\n'
         '\n'
         '你必须以JSON格式回复，包含以下字段：\n'
@@ -156,7 +156,7 @@ PromptRegistry.register(
         '{village_summary}'
         '{game_knowledge}\n'
         '你必须始终以"{agent_name}"的身份和口吻说话，保持角色一致性。\n'
-        '当前是第{season}季度。玩家是新上任的县令（你称其为"大人"）。\n'
+        '当前是第{season}月。玩家是新上任的县令（你称其为"大人"）。\n'
         '你对县令的好感度为{affinity}/100。\n'
         '\n'
         '【师爷职责】\n'
@@ -293,7 +293,7 @@ PromptRegistry.register(
         '- 谈判类型：{event_type}\n'
         '- 村庄：{village_name}\n'
         '- 对方：{agent_name}\n'
-        '- 当前季度：{current_season}\n'
+        '- 当前月份：{current_season}\n'
         '\n'
         '你必须以JSON格式回复：\n'
         '{{"promises": [\n'
@@ -304,7 +304,7 @@ PromptRegistry.register(
         '\n'
         '规则：\n'
         '- 如果发言中没有承诺，返回 {{"promises": []}}\n'
-        '- deadline_seasons 表示期限（季度数），默认4（一年）\n'
+        '- deadline_seasons 表示期限（月数），默认4\n'
         '- 只提取明确的承诺，不要过度解读模糊的表态\n'
         '- target_value: 对LOWER_TAX是目标税率（如0.10），其他类型为null'
     ),
@@ -316,7 +316,7 @@ PromptRegistry.register(
 
 PromptRegistry.register(
     name='ai_governor_decision',
-    description='AI知县季度施政决策（含三层属性+记忆）',
+    description='AI知县月度施政决策（含三层属性+记忆）',
     system=(
         '你是"{governor_name}"，{county_name}知县。这是一个中国古代县治模拟游戏。\n'
         '\n'
@@ -338,7 +338,7 @@ PromptRegistry.register(
         '{game_knowledge}\n'
         '\n'
         '【可选行动】\n'
-        '你每季度可以执行以下操作：\n'
+        '你每月可以执行以下操作：\n'
         '1. 投资（可同时投资多项，只要县库够用且满足约束；也可不投资）：\n'
         '{available_investments}\n'
         '2. 调整税率（当前{tax_rate}，范围9%-15%，用小数表示如0.12）\n'
@@ -364,7 +364,7 @@ PromptRegistry.register(
         '}}}}'
     ),
     user=(
-        '当前是第{season}季度。\n'
+        '当前是第{season}月。\n'
         '\n'
         '【县情概览】\n'
         '{county_summary}\n'
@@ -378,10 +378,10 @@ PromptRegistry.register(
         '【灾害】{disaster_summary}\n'
         '【在建工程】{investments_summary}\n'
         '\n'
-        '【往季施政记录】\n'
+        '【往月施政记录】\n'
         '{memory_desc}\n'
         '\n'
-        '请根据你的性格、理念和目标，分析当前局势，做出本季度的施政决策。'
+        '请根据你的性格、理念和目标，分析当前局势，做出本月的施政决策。'
     ),
 )
 
@@ -397,7 +397,7 @@ PromptRegistry.register(
         '【当前县情】\n'
         '{county_summary}\n'
         '\n'
-        '当前是第{season}季度。玩家是新上任的县令（你称其为"大人"）。\n'
+        '当前是第{season}月。玩家是新上任的县令（你称其为"大人"）。\n'
         '你对县令的好感度为{affinity}/100。\n'
         '用简短的古风口吻回复，2-4句话即可。保持角色一致性。'
     ),

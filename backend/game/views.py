@@ -10,12 +10,12 @@ from .models import (
 )
 from .serializers import (
     ChatMessageSerializer,
+    CommercialTaxRateSerializer,
     CreateGameSerializer,
     EventLogSerializer,
     GameDetailSerializer,
     GameListSerializer,
     InvestActionSerializer,
-    MedicalLevelSerializer,
     NeighborCountySummarySerializer,
     NeighborEventLogSerializer,
     NegotiationChatSerializer,
@@ -24,9 +24,11 @@ from .serializers import (
     StartIrrigationSerializer,
     TaxRateSerializer,
 )
-from .agent_service import AgentService
-from .negotiation_service import NegotiationService
-from .services import CountyService, InvestmentService, NeighborService, SettlementService
+from .services import (
+    AgentService, CountyService, InvestmentService,
+    NegotiationService, NeighborService, SettlementService,
+)
+from .services.constants import MAX_MONTH
 
 
 class LoginView(APIView):
@@ -75,6 +77,21 @@ class GameListCreateView(APIView):
         county_data = CountyService.create_initial_county(county_type=county_type)
         # Store initial village snapshot for delta display
         county_data['initial_villages'] = copy.deepcopy(county_data['villages'])
+        # Store initial county-level snapshot for 任期述职 baseline
+        county_data['initial_snapshot'] = {
+            'treasury': county_data['treasury'],
+            'morale': county_data['morale'],
+            'security': county_data['security'],
+            'commercial': county_data['commercial'],
+            'education': county_data['education'],
+            'tax_rate': county_data['tax_rate'],
+            'commercial_tax_rate': county_data.get('commercial_tax_rate', 0.03),
+            'school_level': county_data.get('school_level', 1),
+            'irrigation_level': county_data.get('irrigation_level', 0),
+            'medical_level': county_data.get('medical_level', 0),
+            'admin_cost': county_data['admin_cost'],
+            'peasant_grain_reserve': county_data.get('peasant_grain_reserve', 0),
+        }
 
         game = GameState.objects.create(
             user=request.user,
@@ -163,7 +180,7 @@ class AdvanceSeasonView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > 12:
+        if game.current_season > MAX_MONTH:
             return Response(
                 {"error": "游戏已结束，请查看总结"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -196,7 +213,7 @@ class NeighborPrecomputeView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > 12:
+        if game.current_season > MAX_MONTH:
             return Response({"status": "game_over"})
 
         next_season = game.current_season
@@ -232,7 +249,7 @@ class TaxRateView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > 12:
+        if game.current_season > MAX_MONTH:
             return Response(
                 {"error": "游戏已结束"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -245,12 +262,26 @@ class TaxRateView(APIView):
         county = game.county_data
         old_rate = county["tax_rate"]
         county["tax_rate"] = new_rate
+
+        # Immediate morale effect: 1% tax change = ±3 morale
+        rate_diff_pct = round((old_rate - new_rate) * 100)  # positive = tax decreased
+        morale_delta = rate_diff_pct * 3
+        old_morale = county["morale"]
+        county["morale"] = max(0, min(100, county["morale"] + morale_delta))
+        actual_morale_change = round(county["morale"] - old_morale, 1)
+
+        # Propagate 50% to village morale
+        if actual_morale_change != 0:
+            for v in county["villages"]:
+                v["morale"] = max(0, min(100, v["morale"] + actual_morale_change * 0.5))
+
         game.county_data = county
         game.save()
 
         message = f"税率由{old_rate:.0%}调整为{new_rate:.0%}"
-        if new_rate > 0.12:
-            message += "，较高的税率可能影响民心"
+        if actual_morale_change != 0:
+            sign = "+" if actual_morale_change > 0 else ""
+            message += f"，民心{sign}{actual_morale_change:.0f}"
 
         EventLog.objects.create(
             game=game,
@@ -258,18 +289,24 @@ class TaxRateView(APIView):
             event_type='tax_rate_change',
             category='TAX',
             description=message,
-            data={'old_rate': old_rate, 'new_rate': new_rate},
+            data={
+                'old_rate': old_rate,
+                'new_rate': new_rate,
+                'morale_change': actual_morale_change,
+            },
         )
 
         return Response({
             "tax_rate": new_rate,
             "message": message,
+            "morale": round(county["morale"], 1),
+            "morale_change": actual_morale_change,
         })
 
 
-class MedicalLevelView(APIView):
+class CommercialTaxRateView(APIView):
     """
-    POST /api/games/{id}/medical-level/  — set medical level (0-3)
+    POST /api/games/{id}/commercial-tax-rate/  — adjust commercial tax rate
     """
     permission_classes = [IsAuthenticated]
 
@@ -279,44 +316,57 @@ class MedicalLevelView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > 12:
+        if game.current_season > MAX_MONTH:
             return Response(
                 {"error": "游戏已结束"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = MedicalLevelSerializer(data=request.data)
+        serializer = CommercialTaxRateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        from .services import MEDICAL_NAMES, calculate_medical_cost
-
-        new_level = serializer.validated_data["medical_level"]
+        new_rate = serializer.validated_data["commercial_tax_rate"]
         county = game.county_data
-        old_level = county.get("medical_level", 0)
-        county["medical_level"] = new_level
+        old_rate = county.get("commercial_tax_rate", 0.03)
+        county["commercial_tax_rate"] = new_rate
+
+        # Morale effect: every 0.5% change → ±1 morale (milder than agri tax)
+        morale_delta = round((old_rate - new_rate) * 100 / 0.5) * 1
+        old_morale = county["morale"]
+        county["morale"] = max(0, min(100, county["morale"] + morale_delta))
+        actual_morale_change = round(county["morale"] - old_morale, 1)
+
+        # Propagate 50% to village morale
+        if actual_morale_change != 0:
+            for v in county["villages"]:
+                v["morale"] = max(0, min(100, v["morale"] + actual_morale_change * 0.5))
+
         game.county_data = county
         game.save()
 
-        total_pop = sum(v["population"] for v in county.get("villages", []))
-        price_index = county.get("price_index", 1.0)
-        cost = calculate_medical_cost(new_level, total_pop, price_index)
-        name = MEDICAL_NAMES.get(new_level, "无")
-        message = f"医疗等级调整为{new_level}级（{name}），预计年度开支{cost}两"
+        message = f"商税税率由{old_rate:.1%}调整为{new_rate:.1%}"
+        if actual_morale_change != 0:
+            sign = "+" if actual_morale_change > 0 else ""
+            message += f"，民心{sign}{actual_morale_change:.0f}"
 
         EventLog.objects.create(
             game=game,
             season=game.current_season,
-            event_type='medical_level_change',
-            category='INVESTMENT',
+            event_type='commercial_tax_rate_change',
+            category='TAX',
             description=message,
-            data={'old_level': old_level, 'new_level': new_level, 'annual_cost': cost},
+            data={
+                'old_rate': old_rate,
+                'new_rate': new_rate,
+                'morale_change': actual_morale_change,
+            },
         )
 
         return Response({
-            "medical_level": new_level,
-            "medical_name": name,
-            "annual_cost": cost,
+            "commercial_tax_rate": new_rate,
             "message": message,
+            "morale": round(county["morale"], 1),
+            "morale_change": actual_morale_change,
         })
 
 
@@ -335,7 +385,29 @@ class GameSummaryView(APIView):
         summary = SettlementService.get_summary(game)
         if summary is None:
             return Response(
-                {"error": f"游戏尚未结束（当前第{game.current_season}季度）"},
+                {"error": f"游戏尚未结束（当前第{game.current_season}月）"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(summary)
+
+
+class GameSummaryV2View(APIView):
+    """
+    GET /api/games/{id}/summary-v2/  — enriched end-game report
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        summary = SettlementService.get_summary_v2(game)
+        if summary is None:
+            return Response(
+                {"error": f"游戏尚未结束（当前第{game.current_season}月）"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -772,3 +844,29 @@ class NeighborEventsView(APIView):
 
         serializer = NeighborEventLogSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+class NeighborSummaryV2View(APIView):
+    """
+    GET /api/games/{id}/neighbors/{nid}/summary-v2/  — on-demand neighbor term report
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id, neighbor_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            neighbor = NeighborCounty.objects.get(id=neighbor_id, game=game)
+        except NeighborCounty.DoesNotExist:
+            return Response({"error": "邻县不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        summary = SettlementService.get_neighbor_summary_v2(game, neighbor)
+        if summary is None:
+            return Response(
+                {"error": f"游戏尚未结束（当前第{game.current_season}月）"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(summary)

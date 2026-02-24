@@ -68,11 +68,14 @@
     setTaxRate: function (id, rate) {
       return request("POST", "/api/games/" + id + "/tax-rate/", { tax_rate: rate });
     },
-    setMedicalLevel: function (id, level) {
-      return request("POST", "/api/games/" + id + "/medical-level/", { medical_level: level });
+    setCommercialTaxRate: function (id, rate) {
+      return request("POST", "/api/games/" + id + "/commercial-tax-rate/", { commercial_tax_rate: rate });
     },
     getSummary: function (id) {
       return request("GET", "/api/games/" + id + "/summary/");
+    },
+    getSummaryV2: function (id) {
+      return request("GET", "/api/games/" + id + "/summary-v2/");
     },
     // Negotiation
     getActiveNegotiation: function (gameId) {
@@ -116,6 +119,9 @@
     getNeighborEvents: function (gameId, neighborId, limit) {
       var qs = limit ? "?limit=" + limit : "";
       return request("GET", "/api/games/" + gameId + "/neighbors/" + neighborId + "/events/" + qs);
+    },
+    getNeighborSummaryV2: function (gameId, neighborId) {
+      return request("GET", "/api/games/" + gameId + "/neighbors/" + neighborId + "/summary-v2/");
     },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {

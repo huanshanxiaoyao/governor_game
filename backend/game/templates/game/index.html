@@ -75,7 +75,7 @@
     <button class="tab-btn active" data-tab="tab-dashboard">县情总览</button>
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
-    <button class="tab-btn" data-tab="tab-report">季报</button>
+    <button class="tab-btn" data-tab="tab-report">月报</button>
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
     <button class="tab-btn" data-tab="tab-staff">幕僚</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
@@ -88,6 +88,7 @@
     <div id="stats-grid" class="stats-grid"></div>
     <div id="info-row" class="info-row"></div>
     <div id="environment-info"></div>
+    <div id="surplus-info"></div>
     <div id="disaster-alert" class="disaster-alert hidden"></div>
     <div id="investments-list"></div>
     <div id="irrigation-negotiate-section" class="hidden"></div>
@@ -129,14 +130,11 @@
     </div>
 
     <div class="action-section">
-      <h3>医疗投入</h3>
-      <div class="medical-control">
-        <div class="medical-slider-row">
-          <input type="range" id="medical-slider" min="0" max="3" step="1" value="0">
-          <span id="medical-display">0级 — 无（0两/年）</span>
-          <button id="btn-set-medical" class="btn btn-primary btn-small">确认调整</button>
-        </div>
-        <div id="medical-levels-info" class="medical-levels-info"></div>
+      <h3>商税税率</h3>
+      <div class="tax-control">
+        <input type="range" id="commercial-tax-slider" min="1" max="5" step="0.5" value="3">
+        <span id="commercial-tax-display">3%</span>
+        <button id="btn-set-commercial-tax" class="btn btn-primary btn-small">确认调整</button>
       </div>
     </div>
 
@@ -201,9 +199,9 @@
   <!-- Tab: Report -->
   <div id="tab-report" class="tab-content hidden">
     <div id="report-content">
-      <p class="hint">推进季度后将在此显示季报</p>
+      <p class="hint">推进月份后将在此显示月报</p>
     </div>
-    <button id="btn-advance" class="btn btn-primary btn-advance">推进季度</button>
+    <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
     <div id="neighbor-precompute-status" class="precompute-status"></div>
   </div>
 </section>
@@ -211,9 +209,9 @@
 <!-- ==================== Screen 4: End Summary ==================== -->
 <section id="screen-summary" class="screen hidden">
   <div class="summary-box">
-    <h2>任期结束</h2>
-    <div id="summary-stats"></div>
-    <div id="summary-villages"></div>
+    <div id="summary-v2"></div>
+    <div id="summary-stats" class="hidden"></div>
+    <div id="summary-villages" class="hidden"></div>
     <button id="btn-back-from-summary" class="btn btn-primary">返回游戏列表</button>
   </div>
 </section>

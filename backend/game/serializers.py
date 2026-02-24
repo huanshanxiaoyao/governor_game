@@ -32,6 +32,7 @@ class InvestActionSerializer(serializers.Serializer):
             ("reclaim_land", "开垦荒地"),
             ("build_irrigation", "修建水利"),
             ("expand_school", "扩建县学"),
+            ("build_medical", "建设医疗"),
             ("fund_village_school", "资助村塾"),
             ("hire_bailiffs", "增设衙役"),
             ("repair_roads", "修缮道路"),
@@ -56,6 +57,14 @@ class TaxRateSerializer(serializers.Serializer):
     )
 
 
+class CommercialTaxRateSerializer(serializers.Serializer):
+    commercial_tax_rate = serializers.FloatField(
+        min_value=0.01,
+        max_value=0.05,
+        help_text="商税税率 (1%~5%)",
+    )
+
+
 class PlayerProfileSerializer(serializers.ModelSerializer):
     background_display = serializers.CharField(
         source="get_background_display", read_only=True,
@@ -72,13 +81,19 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
 
 class GameDetailSerializer(serializers.ModelSerializer):
     player = PlayerProfileSerializer(read_only=True)
+    available_investments = serializers.SerializerMethodField()
 
     class Meta:
         model = GameState
         fields = [
             "id", "current_season", "county_data",
-            "player", "created_at", "updated_at",
+            "player", "available_investments",
+            "created_at", "updated_at",
         ]
+
+    def get_available_investments(self, obj):
+        from .services import InvestmentService
+        return InvestmentService.get_available_actions(obj.county_data)
 
 
 class GameListSerializer(serializers.ModelSerializer):
@@ -98,14 +113,6 @@ class NegotiationChatSerializer(serializers.Serializer):
     message = serializers.CharField(
         max_length=500,
         help_text="玩家的谈判发言",
-    )
-
-
-class MedicalLevelSerializer(serializers.Serializer):
-    medical_level = serializers.IntegerField(
-        min_value=0,
-        max_value=3,
-        help_text="医疗等级 (0-3)",
     )
 
 

@@ -434,7 +434,7 @@
       var a = data.advisor;
       var remaining = a.questions_limit - a.questions_used;
       var btnDisabled = remaining <= 0 ? ' disabled' : '';
-      var btnText = remaining <= 0 ? '本季已用尽' : '问策';
+      var btnText = remaining <= 0 ? '本月已用尽' : '问策';
 
       var section = h("div", "staff-section");
       section.innerHTML =
@@ -506,6 +506,34 @@
       liufangHtml += '</div>';
       section4.innerHTML = liufangHtml;
       container.appendChild(section4);
+    }
+
+    // 衙署开支明细 section
+    var g = Game.state.currentGame;
+    var c = g && g.county_data;
+    if (c && c.admin_cost_detail) {
+      var LABELS = Game.components.ADMIN_COST_LABELS;
+      var keys = ["official_salary", "deputy_salary", "advisor_fee", "clerks_cost",
+                  "bailiff_cost", "school_cost", "office_cost"];
+      var section5 = h("div", "staff-section");
+      var costHtml = '<h3>衙署开支明细</h3><div class="admin-cost-detail" style="display:block">';
+      keys.forEach(function (k) {
+        var val = c.admin_cost_detail[k];
+        if (val !== undefined) {
+          costHtml +=
+            '<div class="admin-detail-row">' +
+              '<span class="admin-detail-label">' + (LABELS[k] || k) + '</span>' +
+              '<span class="admin-detail-value">' + val + '两/年</span>' +
+            '</div>';
+        }
+      });
+      costHtml +=
+        '<div class="admin-detail-row admin-detail-total">' +
+          '<span class="admin-detail-label"><strong>合计</strong></span>' +
+          '<span class="admin-detail-value"><strong>' + c.admin_cost + '两/年</strong></span>' +
+        '</div></div>';
+      section5.innerHTML = costHtml;
+      container.appendChild(section5);
     }
   }
 

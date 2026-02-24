@@ -7,16 +7,7 @@
   window.Game = window.Game || {};
   window.Game.components = window.Game.components || {};
 
-  // 每千人基础医疗费用（非线性递增）
-  var MEDICAL_COST_PER_THOUSAND = [0, 5, 12, 22];
-  var MEDICAL_NAMES = ["无", "简易医馆", "县医署", "完善医疗"];
-
-  function calcMedicalCost(level, county) {
-    var pop = 0;
-    (county.villages || []).forEach(function (v) { pop += v.population; });
-    var pi = county.price_index || 1.0;
-    return Math.round(MEDICAL_COST_PER_THOUSAND[level] * (pop / 1000) * pi);
-  }
+  var INFRA_MAX_LEVEL = 3;
 
   var DISASTER_NAMES = {
     flood: "洪灾",
@@ -26,14 +17,15 @@
   };
 
   var INVEST_DEFS = [
-    { action: "reclaim_land", name: "开垦荒地", cost: 50, desc: "为目标村庄增加800亩耕地，下个秋季完成", needsVillage: true },
-    { action: "build_irrigation", name: "修建水利", cost: 100, desc: "提升水利等级，减少洪灾风险，提高产量（8季完成）", needsVillage: false },
-    { action: "expand_school", name: "扩建县学", cost: 80, desc: "文教+10（8季完成）", needsVillage: false },
-    { action: "fund_village_school", name: "资助村塾", cost: 30, desc: "为目标村庄建立村塾，民心+5（4季完成）", needsVillage: true },
+    { action: "reclaim_land", name: "开垦荒地", cost: 50, desc: "为目标村庄增加800亩耕地，下个九月（秋收）完成", needsVillage: true },
+    { action: "build_irrigation", name: "修建水利", cost: null, desc: "提升水利等级(最高3级)，减少洪灾风险，提高产量，费用按耕地规模计算", needsVillage: false, infra: "irrigation" },
+    { action: "expand_school", name: "扩建县学", cost: null, desc: "提升县学等级(最高3级)，文教+10", needsVillage: false, infra: "school" },
+    { action: "build_medical", name: "建设医疗", cost: null, desc: "提升医疗等级(最高3级)，降低疫病风险和人口损失", needsVillage: false, infra: "medical" },
+    { action: "fund_village_school", name: "资助村塾", cost: 30, desc: "为目标村庄建立村塾，民心+5（4个月完成）", needsVillage: true },
     { action: "hire_bailiffs", name: "增设衙役", cost: 40, desc: "治安+8，年行政开支+40两（立即生效）", needsVillage: false },
-    { action: "repair_roads", name: "修缮道路", cost: 60, desc: "商业+8（1季完成）", needsVillage: false },
-    { action: "build_granary", name: "开设义仓", cost: 70, desc: "灾害损失减半（立即生效）", needsVillage: false },
-    { action: "relief", name: "赈灾救济", cost: 80, desc: "民心+8，秋季灾害损失减半（立即生效）", needsVillage: false },
+    { action: "repair_roads", name: "修缮道路", cost: 60, desc: "商业提升（首次+8，逐次递减，2个月完成）", needsVillage: false },
+    { action: "build_granary", name: "开设义仓", cost: 70, desc: "秋季灾害人口损失×0.65（立即生效）", needsVillage: false },
+    { action: "relief", name: "赈灾救济", cost: 80, desc: "民心+8，秋季灾害人口损失×0.65（立即生效）", needsVillage: false },
   ];
 
   function el(id) { return document.getElementById(id); }
@@ -60,15 +52,26 @@
     }, 3000);
   }
 
+  var ADMIN_COST_LABELS = {
+    official_salary: "官员俸禄",
+    deputy_salary: "县丞俸禄",
+    advisor_fee: "师爷束脩",
+    clerks_cost: "六房书办",
+    bailiff_cost: "衙役饷银",
+    school_cost: "县学经费",
+    office_cost: "衙署杂费",
+    irrigation_maint: "水利维护",
+    medical_maint: "医疗维护",
+  };
+
   // Export core utilities
   var C = Game.components;
-  C.MEDICAL_COST_PER_THOUSAND = MEDICAL_COST_PER_THOUSAND;
-  C.MEDICAL_NAMES = MEDICAL_NAMES;
-  C.calcMedicalCost = calcMedicalCost;
+  C.INFRA_MAX_LEVEL = INFRA_MAX_LEVEL;
   C.DISASTER_NAMES = DISASTER_NAMES;
   C.INVEST_DEFS = INVEST_DEFS;
   C.el = el;
   C.h = h;
   C.escapeHtml = escapeHtml;
   C.showToast = showToast;
+  C.ADMIN_COST_LABELS = ADMIN_COST_LABELS;
 })();

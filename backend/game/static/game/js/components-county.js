@@ -7,10 +7,9 @@
 
   var C = Game.components;
   var el = C.el, h = C.h, escapeHtml = C.escapeHtml;
-  var calcMedicalCost = C.calcMedicalCost;
-  var MEDICAL_NAMES = C.MEDICAL_NAMES;
   var DISASTER_NAMES = C.DISASTER_NAMES;
   var INVEST_DEFS = C.INVEST_DEFS;
+  var INFRA_MAX_LEVEL = C.INFRA_MAX_LEVEL;
 
   function renderHeader() {
     var g = Game.state.currentGame;
@@ -24,6 +23,17 @@
     if (slider && g.county_data.tax_rate) {
       slider.value = Math.round(g.county_data.tax_rate * 100);
       display.textContent = Math.round(g.county_data.tax_rate * 100) + "%";
+    }
+
+    // Update commercial tax slider
+    var cSlider = el("commercial-tax-slider");
+    var cDisplay = el("commercial-tax-display");
+    if (cSlider && g.county_data.commercial_tax_rate !== undefined) {
+      var cRate = (g.county_data.commercial_tax_rate * 100).toFixed(1);
+      // Remove trailing .0
+      if (cRate.endsWith(".0")) cRate = cRate.slice(0, -2);
+      cSlider.value = cRate;
+      cDisplay.textContent = cRate + "%";
     }
   }
 
@@ -51,22 +61,55 @@
     // Info row
     var info = el("info-row");
     info.innerHTML = "";
-    var ml = c.medical_level || 0;
     var pi = c.price_index || 1.0;
-    var actualMedCost = calcMedicalCost(ml, c);
+    var ctr = c.commercial_tax_rate !== undefined ? c.commercial_tax_rate : 0.03;
     var items = [
       { label: "税率", value: Math.round(c.tax_rate * 100) + "%" },
+      { label: "商税税率", value: (ctr * 100).toFixed(1).replace(/\.0$/, "") + "%" },
       { label: "物价指数", value: pi.toFixed(1) },
-      { label: "水利等级", value: c.irrigation_level + "/2" },
-      { label: "衙役等级", value: c.bailiff_level + "/3" },
+      { label: "县学", value: (c.school_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "水利", value: (c.irrigation_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "医疗", value: (c.medical_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "衙役", value: (c.bailiff_level || 0) + "/3" },
       { label: "义仓", value: c.has_granary ? "已建" : "未建" },
-      { label: "医疗", value: MEDICAL_NAMES[ml] + "(" + actualMedCost + "两/年)" },
-      { label: "行政开支", value: c.admin_cost + "两/年" },
     ];
     items.forEach(function (it) {
       var span = h("span", "info-item", "<strong>" + it.label + ":</strong> " + it.value);
       info.appendChild(span);
     });
+
+    // 行政开支（可展开明细）
+    var adminSpan = h("span", "info-item info-item-expandable");
+    adminSpan.innerHTML = "<strong>行政开支:</strong> " + c.admin_cost + "两/年 ▾";
+    adminSpan.style.cursor = "pointer";
+    var detailDiv = h("div", "admin-cost-detail");
+    detailDiv.style.display = "none";
+    if (c.admin_cost_detail) {
+      var LABELS = Game.components.ADMIN_COST_LABELS;
+      var keys = ["official_salary", "deputy_salary", "advisor_fee", "clerks_cost",
+                  "bailiff_cost", "school_cost", "office_cost",
+                  "irrigation_maint", "medical_maint"];
+      keys.forEach(function (k) {
+        var val = c.admin_cost_detail[k];
+        if (val !== undefined) {
+          var row = h("div", "admin-detail-row",
+            "<span class='admin-detail-label'>" + (LABELS[k] || k) + "</span>" +
+            "<span class='admin-detail-value'>" + val + "两</span>");
+          detailDiv.appendChild(row);
+        }
+      });
+      var totalRow = h("div", "admin-detail-row admin-detail-total",
+        "<span class='admin-detail-label'><strong>合计</strong></span>" +
+        "<span class='admin-detail-value'><strong>" + c.admin_cost + "两</strong></span>");
+      detailDiv.appendChild(totalRow);
+    }
+    adminSpan.addEventListener("click", function () {
+      var showing = detailDiv.style.display !== "none";
+      detailDiv.style.display = showing ? "none" : "block";
+      adminSpan.innerHTML = "<strong>行政开支:</strong> " + c.admin_cost + "两/年 " + (showing ? "▾" : "▴");
+    });
+    info.appendChild(adminSpan);
+    info.appendChild(detailDiv);
 
     // Environment
     var envDiv = el("environment-info");
@@ -85,6 +128,33 @@
         row.appendChild(span);
       });
       envDiv.appendChild(row);
+    }
+
+    // Peasant surplus info
+    var surplusDiv = el("surplus-info");
+    if (surplusDiv) {
+      surplusDiv.innerHTML = "";
+      if (c.peasant_surplus) {
+        var ps = c.peasant_surplus;
+        var surplusTitle = h("h4", "section-title", "农民粮食盈余");
+        surplusDiv.appendChild(surplusTitle);
+        var surplusRow = h("div", "env-row");
+        var monthlyPcs = ps.monthly_per_capita_surplus || 0;
+        var trendIcon = monthlyPcs >= 10 ? "↑" : (monthlyPcs <= 0 ? "↓" : "→");
+        var trendClass = monthlyPcs >= 10 ? "delta-positive" : (monthlyPcs <= 0 ? "delta-negative" : "");
+        var demandInfo = ps.demand_factor !== undefined ? "（需求系数: " + ps.demand_factor + "）" : "";
+        var surplusItems = [
+          { label: "当前储备", value: ps.reserve.toLocaleString() + "斤" },
+          { label: "月消耗", value: ps.monthly_consumption.toLocaleString() + "斤" },
+          { label: "距秋收", value: ps.months_to_harvest + "月" },
+          { label: "月均余粮", value: '<span class="' + trendClass + '">' + monthlyPcs + "斤 " + trendIcon + "</span>" + demandInfo },
+        ];
+        surplusItems.forEach(function (it) {
+          var span = h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value);
+          surplusRow.appendChild(span);
+        });
+        surplusDiv.appendChild(surplusRow);
+      }
     }
 
     // Disaster alert
@@ -112,7 +182,7 @@
         if (inv.target_village) label += "（" + inv.target_village + "）";
         var item = h("div", "invest-item",
           "<span>" + label + "</span>" +
-          "<span>预计第" + inv.completion_season + "季度完成</span>");
+          "<span>预计" + (inv.completion_season <= Game.MAX_MONTH ? Game.seasonName(inv.completion_season).split("（")[0] : "任期后") + "完成</span>");
         invDiv.appendChild(item);
       });
     }
@@ -124,10 +194,11 @@
       var mkTitle = h("h4", "section-title", "集市");
       mkDiv.appendChild(mkTitle);
       c.markets.forEach(function (m) {
+        var gmvVal = m.gmv !== undefined ? m.gmv : (m.trade_index || 0);
         var row = h("div", "market-row",
           "<span><strong>" + m.name + "</strong></span>" +
           "<span>商户: " + m.merchants + "</span>" +
-          "<span>贸易指数: " + m.trade_index + "</span>");
+          "<span>月贸易额: " + gmvVal + "两</span>");
         mkDiv.appendChild(row);
       });
     }
@@ -188,8 +259,8 @@
       var item = h("div", "promise-item" + urgentClass,
         '<div class="promise-item-header">' +
           '<span class="promise-type">' + p.promise_type_display + '</span>' +
-          '<span class="promise-deadline">截止第' + p.deadline_season + '季' +
-            (remaining > 0 ? '（剩余' + remaining + '季）' : '（已到期）') +
+          '<span class="promise-deadline">截止第' + p.deadline_season + '月' +
+            (remaining > 0 ? '（剩余' + remaining + '月）' : '（已到期）') +
           '</span>' +
         '</div>' +
         '<div class="promise-desc">' + escapeHtml(p.description) + '</div>' +
@@ -286,95 +357,40 @@
     });
   }
 
-  function isInvestInProgress(action, county) {
-    var investments = county.active_investments || [];
-    for (var i = 0; i < investments.length; i++) {
-      if (investments[i].action === action) return true;
-    }
-    return false;
-  }
-
-  function getDisableReason(action, county) {
-    if (county.treasury < getInvestCost(action)) {
-      return "资金不足";
-    }
-    if (action === "build_irrigation" && isInvestInProgress("build_irrigation", county)) {
-      return "建设中";
-    }
-    if (action === "expand_school" && isInvestInProgress("expand_school", county)) {
-      return "建设中";
-    }
-    if (action === "build_irrigation" && county.irrigation_level >= 2) {
-      return "已达上限";
-    }
-    if (action === "hire_bailiffs" && county.bailiff_level >= 3) {
-      return "已达上限";
-    }
-    if (action === "build_granary" && county.has_granary) {
-      return "已建成";
-    }
-    if (action === "relief") {
-      if (!county.disaster_this_year) return "无灾害";
-      if (county.disaster_this_year.relieved) return "已赈灾";
-    }
-    return null;
-  }
-
-  function getInvestCost(action) {
-    var g = Game.state.currentGame;
-    var priceIndex = (g && g.county_data && g.county_data.price_index) || 1.0;
-    for (var i = 0; i < INVEST_DEFS.length; i++) {
-      if (INVEST_DEFS[i].action === action) return Math.round(INVEST_DEFS[i].cost * priceIndex);
-    }
-    return Infinity;
-  }
-
   function renderInvestTab() {
     var g = Game.state.currentGame;
     if (!g) return;
-    var c = g.county_data;
-
-    // Sync medical slider
-    var ml = c.medical_level || 0;
-    var actualMedCostInvest = calcMedicalCost(ml, c);
-    var medSlider = el("medical-slider");
-    var medDisplay = el("medical-display");
-    if (medSlider) {
-      medSlider.value = ml;
-      medDisplay.textContent = ml + "级 — " + MEDICAL_NAMES[ml] + "（" + actualMedCostInvest + "两/年）";
-    }
-
-    // Update medical-levels-info with dynamic costs
-    var levelsInfo = el("medical-levels-info");
-    if (levelsInfo) {
-      var html = "";
-      for (var li = 0; li <= 3; li++) {
-        var lCost = calcMedicalCost(li, c);
-        html += "<span>" + li + ": " + MEDICAL_NAMES[li] + (lCost > 0 ? " " + lCost + "两/年" : "") + "</span>";
-      }
-      levelsInfo.innerHTML = html;
-    }
 
     var container = el("invest-cards");
     container.innerHTML = "";
-    var priceIndex = c.price_index || 1.0;
 
-    INVEST_DEFS.forEach(function (def) {
-      var actualCost = Math.round(def.cost * priceIndex);
-      var reason = getDisableReason(def.action, c);
-      var isGameOver = g.current_season > 12;
+    // Use backend-provided available_investments (pre-calculated costs and disable reasons)
+    var actions = g.available_investments || [];
+    // Build a lookup from INVEST_DEFS for display descriptions
+    var defMap = {};
+    INVEST_DEFS.forEach(function (def) { defMap[def.action] = def; });
+
+    actions.forEach(function (item) {
+      var def = defMap[item.action] || {};
+      var reason = item.disabled_reason || null;
+      var isGameOver = g.current_season > Game.MAX_MONTH;
       var disabled = reason !== null || isGameOver;
+
+      var levelInfo = "";
+      if (item.current_level !== null && item.max_level !== null) {
+        levelInfo = " (当前" + item.current_level + "/" + item.max_level + "级)";
+      }
 
       var card = h("div", "invest-card" + (disabled ? " disabled" : ""));
       card.innerHTML =
-        '<div class="card-name">' + def.name + '</div>' +
-        '<div class="card-cost">费用: ' + actualCost + ' 两</div>' +
-        '<div class="card-desc">' + def.desc + '</div>' +
+        '<div class="card-name">' + item.name + levelInfo + '</div>' +
+        '<div class="card-cost">费用: ' + item.cost + ' 两</div>' +
+        '<div class="card-desc">' + (def.desc || "") + '</div>' +
         (reason ? '<div class="card-reason">' + reason + '</div>' : '');
 
       if (!disabled) {
-        card.dataset.action = def.action;
-        card.dataset.needsVillage = def.needsVillage ? "1" : "0";
+        card.dataset.action = item.action;
+        card.dataset.needsVillage = item.requires_village ? "1" : "0";
       }
 
       container.appendChild(card);
@@ -382,12 +398,12 @@
 
     // Disable advance button if game is over
     var advBtn = el("btn-advance");
-    if (g.current_season > 12) {
+    if (g.current_season > Game.MAX_MONTH) {
       advBtn.disabled = true;
       advBtn.textContent = "任期已结束";
     } else {
       advBtn.disabled = false;
-      advBtn.textContent = "推进季度";
+      advBtn.textContent = "推进月份";
     }
   }
 
@@ -396,7 +412,7 @@
     container.innerHTML = "";
 
     // Season header
-    var header = h("h3", "", Game.seasonName(report.season) + " 季报");
+    var header = h("h3", "", Game.seasonName(report.season) + " 月报");
     container.appendChild(header);
 
     // Events
@@ -437,6 +453,72 @@
       popTable += '</tbody></table>';
       popTable += '<div style="font-size:0.85em;color:#5c4a2a;">总计: ' + pu.total_before + ' → ' + pu.total_after +
         ' (' + (pu.total_change >= 0 ? "+" : "") + pu.total_change + ')</div>';
+
+      // Temporary debug output for Sep migration pairwise calculations
+      if (report.autumn && pu.migration && pu.migration.pairs && pu.migration.pairs.length > 0) {
+        var mig = pu.migration;
+        var pairs = pu.migration.pairs;
+
+        var fmtSigned = function (n) {
+          if (n === undefined || n === null || isNaN(Number(n))) return "-";
+          var num = Number(n);
+          return (num > 0 ? "+" : "") + num.toFixed(1);
+        };
+
+        var bucketLabel = function (bucket) {
+          if (bucket === "lead") return "领先";
+          if (bucket === "lag") return "落后";
+          if (bucket === "parity") return "持平";
+          return "中间";
+        };
+
+        var decisionLabel = function (direction) {
+          if (direction === "inflow") return "触发流入";
+          if (direction === "outflow") return "触发流出";
+          return "未触发";
+        };
+
+        var migrationSigned = function (direction, moved) {
+          if (!moved) return "0";
+          if (direction === "outflow") return "-" + moved;
+          return "+" + moved;
+        };
+
+        var pairTable = '<div class="report-debug-note">【临时调试信息】邻县两两对比中间结果（短期测试用，后续请删除）</div>';
+        pairTable += '<table class="data-table report-debug-table">' +
+          '<thead><tr>' +
+          '<th>邻县</th><th>民心Δ</th><th>治安Δ</th><th>商业Δ</th><th>文教Δ</th>' +
+          '<th>计数(领/落/平/中)</th><th>判定</th><th>迁移率</th><th>迁移人数</th>' +
+          '</tr></thead><tbody>';
+
+        pairs.forEach(function (pair) {
+          var dims = pair.dim_details || {};
+          var dm = dims.morale || {};
+          var ds = dims.security || {};
+          var dc = dims.commercial || {};
+          var de = dims.education || {};
+          var rate = pair.rate ? (pair.rate * 100).toFixed(1) + "%" : "-";
+
+          pairTable += '<tr>' +
+            '<td>' + escapeHtml(pair.peer_name || ("邻县" + (pair.peer_index || ""))) + '</td>' +
+            '<td>' + fmtSigned(dm.diff) + ' (' + bucketLabel(dm.bucket) + ')</td>' +
+            '<td>' + fmtSigned(ds.diff) + ' (' + bucketLabel(ds.bucket) + ')</td>' +
+            '<td>' + fmtSigned(dc.diff) + ' (' + bucketLabel(dc.bucket) + ')</td>' +
+            '<td>' + fmtSigned(de.diff) + ' (' + bucketLabel(de.bucket) + ')</td>' +
+            '<td>' + (pair.lead_count || 0) + '/' + (pair.lag_count || 0) + '/' +
+              (pair.parity_count || 0) + '/' + (pair.mid_count || 0) + '</td>' +
+            '<td>' + decisionLabel(pair.direction) + '</td>' +
+            '<td>' + rate + '</td>' +
+            '<td>' + migrationSigned(pair.direction, pair.moved || 0) + '</td>' +
+            '</tr>';
+        });
+
+        pairTable += '</tbody></table>';
+        pairTable += '<div class="report-debug-note">迁移汇总: 流入' + (mig.inflow_total || 0) + ' / 流出' + (mig.outflow_total || 0) +
+          ' / 单方向上限' + (mig.cap_rate !== undefined ? (mig.cap_rate * 100).toFixed(1) + '%' : '-') + '</div>';
+        popTable += pairTable;
+      }
+
       popSec.innerHTML += popTable;
       container.appendChild(popSec);
     }
@@ -446,17 +528,21 @@
       var sec = h("div", "report-section");
       sec.appendChild(h("h4", "", "秋季结算"));
       var a = report.autumn;
-      var medCostHtml = a.medical_cost > 0
-        ? '<span class="report-detail-item"><strong>医疗开支:</strong> ' + a.medical_cost + '两</span>'
+      // Support both old format (corvee_tax) and new format (corvee_tax_ytd)
+      var corveeHtml = a.corvee_tax_ytd !== undefined
+        ? '<span class="report-detail-item"><strong>年度徭役(已征):</strong> ' + a.corvee_tax_ytd + '两(留存' + a.corvee_retained_ytd + '两)</span>'
         : '';
+      var commercialHtml = a.commercial_tax_ytd !== undefined
+        ? '<span class="report-detail-item"><strong>年度商税(已征):</strong> ' + a.commercial_tax_ytd + '两(留存' + a.commercial_retained_ytd + '两)</span>'
+        : '<span class="report-detail-item"><strong>商业税:</strong> ' + (a.commercial_tax || 0) + '两</span>';
       var detail = h("div", "report-detail",
         '<span class="report-detail-item"><strong>农业产出:</strong> ' + a.total_agri_output + '两</span>' +
         '<span class="report-detail-item"><strong>农业税:</strong> ' + a.agri_tax + '两</span>' +
-        '<span class="report-detail-item"><strong>商业税:</strong> ' + a.commercial_tax + '两</span>' +
+        corveeHtml +
+        commercialHtml +
         '<span class="report-detail-item"><strong>总税收:</strong> ' + a.total_tax + '两</span>' +
-        '<span class="report-detail-item"><strong>上缴朝廷:</strong> ' + a.remit_to_central + '两</span>' +
-        '<span class="report-detail-item"><strong>行政开支:</strong> ' + a.admin_cost + '两</span>' +
-        medCostHtml +
+        '<span class="report-detail-item"><strong>总上缴:</strong> ' + a.remit_to_central + '两</span>' +
+        '<span class="report-detail-item"><strong>行政开支:</strong> ' + a.admin_cost + '两(含基建维护)</span>' +
         '<span class="report-detail-item"><strong>县库净变化:</strong> ' + a.net_treasury_change + '两</span>' +
         '<span class="report-detail-item"><strong>县库余额:</strong> ' + a.treasury_after + '两</span>');
       sec.appendChild(detail);
@@ -499,7 +585,7 @@
 
     games.forEach(function (g) {
       var card = h("div", "game-card");
-      var seasonText = g.current_season > 12 ? "已结束" : Game.seasonName(g.current_season);
+      var seasonText = g.current_season > Game.MAX_MONTH ? "已结束" : Game.seasonName(g.current_season);
       card.innerHTML =
         '<div class="game-card-info">' +
           '存档 #' + g.id +
@@ -514,7 +600,11 @@
   }
 
   function renderSummary(summary) {
+    var v2Div = el("summary-v2");
+    if (v2Div) v2Div.innerHTML = "";
+
     var statsDiv = el("summary-stats");
+    statsDiv.classList.remove("hidden");
     statsDiv.innerHTML = "";
     var grid = h("div", "summary-grid");
     var items = [
@@ -525,8 +615,10 @@
       { label: "治安", value: summary.security },
       { label: "商业", value: summary.commercial },
       { label: "文教", value: summary.education },
-      { label: "水利等级", value: summary.irrigation_level + "/2" },
-      { label: "衙役等级", value: summary.bailiff_level + "/3" },
+      { label: "县学等级", value: (summary.school_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "水利等级", value: (summary.irrigation_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "医疗等级", value: (summary.medical_level || 0) + "/" + INFRA_MAX_LEVEL },
+      { label: "衙役等级", value: (summary.bailiff_level || 0) + "/3" },
     ];
     items.forEach(function (it) {
       var stat = h("div", "summary-stat",
@@ -538,6 +630,7 @@
 
     // Village table
     var vDiv = el("summary-villages");
+    vDiv.classList.remove("hidden");
     vDiv.innerHTML = "";
     if (summary.villages) {
       var title = h("h3", "section-title", "村庄概况");
@@ -561,6 +654,346 @@
     }
   }
 
+  function signedClass(val) {
+    if (val > 0) return "delta-positive";
+    if (val < 0) return "delta-negative";
+    return "delta-neutral";
+  }
+
+  function fmtSigned(val, digits) {
+    if (val === null || val === undefined || isNaN(val)) return "-";
+    var n = Number(val);
+    var sign = n > 0 ? "+" : "";
+    var text = digits === undefined ? String(n) : n.toFixed(digits);
+    return sign + text;
+  }
+
+  function renderSummaryV2(data) {
+    var root = el("summary-v2");
+    if (!root) return;
+    root.innerHTML = "";
+
+    var statsDiv = el("summary-stats");
+    var villagesDiv = el("summary-villages");
+    if (statsDiv) {
+      statsDiv.classList.add("hidden");
+      statsDiv.innerHTML = "";
+    }
+    if (villagesDiv) {
+      villagesDiv.classList.add("hidden");
+      villagesDiv.innerHTML = "";
+    }
+
+    var head = data.headline || {};
+    var meta = data.meta || {};
+    var badges = head.badges || [];
+    var tags = head.style_tags || [];
+
+    function fmtMaybe(val, digits) {
+      if (val === null || val === undefined || isNaN(val)) return "-";
+      var n = Number(val);
+      if (digits === undefined) return String(n);
+      return n.toFixed(digits);
+    }
+
+    var hero = h("section", "summary2-hero",
+      '<div class="summary2-title">任期述职报告</div>' +
+      '<h2>' + escapeHtml(head.title || "三年任期总结") + '</h2>' +
+      '<div class="summary2-score-row">' +
+        '<span class="summary2-grade">评级：' + escapeHtml(head.grade || "-") + '</span>' +
+        '<span class="summary2-outcome">结论：' + escapeHtml(head.outcome || "-") + '</span>' +
+        '<span class="summary2-score">综合分：' + (head.overall_score !== undefined ? head.overall_score : "-") + '</span>' +
+      '</div>' +
+      '<p class="summary2-narrative">' + escapeHtml(head.narrative || "") + '</p>' +
+      '<div class="summary2-chip-row">' +
+        tags.map(function (t) { return '<span class="summary2-chip">' + escapeHtml(t) + '</span>'; }).join("") +
+      '</div>' +
+      '<div class="summary2-chip-row">' +
+        badges.map(function (b) { return '<span class="summary2-chip summary2-chip-badge">' + escapeHtml(b) + '</span>'; }).join("") +
+      '</div>' +
+      '<div class="summary2-baseline">' + escapeHtml(meta.baseline_note || "") + '</div>');
+    root.appendChild(hero);
+
+    var kpiSec = h("section", "summary2-section");
+    kpiSec.appendChild(h("h3", "section-title", "核心指标"));
+    var kpiGrid = h("div", "summary2-kpi-grid");
+    (data.kpi_cards || []).forEach(function (k) {
+      var finalVal = k.final;
+      if (k.unit) finalVal = finalVal + k.unit;
+      var deltaText = "-";
+      var deltaClass = "delta-neutral";
+      if (k.delta !== undefined && k.delta !== null) {
+        deltaText = fmtSigned(k.delta, Math.abs(k.delta) < 10 ? 1 : 0) + (k.unit || "");
+        deltaClass = signedClass(k.delta);
+      } else if (k.delta_pct !== undefined && k.delta_pct !== null) {
+        deltaText = fmtSigned(k.delta_pct, 1) + "%";
+        deltaClass = signedClass(k.delta_pct);
+      }
+      var initText = (k.initial !== undefined && k.initial !== null) ? k.initial + (k.unit || "") : "-";
+      var card = h("div", "summary2-kpi-card",
+        '<div class="summary2-kpi-label">' + escapeHtml(k.label || "") + '</div>' +
+        '<div class="summary2-kpi-final">' + escapeHtml(String(finalVal)) + '</div>' +
+        '<div class="summary2-kpi-sub">基线: ' + escapeHtml(String(initText)) + '</div>' +
+        '<div class="summary2-kpi-delta ' + deltaClass + '">变化: ' + escapeHtml(deltaText) + '</div>');
+      kpiGrid.appendChild(card);
+    });
+    kpiSec.appendChild(kpiGrid);
+    root.appendChild(kpiSec);
+
+    var horizontalRows = data.horizontal_benchmark || [];
+    var governorScoreRows = data.governor_score_benchmark || [];
+    if (horizontalRows.length > 0) {
+      var horizontalSec = h("section", "summary2-section");
+      horizontalSec.appendChild(h("h3", "section-title", "横向对比（同任期邻县）"));
+      var horizontalTable = h("table", "data-table summary2-trend-table");
+      horizontalTable.innerHTML =
+        "<thead><tr>" +
+        "<th>指标</th><th>本县任内变化</th><th>邻县中位变化</th>" +
+        "<th>排名</th><th>分位</th>" +
+        "</tr></thead>";
+      var horizontalBody = document.createElement("tbody");
+      horizontalRows.forEach(function (row) {
+        var unit = row.unit || "";
+        var playerVal = row.player_term_value;
+        var peerVal = row.peer_median_term_value;
+        var playerText = (playerVal === null || playerVal === undefined) ? "-" : (fmtSigned(playerVal, 1) + unit);
+        var peerText = (peerVal === null || peerVal === undefined) ? "-" : (fmtSigned(peerVal, 1) + unit);
+        var rankText = "-";
+        if (row.rank !== null && row.rank !== undefined && row.total_count) {
+          rankText = String(row.rank) + "/" + String(row.total_count);
+        }
+        var percentileText = row.percentile === null || row.percentile === undefined
+          ? "-"
+          : fmtMaybe(row.percentile, 1) + "%";
+        var tr = h("tr", "",
+          "<td>" + escapeHtml(row.label || "") + "</td>" +
+          "<td>" + escapeHtml(playerText) + "</td>" +
+          "<td>" + escapeHtml(peerText) + "</td>" +
+          "<td>" + escapeHtml(rankText) + "</td>" +
+          "<td>" + escapeHtml(percentileText) + "</td>");
+        horizontalBody.appendChild(tr);
+      });
+      horizontalTable.appendChild(horizontalBody);
+      horizontalSec.appendChild(horizontalTable);
+      horizontalSec.appendChild(
+        h("p", "summary2-baseline", escapeHtml(meta.horizontal_note || "横向分位越高，说明同周期相对表现越好。"))
+      );
+
+      if (governorScoreRows.length > 0) {
+        horizontalSec.appendChild(h("h3", "section-title", "邻县知县综合打分"));
+        var scoreTable = h("table", "data-table summary2-trend-table");
+        scoreTable.innerHTML =
+          "<thead><tr>" +
+          "<th>县名</th><th>知县</th><th>综合分</th><th>评级</th><th>排名</th><th>任期报告</th>" +
+          "</tr></thead>";
+        var scoreBody = document.createElement("tbody");
+        governorScoreRows.forEach(function (row) {
+          var rankText = "-";
+          if (row.rank !== null && row.rank !== undefined && row.total_count) {
+            rankText = String(row.rank) + "/" + String(row.total_count);
+          }
+          var tr = h("tr", "",
+            "<td>" + escapeHtml(row.county_name || "") + "</td>" +
+            "<td>" + escapeHtml((row.governor_name || "") + " 知县") + "</td>" +
+            "<td>" + escapeHtml(fmtMaybe(row.comprehensive_score, 1)) + "</td>" +
+            "<td>" + escapeHtml(row.grade || "-") + "</td>" +
+            "<td>" + escapeHtml(rankText) + "</td>" +
+            "<td>" +
+              '<button class="btn btn-small summary2-neighbor-report-btn" ' +
+                'data-game-id="' + escapeHtml(String(meta.game_id || "")) + '" ' +
+                'data-neighbor-id="' + escapeHtml(String(row.neighbor_id || "")) + '">' +
+                "查看任期报告" +
+              "</button>" +
+            "</td>");
+          scoreBody.appendChild(tr);
+        });
+        scoreTable.appendChild(scoreBody);
+        horizontalSec.appendChild(scoreTable);
+      }
+      root.appendChild(horizontalSec);
+    }
+
+    var disasterAdj = data.disaster_adjustment || null;
+    if (disasterAdj) {
+      var dSec = h("section", "summary2-section");
+      dSec.appendChild(h("h3", "section-title", "灾害校正"));
+      var dText = "";
+      if ((disasterAdj.disaster_count || 0) > 0) {
+        dText =
+          "暴露差值 " + fmtSigned(disasterAdj.exposure_gap, 3) +
+          "（本县 " + fmtMaybe(disasterAdj.player_exposure, 3) +
+          "，邻县均值 " + fmtMaybe(disasterAdj.peer_avg_exposure, 3) +
+          "），暴露消偏 " + fmtSigned(disasterAdj.exposure_offset, 1) +
+          "，合计校正 " + fmtSigned(disasterAdj.total_correction, 1) + "。";
+      } else {
+        dText = "任内无灾害事件，灾害校正项为0。";
+      }
+      dSec.appendChild(h("p", "summary2-narrative", dText));
+
+      var dGrid = h("div", "summary2-kpi-grid");
+      dGrid.appendChild(h("div", "summary2-kpi-card",
+        '<div class="summary2-kpi-label">灾害次数</div>' +
+        '<div class="summary2-kpi-final">' + escapeHtml(String(disasterAdj.disaster_count || 0)) + '</div>'
+      ));
+      dGrid.appendChild(h("div", "summary2-kpi-card",
+        '<div class="summary2-kpi-label">暴露强度</div>' +
+        '<div class="summary2-kpi-final">' + escapeHtml(fmtMaybe(disasterAdj.player_exposure, 3)) + '</div>' +
+        '<div class="summary2-kpi-sub">邻县均值: ' + escapeHtml(fmtMaybe(disasterAdj.peer_avg_exposure, 3)) + '</div>'
+      ));
+      dGrid.appendChild(h("div", "summary2-kpi-card",
+        '<div class="summary2-kpi-label">暴露差值</div>' +
+        '<div class="summary2-kpi-final">' + escapeHtml(fmtSigned(disasterAdj.exposure_gap, 3)) + '</div>' +
+        '<div class="summary2-kpi-sub">消偏: ' + escapeHtml(fmtSigned(disasterAdj.exposure_offset, 1)) + '</div>'
+      ));
+      dSec.appendChild(dGrid);
+      dSec.appendChild(
+        h("p", "summary2-baseline", escapeHtml(meta.disaster_note || "灾害多寡存在不可控因素，校正仅用于补偿相对更高的灾害暴露。"))
+      );
+      root.appendChild(dSec);
+    }
+
+    var yearSec = h("section", "summary2-section");
+    yearSec.appendChild(h("h3", "section-title", "年度复盘"));
+    var yearWrap = h("div", "summary2-year-wrap");
+    (data.yearly_reports || []).forEach(function (yr) {
+      var w = yr.winter_snapshot || {};
+      var a = yr.autumn || {};
+      var events = (yr.key_events || []).slice(0, 4);
+      var eventHtml = events.map(function (e) {
+        return '<li>第' + e.season + '月 [' + escapeHtml(e.category) + '] ' + escapeHtml(e.description) + '</li>';
+      }).join("");
+      var card = h("article", "summary2-year-card",
+        '<div class="summary2-year-header">第' + yr.year + '年</div>' +
+        '<div class="summary2-year-metrics">' +
+          '<span>县库: ' + (w.treasury !== undefined ? w.treasury : "-") + '两</span>' +
+          '<span>民心: ' + (w.morale !== undefined ? w.morale : "-") + '</span>' +
+          '<span>治安: ' + (w.security !== undefined ? w.security : "-") + '</span>' +
+          '<span>秋收总税: ' + (a.total_tax !== undefined ? a.total_tax : "-") + '两</span>' +
+        '</div>' +
+        '<p class="summary2-year-summary">' + escapeHtml(yr.summary_text || "") + '</p>' +
+        '<ul class="summary2-year-events">' + eventHtml + '</ul>');
+      yearWrap.appendChild(card);
+    });
+    yearSec.appendChild(yearWrap);
+    root.appendChild(yearSec);
+
+    var panelSec = h("section", "summary2-section");
+    panelSec.appendChild(h("h3", "section-title", "述职要点"));
+    var panelGrid = h("div", "summary2-panel-grid");
+
+    var hi = h("div", "summary2-panel");
+    hi.appendChild(h("h4", "", "亮点"));
+    var hiList = h("ul", "summary2-list");
+    (data.highlights || []).forEach(function (item) {
+      hiList.appendChild(h("li", "", '<strong>' + escapeHtml(item.title || "") + '：</strong>' + escapeHtml(item.detail || "")));
+    });
+    hi.appendChild(hiList);
+    panelGrid.appendChild(hi);
+
+    var risk = h("div", "summary2-panel");
+    risk.appendChild(h("h4", "", "风险"));
+    var riskList = h("ul", "summary2-list");
+    (data.risks || []).forEach(function (item) {
+      riskList.appendChild(h("li", "", '<strong>' + escapeHtml(item.title || "") + '：</strong>' + escapeHtml(item.detail || "")));
+    });
+    risk.appendChild(riskList);
+    panelGrid.appendChild(risk);
+    panelSec.appendChild(panelGrid);
+    root.appendChild(panelSec);
+
+    var reviewSec = h("section", "summary2-section");
+    reviewSec.appendChild(h("h3", "section-title", "多方评价"));
+    var reviews = h("div", "summary2-review-list");
+    (data.peer_reviews || []).forEach(function (r) {
+      reviews.appendChild(h("div", "summary2-review-item",
+        '<span class="summary2-review-role">' + escapeHtml(r.role || "") + '：</span>' +
+        '<span>' + escapeHtml(r.comment || "") + '</span>'));
+    });
+    reviewSec.appendChild(reviews);
+    root.appendChild(reviewSec);
+
+    // Monthly trend overview (趋势概览)
+    var trends = data.monthly_trends || [];
+    if (trends.length > 0) {
+      var trendSec = h("section", "summary2-section");
+      trendSec.appendChild(h("h3", "section-title", "趋势概览"));
+
+      var trendTable = h("table", "data-table summary2-trend-table");
+      trendTable.innerHTML =
+        "<thead><tr>" +
+        "<th>年度</th><th>县库(两)</th><th>人口</th><th>民心</th>" +
+        "<th>治安</th><th>商业</th><th>文教</th><th>月GMV(两)</th>" +
+        "</tr></thead>";
+      var trendBody = document.createElement("tbody");
+
+      // Group by year (12 months each), show year-end (month 12) value with min/max
+      for (var yr = 1; yr <= 3; yr++) {
+        var yearTrends = trends.filter(function (t) {
+          var s = t.season;
+          return s >= (yr - 1) * 12 + 1 && s <= yr * 12;
+        });
+        if (yearTrends.length === 0) continue;
+
+        var yearEnd = yearTrends[yearTrends.length - 1];
+
+        function minMax(arr, key) {
+          var vals = arr.map(function (t) { return t[key]; }).filter(function (v) { return v !== undefined && v !== null; });
+          if (vals.length === 0) return "";
+          var mn = Math.min.apply(null, vals);
+          var mx = Math.max.apply(null, vals);
+          if (mn === mx) return "";
+          return " <small style='color:#888;'>(" + Math.round(mn) + "~" + Math.round(mx) + ")</small>";
+        }
+
+        var trendTr = h("tr", "",
+          "<td>第" + yr + "年</td>" +
+          "<td>" + Math.round(yearEnd.treasury) + minMax(yearTrends, "treasury") + "</td>" +
+          "<td>" + yearEnd.total_population + minMax(yearTrends, "total_population") + "</td>" +
+          "<td>" + Math.round(yearEnd.morale) + minMax(yearTrends, "morale") + "</td>" +
+          "<td>" + Math.round(yearEnd.security) + minMax(yearTrends, "security") + "</td>" +
+          "<td>" + Math.round(yearEnd.commercial) + minMax(yearTrends, "commercial") + "</td>" +
+          "<td>" + Math.round(yearEnd.education) + minMax(yearTrends, "education") + "</td>" +
+          "<td>" + (yearEnd.total_gmv !== undefined ? Math.round(yearEnd.total_gmv) : "-") +
+            minMax(yearTrends, "total_gmv") + "</td>");
+        trendBody.appendChild(trendTr);
+      }
+
+      trendTable.appendChild(trendBody);
+      trendSec.appendChild(trendTable);
+
+      var trendNote = h("p", "summary2-baseline", "年末值（括号内为该年度min~max区间），数据来自每月结算快照。");
+      trendSec.appendChild(trendNote);
+      root.appendChild(trendSec);
+    }
+
+    var villageSec = h("section", "summary2-section");
+    villageSec.appendChild(h("h3", "section-title", "村庄变化"));
+    var table = h("table", "data-table summary2-village-table");
+    table.innerHTML = "<thead><tr>" +
+      "<th>村庄</th><th>人口</th><th>人口变化</th><th>耕地</th><th>耕地变化</th><th>地主占比</th><th>村塾</th>" +
+      "</tr></thead>";
+    var tbody = document.createElement("tbody");
+    (data.villages || []).forEach(function (v) {
+      var popDelta = v.population_delta;
+      var farmDelta = v.farmland_delta;
+      var popDeltaText = popDelta === null || popDelta === undefined ? "-" : fmtSigned(popDelta, 0);
+      var farmDeltaText = farmDelta === null || farmDelta === undefined ? "-" : fmtSigned(farmDelta, 0);
+      var gentryPct = (Number(v.gentry_land_pct || 0) * 100).toFixed(1) + "%";
+      var tr = h("tr", "",
+        "<td>" + escapeHtml(v.name) + "</td>" +
+        "<td>" + v.population + "</td>" +
+        '<td class="' + signedClass(popDelta || 0) + '">' + popDeltaText + "</td>" +
+        "<td>" + v.farmland + "</td>" +
+        '<td class="' + signedClass(farmDelta || 0) + '">' + farmDeltaText + "</td>" +
+        "<td>" + gentryPct + "</td>" +
+        "<td>" + (v.has_school ? "有" : "无") + "</td>");
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    villageSec.appendChild(table);
+    root.appendChild(villageSec);
+  }
+
   // Export
   C.renderHeader = renderHeader;
   C.renderDashboard = renderDashboard;
@@ -571,4 +1004,5 @@
   C.renderReport = renderReport;
   C.renderGameList = renderGameList;
   C.renderSummary = renderSummary;
+  C.renderSummaryV2 = renderSummaryV2;
 })();

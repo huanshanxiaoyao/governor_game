@@ -3,8 +3,8 @@ import logging
 
 from django.utils import timezone
 
-from .models import Agent, DialogueMessage, EventLog, NegotiationSession
-from .agent_service import AgentService
+from ..models import Agent, DialogueMessage, EventLog, NegotiationSession
+from .agent import AgentService
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -114,7 +114,7 @@ class NegotiationService:
         )
 
         # 2b. Extract promises from player message
-        from .promise_service import PromiseService
+        from .promise import PromiseService
         try:
             PromiseService.extract_and_save(game, session.agent, session, player_message)
         except Exception as e:
