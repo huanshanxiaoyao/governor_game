@@ -12,6 +12,7 @@ from .constants import (
     generate_governor_profile,
     month_name,
     calculate_infra_cost,
+    calculate_infra_maint,
 )
 from .investment import InvestmentService
 
@@ -245,6 +246,14 @@ class AIGovernorService:
         if county_type_desc:
             game_knowledge += f"\n六、县域特色\n- {county_type_desc}\n"
 
+        # 医疗等级及各级年费描述
+        current_medical = county.get('medical_level', 0)
+        medical_costs = []
+        for lvl in range(4):
+            cost = calculate_infra_maint("medical", lvl, county)
+            medical_costs.append(f"{lvl}级={cost}两")
+        medical_costs_desc = ", ".join(medical_costs)
+
         return {
             'governor_name': neighbor.governor_name,
             'county_name': neighbor.county_name,
@@ -257,6 +266,8 @@ class AIGovernorService:
             'game_knowledge': game_knowledge,
             'available_investments': available_text,
             'tax_rate': f"{county.get('tax_rate', 0.12):.0%}",
+            'medical_level': current_medical,
+            'medical_costs_desc': medical_costs_desc,
             'season': season,
             'county_summary': county_summary,
             'villages_summary': villages_summary,
