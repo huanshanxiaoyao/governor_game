@@ -114,6 +114,16 @@ class NegotiationChatSerializer(serializers.Serializer):
         max_length=500,
         help_text="玩家的谈判发言",
     )
+    speaker_role = serializers.ChoiceField(
+        choices=[
+            ("PLAYER", "县令亲谈"),
+            ("ADVISOR", "委托师爷"),
+            ("DEPUTY", "委托县丞"),
+        ],
+        required=False,
+        default="PLAYER",
+        help_text="本轮发言人：PLAYER/ADVISOR/DEPUTY",
+    )
 
 
 class StartIrrigationSerializer(serializers.Serializer):

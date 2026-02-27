@@ -31,6 +31,7 @@ def month_name(month):
 
 MAX_YIELD_PER_MU = 200       # 斤/亩
 ANNUAL_CONSUMPTION = 300     # 斤/人/年
+GENTRY_HELPER_FEE_RATE = 0.05  # 地主帮佣费用（占地主粮食总收入，暂定写死）
 BASE_GROWTH_RATE = 0.015     # 1.5% annual natural growth
 GROWTH_RATE_CLAMP = 0.025    # ±2.5% max
 

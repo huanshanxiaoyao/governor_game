@@ -13,7 +13,14 @@
   var EVENT_TYPE_NAMES = {
     ANNEXATION: "地主兼并",
     IRRIGATION: "兴建水利",
+    HIDDEN_LAND: "隐匿土地",
   };
+
+  function getNegotiationPlayerLabel(speakerRole, speakerName) {
+    if (speakerRole === "ADVISOR") return (speakerName || "师爷") + "（代）";
+    if (speakerRole === "DEPUTY") return (speakerName || "县丞") + "（代）";
+    return "县令";
+  }
 
   function checkActiveNegotiation() {
     var g = Game.state.currentGame;
@@ -135,6 +142,7 @@
 
     el("negotiation-modal").classList.remove("hidden");
     el("nego-input").value = "";
+    if (el("nego-speaker")) el("nego-speaker").value = "PLAYER";
     el("nego-input").focus();
 
     // Load history
@@ -164,7 +172,9 @@
 
     messages.forEach(function (msg) {
       var cls = msg.role === "player" ? "nego-msg nego-msg-player" : "nego-msg nego-msg-agent";
-      var label = msg.role === "player" ? "县令" : "";
+      var label = msg.role === "player"
+        ? getNegotiationPlayerLabel(msg.speaker_role, msg.speaker_name)
+        : "";
       var div = h("div", cls,
         (label ? '<span class="nego-msg-label">' + label + '</span>' : '') +
         '<div class="nego-msg-content">' + escapeHtml(msg.content) + '</div>');
@@ -174,14 +184,18 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  function appendNegotiationMessage(role, content) {
+  function appendNegotiationMessage(role, content, opts) {
     var container = el("nego-messages");
     // Remove the hint if present
     var hint = container.querySelector(".hint");
     if (hint) hint.remove();
 
+    opts = opts || {};
+
     var cls = role === "player" ? "nego-msg nego-msg-player" : "nego-msg nego-msg-agent";
-    var label = role === "player" ? "县令" : "";
+    var label = role === "player"
+      ? getNegotiationPlayerLabel(opts.speakerRole, opts.speakerName)
+      : "";
     var div = h("div", cls,
       (label ? '<span class="nego-msg-label">' + label + '</span>' : '') +
       '<div class="nego-msg-content">' + escapeHtml(content) + '</div>');
@@ -202,7 +216,13 @@
       "proceed_annexation": "地主执意继续兼并",
       "accept": "地主同意出资",
       "refuse": "地主拒绝出资",
+      "declare_all": "地主主动申报全部隐田",
     }[decision] || decision;
+
+    // For HIDDEN_LAND refuse, override with forced survey text
+    if (result.event_type === "HIDDEN_LAND" && decision === "refuse") {
+      decisionText = "地主拒绝申报，官府强制清丈";
+    }
 
     var extraHtml = "";
     if (result.event_type === "IRRIGATION" && decision === "accept" && result.contribution_offer) {
@@ -233,6 +253,7 @@
     DISASTER: "灾害",
     SETTLEMENT: "结算",
     ANNEXATION: "兼并",
+    HIDDEN_LAND: "隐田",
     PROMISE: "承诺",
   };
 
@@ -244,6 +265,7 @@
     DISASTER: "#c0392b",
     SETTLEMENT: "#27ae60",
     ANNEXATION: "#e67e22",
+    HIDDEN_LAND: "#8b4513",
     PROMISE: "#8e44ad",
   };
 

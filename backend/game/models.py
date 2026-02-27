@@ -149,6 +149,7 @@ class NegotiationSession(models.Model):
     EVENT_TYPES = [
         ('ANNEXATION', '地主兼并'),
         ('IRRIGATION', '兴建水利'),
+        ('HIDDEN_LAND', '隐匿土地'),
     ]
     STATUS_CHOICES = [
         ('active', '进行中'),
@@ -171,9 +172,9 @@ class NegotiationSession(models.Model):
         db_table = 'negotiation_sessions'
         constraints = [
             models.UniqueConstraint(
-                fields=['game'],
+                fields=['game', 'agent'],
                 condition=models.Q(status='active'),
-                name='one_active_negotiation_per_game',
+                name='one_active_negotiation_per_agent',
             ),
         ]
         indexes = [

@@ -7,6 +7,7 @@ urlpatterns = [
     path("games/", views.GameListCreateView.as_view(), name="game-list-create"),
     path("games/<int:game_id>/", views.GameDetailView.as_view(), name="game-detail"),
     path("games/<int:game_id>/invest/", views.InvestView.as_view(), name="game-invest"),
+    path("games/<int:game_id>/land-survey/", views.RequestLandSurveyView.as_view(), name="game-land-survey"),
     path("games/<int:game_id>/advance/", views.AdvanceSeasonView.as_view(), name="game-advance"),
     path("games/<int:game_id>/tax-rate/", views.TaxRateView.as_view(), name="game-tax-rate"),
     path("games/<int:game_id>/commercial-tax-rate/", views.CommercialTaxRateView.as_view(), name="game-commercial-tax-rate"),

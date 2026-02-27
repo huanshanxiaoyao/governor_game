@@ -343,7 +343,7 @@
       }
 
       var tr = h("tr", "",
-        "<td>" + v.name + "</td>" +
+        '<td><button class="village-name-link" data-village-name="' + escapeHtml(v.name) + '">' + escapeHtml(v.name) + "</button></td>" +
         "<td>" + v.population + popDelta + "</td>" +
         "<td>" + ceiling + ' <span class="' + occClass + '">(' + occupancy + '%)</span></td>' +
         "<td>" + v.farmland + farmDelta + "</td>" +
@@ -355,6 +355,125 @@
         "<td>" + (repHtml || "-") + "</td>");
       tbody.appendChild(tr);
     });
+  }
+
+  function _formatNum(n, fallback) {
+    var v = Number(n);
+    if (isNaN(v)) return fallback || "0";
+    return String(Math.round(v * 10) / 10).replace(/\.0$/, "");
+  }
+
+  function _villageAgents(villageName) {
+    var agents = Game.state.agents || [];
+    var gentryName = "-";
+    var repName = "-";
+    for (var i = 0; i < agents.length; i++) {
+      var ag = agents[i];
+      if (ag.village_name !== villageName) continue;
+      if (ag.role === "GENTRY" && ag.role_title === "地主") gentryName = ag.name || "-";
+      if (ag.role === "VILLAGER" && ag.role_title === "村民代表") repName = ag.name || "-";
+    }
+    return { gentry: gentryName, rep: repName };
+  }
+
+  function openVillageDetail(villageName) {
+    var g = Game.state.currentGame;
+    if (!g || !g.county_data || !g.county_data.villages) return;
+
+    var village = null;
+    for (var i = 0; i < g.county_data.villages.length; i++) {
+      if (g.county_data.villages[i].name === villageName) {
+        village = g.county_data.villages[i];
+        break;
+      }
+    }
+    if (!village) return;
+
+    var peasant = village.peasant_ledger || {};
+    var gentry = village.gentry_ledger || {};
+
+    var peasantPop = Number(peasant.registered_population);
+    if (isNaN(peasantPop)) peasantPop = Number(village.population || 0);
+    var gentryRegPop = Number(gentry.registered_population);
+    if (isNaN(gentryRegPop)) gentryRegPop = 0;
+    var gentryHiddenPop = Number(gentry.hidden_population);
+    if (isNaN(gentryHiddenPop)) gentryHiddenPop = 0;
+
+    var peasantLand = Number(peasant.farmland);
+    if (isNaN(peasantLand)) {
+      peasantLand = Number(village.farmland || 0) * (1 - Number(village.gentry_land_pct || 0.3));
+    }
+    var gentryRegLand = Number(gentry.registered_farmland);
+    if (isNaN(gentryRegLand)) {
+      gentryRegLand = Number(village.farmland || 0) * Number(village.gentry_land_pct || 0.3);
+    }
+    var gentryHiddenLand = Number(gentry.hidden_farmland);
+    if (isNaN(gentryHiddenLand)) gentryHiddenLand = Number(village.hidden_land || 0);
+
+    var registeredLand = Math.max(0, peasantLand + gentryRegLand);
+    var actualCultivated = Math.max(0, registeredLand + gentryHiddenLand);
+    var landCeiling = Number(village.land_ceiling || 0);
+    var utilization = landCeiling > 0 ? (actualCultivated / landCeiling * 100) : 0;
+    var overDevPct = utilization > 90 ? (utilization - 90) : 0;
+    var disasterDeltaPct = overDevPct * 0.2;
+    var reclaimAdvice = "正常";
+    if (utilization >= 90) reclaimAdvice = "高风险（建议停止开垦）";
+    else if (utilization >= 85) reclaimAdvice = "临界（建议先勘查）";
+    var capacity = Number(village.ceiling || 0);
+    var occupancy = capacity > 0 ? (peasantPop / capacity * 100) : 0;
+
+    var peasantSurplus = Number(peasant.grain_surplus);
+    if (isNaN(peasantSurplus)) peasantSurplus = 0;
+    var peasantMonthlyConsume = Number(peasant.monthly_consumption);
+    if (isNaN(peasantMonthlyConsume)) peasantMonthlyConsume = 0;
+    var peasantMonthlySurplus = Number(peasant.monthly_surplus);
+    if (isNaN(peasantMonthlySurplus)) peasantMonthlySurplus = 0;
+
+    var gentrySurplus = Number(gentry.grain_surplus);
+    if (isNaN(gentrySurplus)) gentrySurplus = 0;
+
+    var names = _villageAgents(village.name);
+
+    el("village-detail-title").textContent = village.name + " · 村庄详情";
+    var body = el("village-detail-body");
+    body.innerHTML =
+      '<section class="village-detail-section">' +
+        "<h5>基础信息</h5>" +
+        '<div class="village-kv-grid">' +
+          "<div><strong>村民在册人口</strong><span>" + _formatNum(peasantPop) + " 人</span></div>" +
+          "<div><strong>地主在册人口</strong><span>" + _formatNum(gentryRegPop) + " 人</span></div>" +
+          "<div><strong>地主隐匿人口</strong><span>" + _formatNum(gentryHiddenPop) + " 人</span></div>" +
+          "<div><strong>民心 / 治安</strong><span>" + _formatNum(village.morale) + " / " + _formatNum(village.security) + "</span></div>" +
+          "<div><strong>村塾</strong><span>" + (village.has_school ? "已建成" : "未建成") + "</span></div>" +
+          "<div><strong>地主 / 村民代表</strong><span>" + escapeHtml(names.gentry) + " / " + escapeHtml(names.rep) + "</span></div>" +
+        "</div>" +
+      "</section>" +
+      '<section class="village-detail-section">' +
+        "<h5>土地账本</h5>" +
+        '<div class="village-kv-grid">' +
+          "<div><strong>村民在册耕地</strong><span>" + _formatNum(peasantLand) + " 亩</span></div>" +
+          "<div><strong>地主在册耕地</strong><span>" + _formatNum(gentryRegLand) + " 亩</span></div>" +
+          "<div><strong>地主隐匿耕地</strong><span>" + _formatNum(gentryHiddenLand) + " 亩</span></div>" +
+          "<div><strong>在册耕地合计</strong><span>" + _formatNum(registeredLand) + " 亩</span></div>" +
+          "<div><strong>真实耕种规模</strong><span>" + _formatNum(actualCultivated) + " 亩</span></div>" +
+          "<div><strong>潜在上限 / 利用率</strong><span>" + _formatNum(landCeiling) + " 亩 / " + _formatNum(utilization) + "%</span></div>" +
+          "<div><strong>开垦预警状态</strong><span>" + reclaimAdvice + "</span></div>" +
+          "<div><strong>灾害概率增量贡献</strong><span>" + _formatNum(disasterDeltaPct) + " 个百分点</span></div>" +
+          "<div><strong>承载上限 / 占用率</strong><span>" + _formatNum(capacity) + " / " + _formatNum(occupancy) + "%</span></div>" +
+          "<div><strong>隐匿土地事件</strong><span>" + (village.hidden_land_discovered ? "已触发" : "未触发") + "</span></div>" +
+        "</div>" +
+      "</section>" +
+      '<section class="village-detail-section">' +
+        "<h5>粮食账本</h5>" +
+        '<div class="village-kv-grid">' +
+          "<div><strong>村民总粮食盈余</strong><span>" + _formatNum(peasantSurplus) + " 斤</span></div>" +
+          "<div><strong>村民月消耗</strong><span>" + _formatNum(peasantMonthlyConsume) + " 斤</span></div>" +
+          "<div><strong>村民人均月余粮(至秋收)</strong><span>" + _formatNum(peasantMonthlySurplus) + " 斤</span></div>" +
+          "<div><strong>地主总粮食盈余</strong><span>" + _formatNum(gentrySurplus) + " 斤</span></div>" +
+        "</div>" +
+      "</section>";
+
+    el("village-detail-modal").classList.remove("hidden");
   }
 
   function renderInvestTab() {
@@ -823,10 +942,10 @@
           "暴露差值 " + fmtSigned(disasterAdj.exposure_gap, 3) +
           "（本县 " + fmtMaybe(disasterAdj.player_exposure, 3) +
           "，邻县均值 " + fmtMaybe(disasterAdj.peer_avg_exposure, 3) +
-          "），暴露消偏 " + fmtSigned(disasterAdj.exposure_offset, 1) +
-          "，合计校正 " + fmtSigned(disasterAdj.total_correction, 1) + "。";
+          "），暴露偏移 " + fmtSigned(disasterAdj.exposure_offset, 1) +
+          "，基建消偏系数 x" + fmtMaybe(disasterAdj.disaster_multiplier, 3) + "。";
       } else {
-        dText = "任内无灾害事件，灾害校正项为0。";
+        dText = "任内无灾害事件，基建消偏系数 x1.000。";
       }
       dSec.appendChild(h("p", "summary2-narrative", dText));
 
@@ -843,7 +962,7 @@
       dGrid.appendChild(h("div", "summary2-kpi-card",
         '<div class="summary2-kpi-label">暴露差值</div>' +
         '<div class="summary2-kpi-final">' + escapeHtml(fmtSigned(disasterAdj.exposure_gap, 3)) + '</div>' +
-        '<div class="summary2-kpi-sub">消偏: ' + escapeHtml(fmtSigned(disasterAdj.exposure_offset, 1)) + '</div>'
+        '<div class="summary2-kpi-sub">消偏系数: x' + escapeHtml(fmtMaybe(disasterAdj.disaster_multiplier, 3)) + '</div>'
       ));
       dSec.appendChild(dGrid);
       dSec.appendChild(
@@ -1000,6 +1119,7 @@
   C.loadActivePromises = loadActivePromises;
   C.renderPromises = renderPromises;
   C.renderVillages = renderVillages;
+  C.openVillageDetail = openVillageDetail;
   C.renderInvestTab = renderInvestTab;
   C.renderReport = renderReport;
   C.renderGameList = renderGameList;

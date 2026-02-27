@@ -11,6 +11,7 @@ from .constants import (
     MIGRATION_FLOW_CAP_RATE,
     MIGRATION_COMPETITION_DIMS,
 )
+from .ledger import ensure_county_ledgers, ensure_village_ledgers
 
 
 class PopulationMixin:
@@ -19,15 +20,16 @@ class PopulationMixin:
     @staticmethod
     def _calculate_village_ceiling(village, county):
         """Calculate population ceiling (carrying capacity) for a village."""
-        env = county.get("environment", {})
-        ag_suit = env.get("agriculture_suitability", 0.7)
+        ensure_village_ledgers(village)
         irrigation = county.get("irrigation_level", 0)
         tax_rate = county.get("tax_rate", 0.12)
-        gentry_pct = village.get("gentry_land_pct", 0.3)
-
-        effective_farmland = village["farmland"] * (1 - gentry_pct)
+        peasant_farmland = village.get("peasant_ledger", {}).get("farmland")
+        if peasant_farmland is None:
+            gentry_pct = village.get("gentry_land_pct", 0.3)
+            peasant_farmland = village["farmland"] * (1 - gentry_pct)
         irrigation_bonus = 1 + irrigation * 0.15
-        ceiling = (effective_farmland * ag_suit * MAX_YIELD_PER_MU
+        # Carrying capacity intentionally ignores agriculture_suitability (balance update).
+        ceiling = (peasant_farmland * MAX_YIELD_PER_MU
                    * irrigation_bonus * (1 - tax_rate) / ANNUAL_CONSUMPTION)
         return int(ceiling)
 
@@ -104,10 +106,14 @@ class PopulationMixin:
     @classmethod
     def _calculate_competitive_migration(cls, county, peer_counties):
         """Compute annual county-level inflow/outflow from neighbor competition."""
+        ensure_county_ledgers(county)
         if not peer_counties:
             return {"inflow_total": 0, "outflow_total": 0, "pairs": []}
 
-        own_total_pop = sum(v.get("population", 0) for v in county["villages"])
+        own_total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         if own_total_pop <= 0:
             return {"inflow_total": 0, "outflow_total": 0, "pairs": []}
 
@@ -125,7 +131,10 @@ class PopulationMixin:
                 continue
 
             peer_villages = peer.get("villages") or []
-            peer_pop = sum(v.get("population", 0) for v in peer_villages)
+            peer_pop = sum(
+                v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+                for v in peer_villages
+            )
             if peer_pop <= 0:
                 continue
 
@@ -181,7 +190,9 @@ class PopulationMixin:
             return [0 for _ in villages]
 
         raw = [
-            total_flow * v.get("population", 0) / max(total_pop, 1)
+            total_flow
+            * v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            / max(total_pop, 1)
             for v in villages
         ]
         allocated = [int(x) for x in raw]
@@ -191,7 +202,12 @@ class PopulationMixin:
 
         ranked = sorted(
             range(len(villages)),
-            key=lambda i: (raw[i] - allocated[i], villages[i].get("population", 0)),
+            key=lambda i: (
+                raw[i] - allocated[i],
+                villages[i].get("peasant_ledger", {}).get(
+                    "registered_population", villages[i].get("population", 0)
+                ),
+            ),
             reverse=True,
         )
         for i in ranked[:remainder]:
@@ -201,8 +217,12 @@ class PopulationMixin:
     @classmethod
     def _annual_population_update(cls, county, report, peer_counties=None):
         """Annual population growth — called once per year at autumn."""
+        ensure_county_ledgers(county)
         medical_level = county.get("medical_level", 0)
-        total_pop_before = sum(v["population"] for v in county["villages"])
+        total_pop_before = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         village_details = []
         migration = cls._calculate_competitive_migration(county, peer_counties or [])
         inflow_alloc = cls._allocate_flow_by_population(
@@ -213,7 +233,8 @@ class PopulationMixin:
         )
 
         for idx, v in enumerate(county["villages"]):
-            pop = v["population"]
+            ensure_village_ledgers(v)
+            pop = v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
             ceiling = cls._calculate_village_ceiling(v, county)
             v["ceiling"] = ceiling
 
@@ -236,6 +257,7 @@ class PopulationMixin:
 
             new_pop = max(0, pop + delta_growth + inflow - outflow)
             change = new_pop - pop
+            v["peasant_ledger"]["registered_population"] = new_pop
             v["population"] = new_pop
 
             village_details.append({
@@ -249,7 +271,10 @@ class PopulationMixin:
                 "pop_after": new_pop,
             })
 
-        total_pop_after = sum(v["population"] for v in county["villages"])
+        total_pop_after = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         total_change = total_pop_after - total_pop_before
 
         report["population_update"] = {

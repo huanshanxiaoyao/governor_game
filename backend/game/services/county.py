@@ -7,6 +7,11 @@ from .constants import (
     MAX_YIELD_PER_MU, ANNUAL_CONSUMPTION,
     calculate_infra_maint,
 )
+from .ledger import (
+    ensure_village_ledgers,
+    refresh_village_grain_ledgers,
+    sync_county_gentry_land_ratio,
+)
 
 
 def _fluctuate(value, pct=0.20):
@@ -117,11 +122,37 @@ class CountyService:
             # 各村地主占地比围绕县级基准波动
             v_gentry = round(_fluctuate_clamp(
                 gentry_land_ratio, 0.05, 0.95, pct=0.15), 2)
+            # 隐匿土地 (doc 06a §2.4)
+            v_hidden = int(v_farmland * random.uniform(0.05, 0.15))
+            # 土地承载上限 (doc 06a §2.5)
+            v_land_ceiling = int((v_farmland + v_hidden) * random.uniform(1.1, 1.4))
+            # 双账本初始化（在册地按地主占比拆分）
+            v_gentry_land = int(v_farmland * v_gentry)
+            v_peasant_land = max(0, v_farmland - v_gentry_land)
+            # 地主在册人口仅用于账本记录，不计入县级在册人口
+            v_gentry_registered_pop = max(1, int(v_pop * max(0.01, v_gentry * 0.12)))
             villages.append({
                 "name": vname,
                 "farmland": v_farmland,
                 "population": v_pop,  # 临时值，后续用 ceiling 重算
                 "gentry_land_pct": v_gentry,
+                "hidden_land": v_hidden,
+                "hidden_land_discovered": False,
+                "land_ceiling": v_land_ceiling,
+                "peasant_ledger": {
+                    "registered_population": v_pop,
+                    "farmland": v_peasant_land,
+                    "grain_surplus": 0.0,
+                    "monthly_consumption": 0.0,
+                    "monthly_surplus": 0.0,
+                },
+                "gentry_ledger": {
+                    "registered_population": v_gentry_registered_pop,
+                    "hidden_population": 0,
+                    "registered_farmland": v_gentry_land,
+                    "hidden_farmland": v_hidden,
+                    "grain_surplus": 0.0,
+                },
                 "morale": round(_fluctuate_clamp(county["morale"], 0, 100, pct=0.10)),
                 "security": round(_fluctuate_clamp(county["security"], 0, 100, pct=0.10)),
                 "has_school": False,
@@ -161,9 +192,15 @@ class CountyService:
         # 注意：需在初始化基建等级之后执行，确保财赋/宗族型按 irrigation=1 计算承载力
         from .settlement import SettlementService
         for v in county["villages"]:
+            ensure_village_ledgers(v)
             ceiling = SettlementService._calculate_village_ceiling(v, county)
-            v["population"] = int(ceiling * 0.60)
+            peasant_pop = int(ceiling * 0.60)
+            v["peasant_ledger"]["registered_population"] = peasant_pop
             v["ceiling"] = ceiling
+            ensure_village_ledgers(v)
+
+        # 县级地主占地比从双账本汇总
+        sync_county_gentry_land_ratio(county)
 
         # 基建维护费用加入 admin_cost_detail
         irr_maint = calculate_infra_maint("irrigation", county["irrigation_level"], county)
@@ -174,7 +211,10 @@ class CountyService:
 
         # 初始化农民粮食储备（游戏开局正月，距上次九月收获约4个月）
         expected_annual = _compute_initial_peasant_production(county)
-        total_pop = sum(v["population"] for v in county["villages"])
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12
         county["peasant_grain_reserve"] = expected_annual - 4 * monthly_consumption
 
@@ -201,6 +241,11 @@ class CountyService:
             "demand_factor": round(demand_factor, 2),
             "monthly_consumption": round(monthly_consumption),
         }
+        refresh_village_grain_ledgers(
+            county,
+            monthly_consumption=monthly_consumption,
+            current_season=1,
+        )
 
         return county
 
@@ -214,7 +259,8 @@ def _compute_initial_peasant_production(county):
 
     total = 0
     for v in county["villages"]:
-        peasant_land = v["farmland"] * (1 - v.get("gentry_land_pct", 0.3))
+        ensure_village_ledgers(v)
+        peasant_land = v.get("peasant_ledger", {}).get("farmland", 0)
         production = peasant_land * MAX_YIELD_PER_MU * ag_suit * irrigation_mult * (1 - tax_rate)
         total += production
     return total

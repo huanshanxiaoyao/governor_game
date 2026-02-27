@@ -258,7 +258,7 @@
           '<div><strong>暴露强度：</strong>' + escapeHtml(fmtMaybe(disaster.exposure, 3)) +
             "（邻县均值 " + escapeHtml(fmtMaybe(disaster.peer_avg_exposure, 3)) + "）</div>" +
           '<div><strong>暴露差值：</strong>' + escapeHtml(fmtSigned(disaster.exposure_gap, 3)) +
-            "，<strong>消偏：</strong>" + escapeHtml(fmtSigned(disaster.exposure_offset, 1)) + "</div>" +
+            "，<strong>消偏系数：</strong>x" + escapeHtml(fmtMaybe(disaster.disaster_multiplier, 3)) + "</div>" +
         "</div>" +
       "</div>";
 

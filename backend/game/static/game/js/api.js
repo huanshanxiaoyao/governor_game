@@ -56,6 +56,9 @@
       if (targetVillage) body.target_village = targetVillage;
       return request("POST", "/api/games/" + id + "/invest/", body);
     },
+    requestLandSurvey: function (id, villageName) {
+      return request("POST", "/api/games/" + id + "/land-survey/", { village_name: villageName });
+    },
     advance: function (id) {
       return request("POST", "/api/games/" + id + "/advance/", {});
     },
@@ -81,8 +84,10 @@
     getActiveNegotiation: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/negotiations/active/");
     },
-    sendNegotiationChat: function (gameId, sessionId, message) {
-      return request("POST", "/api/games/" + gameId + "/negotiations/" + sessionId + "/chat/", { message: message });
+    sendNegotiationChat: function (gameId, sessionId, message, speakerRole) {
+      var body = { message: message };
+      if (speakerRole) body.speaker_role = speakerRole;
+      return request("POST", "/api/games/" + gameId + "/negotiations/" + sessionId + "/chat/", body);
     },
     getNegotiationHistory: function (gameId, sessionId) {
       return request("GET", "/api/games/" + gameId + "/negotiations/" + sessionId + "/chat/");

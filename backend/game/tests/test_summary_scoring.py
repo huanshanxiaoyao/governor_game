@@ -6,7 +6,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 
-from game.models import EventLog, GameState, NeighborCounty, NeighborEventLog, PlayerProfile
+from game.models import Agent, EventLog, GameState, NeighborCounty, NeighborEventLog, PlayerProfile
 from game.services.constants import MAX_MONTH
 from game.services.county import CountyService
 from game.services.settlement import SettlementService
@@ -174,6 +174,101 @@ def test_incident_score_no_longer_directly_penalizes_disaster_count():
 
 
 @pytest.mark.django_db
+def test_summary_uses_result_infra_split_and_subjective_multiplier():
+    game = _create_completed_game()
+    _seed_player_settlement_logs(game, y1_tax=100.0, y3_tax=120.0)
+
+    Agent.objects.create(
+        game=game,
+        name="赵廷章",
+        role="PREFECT",
+        role_title="知府",
+        tier="FULL",
+        attributes={"player_affinity": 80},
+    )
+
+    summary = SettlementService.get_summary_v2(game)
+    assert summary is not None
+
+    scores = summary["scores"]
+    expected_objective = round(scores["result_score"] * 0.7 + scores["infrastructure_score_adjusted"] * 0.3, 1)
+    assert scores["objective"] == pytest.approx(expected_objective, abs=0.1)
+    assert scores["subjective_bonus"] == pytest.approx(1.0, abs=1e-6)
+
+    expected_overall = round(min(100.0, scores["objective"] * scores["subjective_bonus"]), 1)
+    assert summary["headline"]["overall_score"] == expected_overall
+
+
+@pytest.mark.django_db
+def test_subjective_multiplier_is_fixed_to_one_for_mvp():
+    game = _create_completed_game()
+    _seed_player_settlement_logs(game, y1_tax=100.0, y3_tax=120.0)
+
+    prefect = Agent.objects.create(
+        game=game,
+        name="赵廷章",
+        role="PREFECT",
+        role_title="知府",
+        tier="FULL",
+        attributes={"player_affinity": -999},
+    )
+    summary = SettlementService.get_summary_v2(game)
+    assert summary["scores"]["subjective_bonus"] == 1.0
+
+    prefect.attributes["player_affinity"] = 999
+    prefect.save(update_fields=["attributes"])
+    summary = SettlementService.get_summary_v2(game)
+    assert summary["scores"]["subjective_bonus"] == 1.0
+
+
+@pytest.mark.django_db
+def test_tax_growth_excludes_direct_agri_tax_rate_spike_effect():
+    game = _create_completed_game()
+    _seed_player_settlement_logs(game, y1_tax=170.0, y3_tax=250.0)
+
+    s9 = EventLog.objects.get(game=game, category="SETTLEMENT", season=9)
+    d9 = s9.data or {}
+    d9["autumn"] = {
+        "total_tax": 170.0,
+        "agri_tax": 120.0,
+        "corvee_tax_ytd": 30.0,
+        "commercial_tax_ytd": 20.0,
+    }
+    s9.data = d9
+    s9.save(update_fields=["data"])
+
+    s33 = EventLog.objects.get(game=game, category="SETTLEMENT", season=33)
+    d33 = s33.data or {}
+    d33["autumn"] = {
+        "total_tax": 250.0,
+        "agri_tax": 200.0,
+        "corvee_tax_ytd": 30.0,
+        "commercial_tax_ytd": 20.0,
+    }
+    s33.data = d33
+    s33.save(update_fields=["data"])
+
+    EventLog.objects.create(
+        game=game,
+        season=24,
+        event_type="tax_rate_change",
+        category="TAX",
+        description="测试税率调整",
+        data={"old_rate": 0.12, "new_rate": 0.20},
+    )
+
+    summary = SettlementService.get_summary_v2(game)
+    assert summary is not None
+
+    tax_row = next(
+        row for row in summary["horizontal_benchmark"]
+        if row["id"] == "tax_growth"
+    )
+    assert tax_row["player_term_value"] == pytest.approx(0.0, abs=0.1)
+    assert summary["scores"]["tax_score_raw"] == pytest.approx(70.0, abs=0.1)
+
+
+@pytest.mark.django_db
 def test_horizontal_benchmark_includes_rank_and_percentile_against_neighbors():
     game = _create_completed_game()
     _seed_player_settlement_logs(game, y1_tax=100.0, y3_tax=110.0)
@@ -224,7 +319,7 @@ def test_horizontal_benchmark_includes_rank_and_percentile_against_neighbors():
 
 
 @pytest.mark.django_db
-def test_disaster_correction_only_uses_exposure_offset():
+def test_disaster_debias_is_multiplier_on_infra_score():
     game = _create_completed_game()
     _seed_player_settlement_logs(game)
 
@@ -258,8 +353,9 @@ def test_disaster_correction_only_uses_exposure_offset():
     assert dis["disaster_count"] == 2
     assert dis["exposure_gap"] > 0
     assert dis["exposure_offset"] > 0
-    assert scores["disaster_correction"] == dis["exposure_offset"]
-    assert dis["total_correction"] == dis["exposure_offset"]
+    assert 1.0 <= dis["disaster_multiplier"] <= 1.1
+    assert scores["disaster_correction"] == dis["disaster_multiplier"]
+    assert dis["total_correction"] == dis["disaster_multiplier"]
 
     assert "response_adjustment" not in scores
     for key in (

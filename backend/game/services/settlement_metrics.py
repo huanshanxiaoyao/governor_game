@@ -7,9 +7,9 @@ from .constants import (
     COMMERCIAL_TAX_RETENTION,
     EXCESS_CONSUMPTION_THRESHOLD,
     CORVEE_PER_CAPITA,
-    GENTRY_POP_RATIO_COEFF,
     month_of_year,
 )
+from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
 
 
 class MetricsMixin:
@@ -94,12 +94,19 @@ class MetricsMixin:
     @staticmethod
     def _sync_county_from_villages(county, field):
         """按人口权重将各村指标汇聚到县级，与当前县值混合(70%村均/30%县值)"""
+        ensure_county_ledgers(county)
         villages = county["villages"]
-        total_pop = sum(v.get("population", 0) for v in villages)
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in villages
+        )
         if total_pop <= 0:
             return
         weighted_sum = sum(
-            v.get(field, 50) * v.get("population", 0) for v in villages)
+            v.get(field, 50)
+            * v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in villages
+        )
         weighted_avg = weighted_sum / total_pop
         county[field] = max(0, min(100,
             round(0.7 * weighted_avg + 0.3 * county[field], 1)))
@@ -107,6 +114,7 @@ class MetricsMixin:
     @classmethod
     def _compute_peasant_production(cls, county, include_disaster=False):
         """年度农民粮食产出（斤），扣税后。用于粮食储备计算。"""
+        ensure_county_ledgers(county)
         env = county.get("environment", {})
         ag_suit = env.get("agriculture_suitability", 0.7)
         irrigation_mult = 1 + county.get("irrigation_level", 0) * 0.15
@@ -114,7 +122,7 @@ class MetricsMixin:
 
         total = 0
         for v in county["villages"]:
-            peasant_land = v["farmland"] * (1 - v.get("gentry_land_pct", 0.3))
+            peasant_land = v.get("peasant_ledger", {}).get("farmland", 0)
             production = peasant_land * MAX_YIELD_PER_MU * ag_suit * irrigation_mult * (1 - tax_rate)
             total += production
 
@@ -131,18 +139,33 @@ class MetricsMixin:
         return total
 
     @classmethod
+    def _refresh_village_ledger_metrics(cls, county, monthly_consumption, month=None):
+        """Refresh village-level grain ledgers from current county state."""
+        refresh_village_grain_ledgers(
+            county,
+            monthly_consumption=monthly_consumption,
+            current_season=month,
+        )
+
+    @classmethod
     def _update_commercial(cls, county, month, report):
         """月度商业更新：盈余→需求系数→GMV→商税→粮食消耗"""
-        total_pop = sum(v["population"] for v in county["villages"])
+        ensure_county_ledgers(county)
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         base_monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12
 
-        # 年化人均月余粮（固定12月视野，单次计算）
-        annual_consumption = 12 * base_monthly_consumption
+        # 统一口径：到下次秋收（九月）剩余月数视角
+        moy = month_of_year(month)
+        months_to_harvest = (9 - moy) % 12 or 12
+        remaining_consumption = months_to_harvest * base_monthly_consumption
         per_capita_surplus = (
-            (county.get("peasant_grain_reserve", 0) - annual_consumption)
+            (county.get("peasant_grain_reserve", 0) - remaining_consumption)
             / max(total_pop, 1)
         )
-        monthly_pcs = per_capita_surplus / 12
+        monthly_pcs = per_capita_surplus / months_to_harvest
 
         # 需求系数：clamp(1 + 月均余粮/20, 0.1, 2.0)
         demand_factor = max(0.1, min(2.0, 1 + monthly_pcs / 20))
@@ -177,8 +200,6 @@ class MetricsMixin:
         county["fiscal_year"] = fy
 
         # 6. 存储盈余信息供前端展示
-        moy = month_of_year(month)
-        months_to_harvest = (9 - moy) % 12 or 12
         county["peasant_surplus"] = {
             "reserve": round(county["peasant_grain_reserve"]),
             "months_to_harvest": months_to_harvest,
@@ -187,6 +208,7 @@ class MetricsMixin:
             "demand_factor": round(demand_factor, 2),
             "monthly_consumption": round(monthly_consumption),
         }
+        cls._refresh_village_ledger_metrics(county, monthly_consumption, month=month)
 
         if total_gmv >= 1:
             report["events"].append(
@@ -213,10 +235,12 @@ class MetricsMixin:
     @classmethod
     def _collect_corvee(cls, county, report):
         """半年度徭役征收（正月、五月各一半）"""
-        total_pop = sum(v["population"] for v in county["villages"])
-        gentry_ratio = county.get("gentry_land_ratio", 0.35)
-        gentry_pop_ratio = gentry_ratio * GENTRY_POP_RATIO_COEFF
-        liable_pop = total_pop * (1 - gentry_pop_ratio)
+        ensure_county_ledgers(county)
+        # 徭役折银仅基于在册村民（地主账本人口不纳入应役人口）
+        liable_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         half_corvee = liable_pop * CORVEE_PER_CAPITA / 2
 
         remit_ratio = county.get("remit_ratio", 0.65)

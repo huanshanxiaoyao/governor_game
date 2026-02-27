@@ -12,6 +12,12 @@ from .constants import (
     month_name,
     year_of,
 )
+from .ledger import (
+    ensure_county_ledgers,
+    ensure_village_ledgers,
+    sync_county_gentry_land_ratio,
+    sync_legacy_from_ledgers,
+)
 
 
 class SeasonalMixin:
@@ -35,17 +41,19 @@ class SeasonalMixin:
         """Apply the effect of a single completed investment.
         When game is provided, also updates Agent affinity/memory for reclaim_land.
         """
+        ensure_county_ledgers(county)
         action = inv["action"]
 
         if action == "reclaim_land":
             village_name = inv["target_village"]
             for v in county["villages"]:
                 if v["name"] == village_name:
-                    old_farmland = v["farmland"]
+                    ensure_village_ledgers(v)
                     old_pct = v.get("gentry_land_pct", 0.3)
-                    gentry_land = old_farmland * old_pct
-                    v["farmland"] += 800
-                    v["gentry_land_pct"] = round(gentry_land / v["farmland"], 4)
+                    peasant = v["peasant_ledger"]
+                    peasant["farmland"] = max(0, int(peasant.get("farmland", 0)) + 800)
+                    # legacy fields同步，地主在册地不变，因此占比下降
+                    sync_legacy_from_ledgers(v)
                     v["morale"] = min(100, v["morale"] + 5)
                     report["events"].append(
                         f"{village_name}开垦完成，耕地+800亩，民心+5，"
@@ -71,6 +79,7 @@ class SeasonalMixin:
                             villager.attributes = attrs
                             villager.save(update_fields=['attributes'])
                     break
+            sync_county_gentry_land_ratio(county)
 
         elif action == "build_irrigation":
             county["irrigation_level"] = min(INFRA_MAX_LEVEL, county.get("irrigation_level", 0) + 1)
@@ -123,6 +132,7 @@ class SeasonalMixin:
         """Autumn: annual population update, agricultural output and agri tax only.
         Corvée and commercial tax already collected during the year via fiscal_year.
         """
+        ensure_county_ledgers(county)
         # Annual population update (once per year at autumn)
         cls._annual_population_update(county, report, peer_counties=peer_counties)
 
@@ -167,13 +177,17 @@ class SeasonalMixin:
         if disaster:
             total_pop_loss = 0
             for v in county["villages"]:
+                ensure_village_ledgers(v)
                 loss_rate = random.uniform(0.02, disaster["severity"] / 5)
-                pop_loss = int(v["population"] * loss_rate)
+                base_pop = v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+                pop_loss = int(base_pop * loss_rate)
                 if county["has_granary"]:
                     pop_loss = int(pop_loss * GRANARY_POP_LOSS_MULTIPLIER)
                 if disaster.get("relieved"):
                     pop_loss = int(pop_loss * RELIEF_POP_LOSS_MULTIPLIER)
-                v["population"] = max(0, v["population"] - pop_loss)
+                new_pop = max(0, base_pop - pop_loss)
+                v["peasant_ledger"]["registered_population"] = new_pop
+                v["population"] = new_pop
                 total_pop_loss += pop_loss
             report["events"].append(
                 f"灾害持续影响: 全县人口减少{total_pop_loss}人"
@@ -185,7 +199,10 @@ class SeasonalMixin:
                 report["events"].append("赈灾安民: 民心+2")
 
         # Agricultural tax (doc 06a §4.1) — only agri tax computed at autumn
-        total_pop = sum(v["population"] for v in county["villages"])
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         morale_factor = county["morale"] / 100
         collection_efficiency = 0.7 + 0.3 * morale_factor  # ranges 0.7-1.0
         agri_tax = total_agri_output * county["tax_rate"] * collection_efficiency
@@ -240,9 +257,13 @@ class SeasonalMixin:
     @classmethod
     def _winter_settlement(cls, county, month, report):
         """Winter (腊月): annual snapshot + clear disaster."""
+        ensure_county_ledgers(county)
         county["disaster_this_year"] = None
 
-        total_pop = sum(v["population"] for v in county["villages"])
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county["villages"]
+        )
         total_farmland = sum(v["farmland"] for v in county["villages"])
         report["winter_snapshot"] = {
             "year": year_of(month),

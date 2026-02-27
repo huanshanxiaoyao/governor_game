@@ -210,6 +210,32 @@
     if (!pendingAction) return;
     var village = el("modal-village-select").value;
     el("village-modal").classList.add("hidden");
+
+    // 过度开发预警 (doc 06a §2.5)
+    if (pendingAction === "reclaim_land") {
+      var investments = (Game.state.currentGame || {}).available_investments || [];
+      var reclaimDef = null;
+      for (var i = 0; i < investments.length; i++) {
+        if (investments[i].action === "reclaim_land") { reclaimDef = investments[i]; break; }
+      }
+      var warnings = (reclaimDef && reclaimDef.village_warnings) || [];
+      var warning = null;
+      for (var j = 0; j < warnings.length; j++) {
+        if (warnings[j].village === village) { warning = warnings[j]; break; }
+      }
+      if (warning) {
+        // Show advisor warning modal
+        el("advisor-warning-text").textContent =
+          village + "土地开发率已达" + warning.utilization + "%，继续开垦恐增加水旱灾害风险。是否仍要继续？";
+        el("advisor-warning-modal").classList.remove("hidden");
+        // Store pending data for proceed/cancel
+        el("advisor-warning-modal").dataset.action = pendingAction;
+        el("advisor-warning-modal").dataset.village = village;
+        pendingAction = null;
+        return;
+      }
+    }
+
     doInvest(pendingAction, village);
     pendingAction = null;
   });
@@ -217,6 +243,32 @@
   el("modal-cancel").addEventListener("click", function () {
     pendingAction = null;
     el("village-modal").classList.add("hidden");
+  });
+
+  // Advisor warning modal handlers
+  el("advisor-warning-proceed").addEventListener("click", function () {
+    var modal = el("advisor-warning-modal");
+    var action = modal.dataset.action;
+    var village = modal.dataset.village;
+    modal.classList.add("hidden");
+    if (action && village) doInvest(action, village);
+  });
+
+  el("advisor-warning-cancel").addEventListener("click", function () {
+    var modal = el("advisor-warning-modal");
+    var village = modal.dataset.village;
+    modal.classList.add("hidden");
+
+    var g = Game.state.currentGame;
+    if (g && village) {
+      api.requestLandSurvey(g.id, village)
+        .then(function (data) {
+          components.showToast(data.message, "info");
+        })
+        .catch(function (err) {
+          components.showToast(err.message || "勘查请求失败", "error");
+        });
+    }
   });
 
   function doInvest(action, targetVillage) {
@@ -335,6 +387,46 @@
 
   // ==================== Negotiation ====================
 
+  function buildDelegationMessage(session, speakerRole) {
+    var type = (session && session.event_type) || "ANNEXATION";
+    if (speakerRole === "ADVISOR") {
+      if (type === "HIDDEN_LAND") {
+        return "请以县衙名义与其交涉，争取其主动申报隐田，必要时明确官府将依法清丈。";
+      }
+      if (type === "IRRIGATION") {
+        return "请以长远利害说服其出资水利，尽量争取更高出资且不激化矛盾。";
+      }
+      return "请以县衙立场交涉，目标是停止兼并，兼顾稳定与后续治理。";
+    }
+    if (speakerRole === "DEPUTY") {
+      if (type === "HIDDEN_LAND") {
+        return "请按衙门章程交涉，要求其申报隐田，不从则启动清丈程序。";
+      }
+      if (type === "IRRIGATION") {
+        return "请按公事流程与其协商出资水利，明确县衙推进工程的决心。";
+      }
+      return "请按县衙公事流程交涉，要求其停止兼并并说明后果。";
+    }
+    return "";
+  }
+
+  function syncNegotiationInputMode() {
+    var speakerSelect = el("nego-speaker");
+    var input = el("nego-input");
+    var sendBtn = el("nego-send");
+    if (!speakerSelect || !input || !sendBtn) return;
+
+    var isPlayer = speakerSelect.value === "PLAYER";
+    if (isPlayer) {
+      input.classList.remove("hidden");
+      input.placeholder = "输入你的话...";
+      sendBtn.textContent = "发言";
+    } else {
+      input.classList.add("hidden");
+      sendBtn.textContent = "委托谈判";
+    }
+  }
+
   // Open negotiation modal (from banner or report button)
   document.addEventListener("click", function (e) {
     var isBanner = e.target.id === "btn-open-negotiation" || e.target.closest("#btn-open-negotiation");
@@ -344,6 +436,7 @@
       var session = Game.state.activeNegotiation;
       if (session) {
         components.openNegotiationModal(session);
+        syncNegotiationInputMode();
       } else {
         // Fetch it first
         var g = Game.state.currentGame;
@@ -352,6 +445,7 @@
           if (data.active) {
             Game.state.activeNegotiation = data.session;
             components.openNegotiationModal(data.session);
+            syncNegotiationInputMode();
           } else {
             components.showToast("当前没有进行中的谈判", "info");
           }
@@ -379,18 +473,36 @@
     if (!g || !session) return;
 
     var input = el("nego-input");
-    var message = input.value.trim();
-    if (!message) return;
+    var speakerSelect = el("nego-speaker");
+    var speakerRole = speakerSelect ? speakerSelect.value : "PLAYER";
+    var message = "";
+    if (speakerRole === "PLAYER") {
+      message = input.value.trim();
+      if (!message) return;
+    } else {
+      message = buildDelegationMessage(session, speakerRole);
+    }
+    var speakerName = "";
+    if (speakerRole === "ADVISOR") speakerName = "师爷";
+    if (speakerRole === "DEPUTY") speakerName = "县丞";
 
     var sendBtn = el("nego-send");
     sendBtn.disabled = true;
     input.disabled = true;
+    if (speakerSelect) speakerSelect.disabled = true;
 
     // Show player message immediately
-    components.appendNegotiationMessage("player", message);
+    var showText = message;
+    if (speakerRole !== "PLAYER") {
+      showText = speakerRole === "ADVISOR" ? "请师爷代为交涉。" : "请县丞代为交涉。";
+    }
+    components.appendNegotiationMessage("player", showText, {
+      speakerRole: speakerRole,
+      speakerName: speakerName,
+    });
     input.value = "";
 
-    api.sendNegotiationChat(g.id, session.id, message)
+    api.sendNegotiationChat(g.id, session.id, message, speakerRole)
       .then(function (result) {
         // Show agent response
         components.appendNegotiationMessage("agent", result.dialogue);
@@ -413,6 +525,10 @@
           api.getGame(g.id).then(function (data) {
             Game.setGame(data);
           });
+        } else if (result.handoff_to_player) {
+          if (speakerSelect) speakerSelect.value = "PLAYER";
+          syncNegotiationInputMode();
+          components.showToast(result.handoff_message || "委托交涉未果，请你亲自出面", "info");
         }
       })
       .catch(function (err) {
@@ -421,7 +537,9 @@
       .finally(function () {
         sendBtn.disabled = false;
         input.disabled = false;
-        input.focus();
+        if (speakerSelect) speakerSelect.disabled = false;
+        syncNegotiationInputMode();
+        if (!input.classList.contains("hidden")) input.focus();
       });
   }
 
@@ -432,6 +550,9 @@
       sendNegotiationMessage();
     }
   });
+  if (el("nego-speaker")) {
+    el("nego-speaker").addEventListener("change", syncNegotiationInputMode);
+  }
 
   // Start irrigation negotiation (from village buttons)
   document.addEventListener("click", function (e) {
@@ -451,6 +572,7 @@
         components.renderNegotiationBanner();
         components.renderIrrigationNegotiateSection();
         components.openNegotiationModal(session);
+        syncNegotiationInputMode();
         components.showToast("已与" + villageName + "地主开始协商", "success");
       })
       .catch(function (err) {
@@ -461,6 +583,22 @@
   });
 
   // ==================== Agent Profile ====================
+  document.addEventListener("click", function (e) {
+    var villageLink = e.target.closest(".village-name-link");
+    if (!villageLink) return;
+    var villageName = villageLink.dataset.villageName;
+    if (!villageName || !components.openVillageDetail) return;
+    components.openVillageDetail(villageName);
+  });
+
+  el("village-detail-close").addEventListener("click", function () {
+    el("village-detail-modal").classList.add("hidden");
+  });
+
+  el("village-detail-modal").addEventListener("click", function (e) {
+    if (e.target === this) this.classList.add("hidden");
+  });
+
   document.addEventListener("click", function (e) {
     var link = e.target.closest(".agent-link");
     if (!link) return;

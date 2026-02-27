@@ -3,10 +3,33 @@
 import random
 
 from ..models import EventLog
+from .ledger import ensure_county_ledgers, ensure_village_ledgers
 
 
 class DisasterMixin:
     """环境漂移与灾害判定"""
+
+    @staticmethod
+    def _overdevelopment_bonus(county):
+        """过度开发灾害概率加成 (doc 06a §2.5)。
+        各村 utilization > 90% 时，每超出1%→洪灾/旱灾概率+0.2pp，多村叠加。
+        """
+        ensure_county_ledgers(county)
+        bonus = 0.0
+        for v in county.get('villages', []):
+            ceiling = v.get('land_ceiling', 0)
+            if ceiling <= 0:
+                continue
+            ensure_village_ledgers(v)
+            peasant_land = v.get("peasant_ledger", {}).get("farmland", 0)
+            gentry_registered = v.get("gentry_ledger", {}).get("registered_farmland", 0)
+            gentry_hidden = v.get("gentry_ledger", {}).get("hidden_farmland", 0)
+            cultivated = peasant_land + gentry_registered + gentry_hidden
+            utilization = cultivated / ceiling
+            if utilization > 0.9:
+                # 1% over (0.01) -> +0.002 probability (= +0.2pp)
+                bonus += (utilization - 0.9) * 0.2
+        return bonus
 
     @classmethod
     def _drift_environment(cls, county, report):
@@ -35,20 +58,22 @@ class DisasterMixin:
     @classmethod
     def _disaster_check_data(cls, county, report):
         """Summer disaster check — pure data, no EventLog creation."""
+        ensure_county_ledgers(county)
         env = county["environment"]
         medical_level = county.get("medical_level", 0)
         medical_mult = 0.85 ** medical_level
         irr_level = county.get("irrigation_level", 0)
+        overdev = cls._overdevelopment_bonus(county)
 
         disaster_table = [
             (
                 "flood",
                 max(0.02 if env["flood_risk"] > 0 else 0,
-                    env["flood_risk"] * (1 - irr_level * 0.1)),
+                    env["flood_risk"] * (1 - irr_level * 0.1)) + overdev,
                 (0.4, 0.7),
                 -10,
             ),
-            ("drought", 0.15 * (1 - env["agriculture_suitability"]), (0.3, 0.6), -8),
+            ("drought", 0.15 * (1 - env["agriculture_suitability"]) + overdev, (0.3, 0.6), -8),
             ("locust", 0.08, (0.2, 0.4), -5),
             ("plague", 0.05 * medical_mult, (0.05, 0.15), -15),
         ]
@@ -82,9 +107,15 @@ class DisasterMixin:
                 if dtype == "plague":
                     total_pop_loss = 0
                     for village in county["villages"]:
+                        ensure_village_ledgers(village)
                         loss_rate = random.uniform(0.02, severity / 5)
-                        pop_loss = int(village["population"] * loss_rate)
-                        village["population"] = max(0, village["population"] - pop_loss)
+                        base_pop = village.get("peasant_ledger", {}).get(
+                            "registered_population", village.get("population", 0)
+                        )
+                        pop_loss = int(base_pop * loss_rate)
+                        new_pop = max(0, base_pop - pop_loss)
+                        village["peasant_ledger"]["registered_population"] = new_pop
+                        village["population"] = new_pop
                         total_pop_loss += pop_loss
                     report["events"].append(
                         f"疫病突袭！全县染疫，"
@@ -102,23 +133,25 @@ class DisasterMixin:
     @classmethod
     def _summer_disaster_check(cls, game, county, report):
         """Summer: roll for disasters (doc 06 §3)."""
+        ensure_county_ledgers(county)
         env = county["environment"]
         medical_level = county.get("medical_level", 0)
         medical_mult = 0.85 ** medical_level
         irr_level = county.get("irrigation_level", 0)
+        overdev = cls._overdevelopment_bonus(county)
 
         # Disaster candidates: (type, probability, severity_range, base_morale_hit)
         disaster_table = [
             (
                 "flood",
                 max(0.02 if env["flood_risk"] > 0 else 0,
-                    env["flood_risk"] * (1 - irr_level * 0.1)),
+                    env["flood_risk"] * (1 - irr_level * 0.1)) + overdev,
                 (0.4, 0.7),
                 -10,
             ),
             (
                 "drought",
-                0.15 * (1 - env["agriculture_suitability"]),
+                0.15 * (1 - env["agriculture_suitability"]) + overdev,
                 (0.3, 0.6),
                 -8,
             ),
@@ -166,9 +199,15 @@ class DisasterMixin:
                 if dtype == "plague":
                     total_pop_loss = 0
                     for village in county["villages"]:
+                        ensure_village_ledgers(village)
                         loss_rate = random.uniform(0.02, severity / 5)
-                        pop_loss = int(village["population"] * loss_rate)
-                        village["population"] = max(0, village["population"] - pop_loss)
+                        base_pop = village.get("peasant_ledger", {}).get(
+                            "registered_population", village.get("population", 0)
+                        )
+                        pop_loss = int(base_pop * loss_rate)
+                        new_pop = max(0, base_pop - pop_loss)
+                        village["peasant_ledger"]["registered_population"] = new_pop
+                        village["population"] = new_pop
                         total_pop_loss += pop_loss
                     report["events"].append(
                         f"疫病突袭！全县染疫，"

@@ -46,3 +46,33 @@ class InvestmentAvailableActionsTests(SimpleTestCase):
             actions["fund_village_school"]["disabled_reason"],
         )
 
+    def test_reclaim_land_warning_threshold_is_strictly_above_85_percent(self):
+        county = self._build_county([False, False])
+        county["villages"] = [
+            {
+                "name": "甲村",
+                "population": 1000,
+                "farmland": 850,
+                "hidden_land": 0,
+                "land_ceiling": 1000,
+                "gentry_land_pct": 0.3,
+            },
+            {
+                "name": "乙村",
+                "population": 1000,
+                "farmland": 851,
+                "hidden_land": 0,
+                "land_ceiling": 1000,
+                "gentry_land_pct": 0.3,
+            },
+        ]
+
+        actions = {
+            item["action"]: item
+            for item in InvestmentService.get_available_actions(county)
+        }
+        warnings = actions["reclaim_land"].get("village_warnings", [])
+        warned_villages = {w["village"] for w in warnings}
+
+        self.assertNotIn("甲村", warned_villages)  # exactly 85.0%
+        self.assertIn("乙村", warned_villages)     # 85.1%

@@ -32,8 +32,9 @@ class CommercialConsumptionTests(SimpleTestCase):
 
         total_pop = 1500
         base_monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12
-        annual_consumption = base_monthly_consumption * 12
-        monthly_pcs = ((900000 - annual_consumption) / total_pop) / 12
+        months_to_harvest = 8
+        remaining_consumption = base_monthly_consumption * months_to_harvest
+        monthly_pcs = ((900000 - remaining_consumption) / total_pop) / months_to_harvest
 
         ratio = monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD
         expected_multiplier = 1 + ratio * ratio * 0.1
@@ -47,7 +48,7 @@ class CommercialConsumptionTests(SimpleTestCase):
         self.assertGreater(county["peasant_surplus"]["monthly_consumption"], round(base_monthly_consumption))
 
     def test_no_excess_consumption_when_surplus_below_threshold(self):
-        county = self._build_county(reserve=600000)
+        county = self._build_county(reserve=450000)
         report = {"events": []}
         month = 1
 
@@ -56,5 +57,5 @@ class CommercialConsumptionTests(SimpleTestCase):
 
         SettlementService._update_commercial(county, month, report)
 
-        actual_consumption = 600000 - county["peasant_grain_reserve"]
+        actual_consumption = 450000 - county["peasant_grain_reserve"]
         self.assertAlmostEqual(actual_consumption, base_monthly_consumption, places=6)

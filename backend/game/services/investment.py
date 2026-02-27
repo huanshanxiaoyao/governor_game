@@ -6,6 +6,7 @@ from .constants import (
     INFRA_MAX_LEVEL, INFRA_TYPES,
     calculate_infra_cost, calculate_infra_months,
 )
+from .ledger import ensure_county_ledgers, ensure_village_ledgers
 
 
 class InvestmentService:
@@ -114,6 +115,7 @@ class InvestmentService:
         验证投资操作是否合法。
         Returns (is_valid: bool, reason: str). reason 为空字符串表示合法。
         """
+        ensure_county_ledgers(county)
         if action not in cls.INVESTMENT_TYPES:
             return False, f"未知的投资类型: {action}"
 
@@ -287,6 +289,7 @@ class InvestmentService:
     @classmethod
     def get_available_actions(cls, county):
         """Return list of investment actions with pre-calculated costs and disable reasons."""
+        ensure_county_ledgers(county)
         result = []
         for action, spec in cls.INVESTMENT_TYPES.items():
             actual_cost = cls.get_actual_cost(county, action)
@@ -311,7 +314,7 @@ class InvestmentService:
                 if reason:
                     disabled_reason = reason
 
-            result.append({
+            item = {
                 "action": action,
                 "name": spec["description"],
                 "cost": actual_cost,
@@ -319,7 +322,30 @@ class InvestmentService:
                 "disabled_reason": disabled_reason,
                 "current_level": current_level,
                 "max_level": max_level,
-            })
+            }
+
+            # 过度开发预警 (doc 06a §2.5): reclaim_land 时标记高利用率村庄
+            if action == "reclaim_land":
+                warnings = []
+                for v in county.get("villages", []):
+                    ensure_village_ledgers(v)
+                    ceiling = v.get("land_ceiling", 0)
+                    if ceiling <= 0:
+                        continue
+                    peasant_land = v.get("peasant_ledger", {}).get("farmland", 0)
+                    gentry_registered = v.get("gentry_ledger", {}).get("registered_farmland", 0)
+                    gentry_hidden = v.get("gentry_ledger", {}).get("hidden_farmland", 0)
+                    cultivated = peasant_land + gentry_registered + gentry_hidden
+                    utilization = cultivated / ceiling
+                    if utilization > 0.85:
+                        warnings.append({
+                            "village": v["name"],
+                            "utilization": round(utilization * 100, 1),
+                        })
+                if warnings:
+                    item["village_warnings"] = warnings
+
+            result.append(item)
         return result
 
     @classmethod

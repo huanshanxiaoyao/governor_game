@@ -168,6 +168,36 @@ class InvestView(APIView):
         )
 
 
+class RequestLandSurveyView(APIView):
+    """
+    POST /api/games/{id}/land-survey/  — request land survey for a village
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        village_name = request.data.get("village_name")
+        if not village_name:
+            return Response({"error": "请指定村庄"}, status=status.HTTP_400_BAD_REQUEST)
+
+        county = game.county_data
+        village_names = [v["name"] for v in county.get("villages", [])]
+        if village_name not in village_names:
+            return Response({"error": f"村庄 '{village_name}' 不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+        surveys = county.setdefault("pending_land_surveys", [])
+        if village_name not in surveys:
+            surveys.append(village_name)
+        game.county_data = county
+        game.save()
+
+        return Response({"success": True, "message": f"已安排{village_name}土地勘查，结果将在下月报告中呈报"})
+
+
 class AdvanceSeasonView(APIView):
     """
     POST /api/games/{id}/advance/  — advance to next season
@@ -632,7 +662,10 @@ class NegotiationChatView(APIView):
         serializer.is_valid(raise_exception=True)
 
         player_message = serializer.validated_data["message"]
-        result = NegotiationService.negotiate_round(game, session, player_message)
+        speaker_role = serializer.validated_data.get("speaker_role", "PLAYER")
+        result = NegotiationService.negotiate_round(
+            game, session, player_message, speaker_role=speaker_role,
+        )
 
         if 'error' in result:
             return Response(

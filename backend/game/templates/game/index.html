@@ -116,6 +116,17 @@
       </thead>
       <tbody id="village-tbody"></tbody>
     </table>
+
+    <!-- Village detail modal -->
+    <div id="village-detail-modal" class="modal hidden">
+      <div class="modal-content village-detail-content">
+        <div class="village-detail-header">
+          <h4 id="village-detail-title">村庄详情</h4>
+          <button id="village-detail-close" class="btn btn-small">关闭</button>
+        </div>
+        <div id="village-detail-body" class="village-detail-body"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Tab: Actions -->
@@ -229,6 +240,11 @@
     <div id="nego-messages" class="nego-messages"></div>
     <div id="nego-resolved" class="nego-resolved hidden"></div>
     <div id="nego-input-area" class="nego-input-area">
+      <select id="nego-speaker" class="nego-speaker">
+        <option value="PLAYER">县令亲谈</option>
+        <option value="ADVISOR">委托师爷</option>
+        <option value="DEPUTY">委托县丞</option>
+      </select>
       <input type="text" id="nego-input" class="nego-input" placeholder="输入你的话..." maxlength="500">
       <button id="nego-send" class="btn btn-primary btn-small">发言</button>
     </div>
@@ -272,6 +288,18 @@
       <button id="neighbor-detail-close" class="btn btn-small">关闭</button>
     </div>
     <div id="neighbor-detail-body" class="neighbor-detail-body"></div>
+  </div>
+</div>
+
+<!-- ==================== Advisor Warning Modal (过度开发) ==================== -->
+<div id="advisor-warning-modal" class="modal hidden">
+  <div class="modal-content modal-sm">
+    <h3 style="margin-top:0;color:#8b4513;">顾问谏言</h3>
+    <p id="advisor-warning-text" style="line-height:1.6;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+      <button id="advisor-warning-cancel" class="btn btn-small">等待勘查</button>
+      <button id="advisor-warning-proceed" class="btn btn-small btn-primary">立即开垦</button>
+    </div>
   </div>
 </div>
 

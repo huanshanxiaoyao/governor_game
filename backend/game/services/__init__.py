@@ -9,6 +9,7 @@ from .constants import (
     month_name,
     MAX_YIELD_PER_MU,
     ANNUAL_CONSUMPTION,
+    GENTRY_HELPER_FEE_RATE,
     BASE_GROWTH_RATE,
     GROWTH_RATE_CLAMP,
     CORVEE_PER_CAPITA,
@@ -33,6 +34,7 @@ from .neighbor import NeighborService
 from .agent import AgentService
 from .negotiation import NegotiationService
 from .promise import PromiseService
+from .llm_role_reviews import LLMRoleReviewService
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -43,6 +45,7 @@ __all__ = [
     "month_name",
     "MAX_YIELD_PER_MU",
     "ANNUAL_CONSUMPTION",
+    "GENTRY_HELPER_FEE_RATE",
     "BASE_GROWTH_RATE",
     "GROWTH_RATE_CLAMP",
     "CORVEE_PER_CAPITA",
@@ -66,4 +69,5 @@ __all__ = [
     "AgentService",
     "NegotiationService",
     "PromiseService",
+    "LLMRoleReviewService",
 ]

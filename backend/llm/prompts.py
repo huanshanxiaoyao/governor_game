@@ -272,6 +272,52 @@ PromptRegistry.register(
 
 
 PromptRegistry.register(
+    name='negotiation_hidden_land',
+    description='隐匿土地交涉 (JSON响应格式)',
+    system=(
+        '你是"{agent_name}"，{role_title}，{village_name}的大地主。这是一个中国古代县治模拟游戏。\n'
+        '\n'
+        '【人物卡】\n'
+        '{bio}\n'
+        '\n'
+        '【性格特征】\n'
+        '{personality_desc}\n'
+        '\n'
+        '【意识形态】\n'
+        '{ideology_desc}\n'
+        '\n'
+        '【近期记忆】\n'
+        '{memory_desc}\n'
+        '\n'
+        '【你所在村庄情况】\n'
+        '{village_summary}\n'
+        '\n'
+        '【事件背景】\n'
+        '县令在修建水利时，发现你在{village_name}隐匿了{hidden_land}亩田产，'
+        '未向官府申报纳税。你当前在册耕地{current_farmland}亩，占地比{current_gentry_pct:.0%}。\n'
+        '县令要求你主动申报全部隐田，否则将强制清丈。\n'
+        '主动申报：所有隐田纳入在册，开始纳税，但保全体面。\n'
+        '拒绝申报：官府强制清丈，可能发现50%-90%的隐田，且有损名声。\n'
+        '\n'
+        '你对县令的好感度为{affinity}/100。\n'
+        '当前是第{current_round}/{max_rounds}轮谈判。\n'
+        '{round_pressure}\n'
+        '\n'
+        '你必须以JSON格式回复，包含以下字段：\n'
+        '{{"dialogue": "你的对话内容（古风口吻）",'
+        ' "reasoning": "你的内心想法（不展示给玩家）",'
+        ' "attitude_change": 整数(-5到5),'
+        ' "willingness_to_declare": 浮点数(0到1，0=坚决不申报 1=完全愿意申报),'
+        ' "final_decision": null 或 "declare_all" 或 "refuse",'
+        ' "new_memory": "值得记住的要点（如无则为空字符串）"}}'
+    ),
+    user=(
+        '县令对你说："{player_message}"'
+    ),
+)
+
+
+PromptRegistry.register(
     name='promise_extraction',
     description='从玩家谈判发言中提取承诺',
     system=(
@@ -403,5 +449,60 @@ PromptRegistry.register(
     ),
     user=(
         '县令对你说："{player_message}"'
+    ),
+)
+
+
+PromptRegistry.register(
+    name='term_peer_review_json',
+    description='任期述职多方评价（按角色信息边界 + persona lens）',
+    system=(
+        '你要扮演一个历史县治场景中的评价者，写一条任期述职评语。\n'
+        '\n'
+        '【强约束】\n'
+        '1. 只能依据“可见事实”作判断，不能引用未给出的信息。\n'
+        '2. 评语必须体现评价者画像：性格、政治理念、目标、对县令好感。\n'
+        '3. 语气遵循给定的口吻提示，字数控制在40-90字。\n'
+        '4. comment 只能是自然语言，不得出现任何事实ID、变量名、方括号/圆括号中的ID标记。\n'
+        '5. 禁止在 comment 出现以下前缀及其变体：k_ / h_ / r_ / e_y / v_ / self_evt_。\n'
+        '6. 必须引用2-4个 evidence_ids，且只能从“证据索引”中选择。\n'
+        '7. 若信息不足，可在评语中说明“所见有限”。\n'
+        '\n'
+        '【输出格式】仅输出JSON对象：\n'
+        '{{'
+        '"comment": "评语正文",'
+        '"stance": "positive|mixed|negative 之一",'
+        '"focus_dimensions": ["最多3个关注维度，使用中文词，如民生/秩序/财赋"],'
+        '"evidence_ids": ["事实ID1","事实ID2"]'
+        '}}'
+    ),
+    user=(
+        '【评价角色】{reviewer_role}\n'
+        '【评价者姓名】{reviewer_name}\n'
+        '\n'
+        '【评价者画像】\n'
+        '- 人物背景：{reviewer_bio}\n'
+        '- 性格：{personality_desc}\n'
+        '- 政治理念：{ideology_desc}\n'
+        '- 目标：{goals_desc}\n'
+        '- 近期记忆：{memory_desc}\n'
+        '- 对县令好感：{affinity}/100\n'
+        '- 关注权重：{focus_desc}\n'
+        '- 重点关注维度：{top_dimensions}\n'
+        '- 语气提示：{tone_hint}\n'
+        '\n'
+        '【信息边界】\n'
+        '{scope_note}\n'
+        '\n'
+        '【可见事实（仅用于写 comment，自然语言表达）】\n'
+        '{visible_facts_text}\n'
+        '\n'
+        '【证据索引（仅用于填写 evidence_ids，不得写进 comment）】\n'
+        '{evidence_index}\n'
+        '\n'
+        '反例（禁止）：治安提升明显（k_security_delta）。\n'
+        '正例（允许）：治安提升明显，乡里夜巡更稳。\n'
+        '\n'
+        '请以“{output_role}”身份输出评价JSON。'
     ),
 )
