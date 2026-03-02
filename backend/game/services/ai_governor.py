@@ -11,7 +11,6 @@ from .constants import (
     MAX_MONTH,
     generate_governor_profile,
     month_name,
-    calculate_infra_cost,
     calculate_infra_maint,
 )
 from .investment import InvestmentService
@@ -95,6 +94,9 @@ class AIGovernorService:
                 events.extend(fb_events)
             if not executed.get('tax_done'):
                 fb_events = cls._fallback_tax(neighbor, county, profile)
+                events.extend(fb_events)
+            if not executed.get('commercial_tax_done'):
+                fb_events = cls._fallback_commercial_tax(neighbor, county, profile)
                 events.extend(fb_events)
 
             # 保存 analysis 到 last_reasoning（前端展示用）
@@ -266,6 +268,7 @@ class AIGovernorService:
             'game_knowledge': game_knowledge,
             'available_investments': available_text,
             'tax_rate': f"{county.get('tax_rate', 0.12):.0%}",
+            'commercial_tax_rate': f"{county.get('commercial_tax_rate', 0.03):.0%}",
             'medical_level': current_medical,
             'medical_costs_desc': medical_costs_desc,
             'season': season,
@@ -392,7 +395,7 @@ class AIGovernorService:
     def _execute_decisions(cls, neighbor, county, season, result):
         """验证并执行LLM返回的决策，返回 (events, executed_flags)"""
         events = []
-        executed = {'investment_done': False, 'tax_done': False}
+        executed = {'investment_done': False, 'tax_done': False, 'commercial_tax_done': False}
         decisions = result.get('decisions', {})
         if not isinstance(decisions, dict):
             return events, executed
@@ -446,6 +449,24 @@ class AIGovernorService:
             except (ValueError, TypeError):
                 pass
 
+        # 3. 调整商税税率
+        new_ctax = decisions.get('commercial_tax_rate')
+        if new_ctax is not None:
+            try:
+                new_ctax = float(new_ctax)
+                if new_ctax > 1:
+                    new_ctax = new_ctax / 100.0
+                new_ctax = max(0.01, min(0.05, new_ctax))
+                old_ctax = county.get('commercial_tax_rate', 0.03)
+                if abs(new_ctax - old_ctax) > 0.001:
+                    county['commercial_tax_rate'] = round(new_ctax, 2)
+                    events.append(
+                        f"{neighbor.governor_name}调整商税税率: "
+                        f"{old_ctax:.0%} → {new_ctax:.0%}")
+                executed['commercial_tax_done'] = True
+            except (ValueError, TypeError):
+                pass
+
         return events, executed
 
     @classmethod
@@ -455,63 +476,33 @@ class AIGovernorService:
         if not is_valid:
             return []
 
+        actual_cost, _msg = InvestmentService.apply_effects(
+            county, investment, season, target_village)
+
         spec = InvestmentService.INVESTMENT_TYPES[investment]
-        price_index = county.get('price_index', 1.0)
-        actual_cost = InvestmentService.get_actual_cost(county, investment)
 
-        # 扣费
-        county["treasury"] -= actual_cost
-        events = []
-
-        # 立即生效的投资
+        # Build AI-governor-flavored event description
         if investment == "hire_bailiffs":
-            county["bailiff_level"] += 1
-            county["security"] = min(100, county["security"] + 8)
-            admin_increase = round(40 * price_index)
-            county["admin_cost"] += admin_increase
-            if "admin_cost_detail" in county:
-                county["admin_cost_detail"]["bailiff_cost"] += admin_increase
-            events.append(
-                f"{neighbor.governor_name}增设衙役，等级升至{county['bailiff_level']}，"
-                f"治安+8，花费{actual_cost}两")
+            evt = (f"{neighbor.governor_name}增设衙役，等级升至{county['bailiff_level']}，"
+                   f"治安+8，花费{actual_cost}两")
         elif investment == "build_granary":
-            county["has_granary"] = True
-            county["morale"] = min(100, county["morale"] + 5)
-            events.append(
-                f"{neighbor.governor_name}建成义仓，民心+5，"
-                f"秋季灾害人口损失×0.65，花费{actual_cost}两")
+            evt = (f"{neighbor.governor_name}建成义仓，民心+5，"
+                   f"秋季灾害人口损失×0.65，花费{actual_cost}两")
         elif investment == "relief":
-            county["disaster_this_year"]["relieved"] = True
-            county["morale"] = min(100, county["morale"] + 8)
-            events.append(
-                f"{neighbor.governor_name}实施赈灾，民心+8，"
-                f"秋季灾害人口损失×0.65，花费{actual_cost}两")
+            evt = (f"{neighbor.governor_name}实施赈灾，民心+8，"
+                   f"秋季灾害人口损失×0.65，花费{actual_cost}两")
         else:
-            # 延迟投资
-            if investment == "reclaim_land":
-                harvest_months = [m for m in [9, 21, 33] if m > season]
-                completion = harvest_months[0] if harvest_months else MAX_MONTH + 1
-            else:
-                delay = InvestmentService.get_delay_months(county, investment)
-                completion = season + delay
+            completion = None
+            for inv in county.get("active_investments", []):
+                if inv["action"] == investment and inv["started_season"] == season:
+                    completion = inv["completion_season"]
+                    break
+            comp_text = month_name(completion) if completion and completion <= MAX_MONTH else "任期后"
+            evt = (f"{neighbor.governor_name}投资{spec['description']}"
+                   f"{'（' + target_village + '）' if target_village else ''}，"
+                   f"花费{actual_cost}两，预计{comp_text}完成")
 
-            inv_record = {
-                "action": investment,
-                "started_season": season,
-                "completion_season": completion,
-                "description": spec["description"],
-            }
-            if target_village:
-                inv_record["target_village"] = target_village
-
-            county["active_investments"].append(inv_record)
-            comp_text = month_name(completion) if completion <= MAX_MONTH else "任期后"
-            events.append(
-                f"{neighbor.governor_name}投资{spec['description']}"
-                f"{'（' + target_village + '）' if target_village else ''}，"
-                f"花费{actual_cost}两，预计{comp_text}完成")
-
-        return events
+        return [evt]
 
     # ==================== 规则引擎（兜底决策） ====================
 
@@ -521,6 +512,7 @@ class AIGovernorService:
         events = []
         events.extend(cls._fallback_investment(neighbor, county, season, profile))
         events.extend(cls._fallback_tax(neighbor, county, profile))
+        events.extend(cls._fallback_commercial_tax(neighbor, county, profile))
         return events
 
     @classmethod
@@ -667,6 +659,34 @@ class AIGovernorService:
             events.append(
                 f"{neighbor.governor_name}调整税率: "
                 f"{old_tax:.0%} → {new_tax:.0%}")
+        return events
+
+    @classmethod
+    def _fallback_commercial_tax(cls, neighbor, county, profile):
+        """规则引擎决定商税税率"""
+        goals = profile.get("goals", {})
+        reputation_w = goals.get("reputation", 0.2)
+        wealth_w = goals.get("wealth", 0.15)
+        commercial = county.get("commercial", 30)
+        old_ctax = county.get("commercial_tax_rate", 0.03)
+
+        # 基准：政绩型倾向提高商税，保守型维持现状
+        target = 0.03 + (reputation_w - 0.2) * 0.05 + (wealth_w - 0.15) * 0.03
+
+        # 商业繁荣 → 可适当提高
+        if commercial >= 60:
+            target += 0.005
+        # 商业萧条 → 降低以扶持
+        elif commercial < 30:
+            target -= 0.005
+
+        new_ctax = round(max(0.01, min(0.05, target)), 2)
+        events = []
+        if abs(new_ctax - old_ctax) > 0.005:
+            county['commercial_tax_rate'] = new_ctax
+            events.append(
+                f"{neighbor.governor_name}调整商税税率: "
+                f"{old_ctax:.0%} → {new_ctax:.0%}")
         return events
 
     # ==================== 记忆系统 ====================

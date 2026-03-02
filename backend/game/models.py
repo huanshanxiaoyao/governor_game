@@ -315,3 +315,24 @@ class NeighborEventLog(models.Model):
 
     def __str__(self):
         return f"Neighbor#{self.neighbor_county_id} S{self.season}: [{self.category}] {self.event_type}"
+
+
+class NeighborPrecompute(models.Model):
+    """邻县AI决策预计算结果（持久化到DB，替代Redis缓存）"""
+    STATUS_CHOICES = [
+        ('computing', '计算中'),
+        ('done', '已完成'),
+    ]
+
+    game = models.OneToOneField(GameState, on_delete=models.CASCADE,
+                                related_name='neighbor_precompute')
+    season = models.IntegerField(help_text='预计算对应的月份')
+    results = models.JSONField(default=dict, help_text='各邻县AI决策结果')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='computing')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'neighbor_precomputes'
+
+    def __str__(self):
+        return f"Precompute Game#{self.game_id} S{self.season} [{self.status}]"

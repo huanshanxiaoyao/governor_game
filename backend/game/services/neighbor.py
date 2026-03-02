@@ -3,11 +3,9 @@
 import copy
 import logging
 import random
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from django.core.cache import cache as django_cache
-
-from ..models import NeighborCounty, NeighborEventLog
+from ..models import NeighborCounty, NeighborEventLog, NeighborPrecompute
 from .constants import (
     COUNTY_TYPES,
     GOVERNOR_STYLES,
@@ -22,11 +20,6 @@ from .settlement import SettlementService
 from .ai_governor import AIGovernorService
 
 logger = logging.getLogger('game')
-
-_PRECOMPUTE_CACHE_TTL = 1800  # 30分钟
-_CACHE_KEY_RESULTS = "neighbor_pre:{game_id}:{season}:results"
-_CACHE_KEY_LOCK = "neighbor_pre:{game_id}:{season}:lock"
-_CACHE_KEY_DONE = "neighbor_pre:{game_id}:{season}:done"
 
 
 class NeighborService:
@@ -142,46 +135,28 @@ class NeighborService:
 
     @classmethod
     def advance_all(cls, game, season):
-        """推进所有邻县：优先使用预计算缓存，正在计算中则等待"""
+        """推进所有邻县：优先使用DB预计算结果，否则并行同步计算"""
         neighbors = list(game.neighbors.all())
         if not neighbors:
             return
 
-        results_key = _CACHE_KEY_RESULTS.format(game_id=game.id, season=season)
-        lock_key = _CACHE_KEY_LOCK.format(game_id=game.id, season=season)
-        done_key = _CACHE_KEY_DONE.format(game_id=game.id, season=season)
+        # 检查DB预计算状态
+        precompute = NeighborPrecompute.objects.filter(
+            game=game, season=season, status='done',
+        ).first()
 
-        # 检查预计算状态
-        is_done = django_cache.get(done_key)
-        is_locked = django_cache.get(lock_key)
-
-        if is_done:
-            # 预计算已完成 — 直接使用
-            cached = django_cache.get(results_key) or {}
+        if precompute:
             logger.info("Using precomputed results for game %s season %s (%d neighbors)",
-                        game.id, season, len(cached))
-            decision_results = cls._apply_cached_results(neighbors, cached)
-        elif is_locked:
-            # 预计算正在进行 — 等待完成
-            logger.info("Precompute in progress for game %s season %s, waiting...",
-                        game.id, season)
-            cached = cls._wait_for_precompute(game.id, season, timeout=120)
-            if cached:
-                logger.info("Precompute finished, using cached results for game %s season %s",
-                            game.id, season)
-                decision_results = cls._apply_cached_results(neighbors, cached)
-            else:
-                logger.warning("Precompute wait timed out for game %s season %s, computing sync",
-                               game.id, season)
-                decision_results = cls._compute_decisions_sync(neighbors, season)
+                        game.id, season, len(precompute.results))
+            decision_results = cls._apply_cached_results(neighbors, precompute.results)
         else:
-            # 无预计算 — 同步计算
-            logger.info("No precompute for game %s season %s, computing synchronously",
+            # 无预计算或仍在计算中 — 并行同步计算（~10s）
+            logger.info("No precompute ready for game %s season %s, computing in parallel",
                         game.id, season)
             decision_results = cls._compute_decisions_sync(neighbors, season)
 
-        # 清除缓存
-        django_cache.delete_many([results_key, lock_key, done_key])
+        # 清除已消费的预计算记录
+        NeighborPrecompute.objects.filter(game=game).delete()
 
         # 物理结算 + 保存
         cls._settle_and_save(
@@ -206,31 +181,33 @@ class NeighborService:
         return decision_results
 
     @classmethod
-    def _wait_for_precompute(cls, game_id, season, timeout=120):
-        """轮询等待预计算完成，返回缓存结果或 None"""
-        done_key = _CACHE_KEY_DONE.format(game_id=game_id, season=season)
-        results_key = _CACHE_KEY_RESULTS.format(game_id=game_id, season=season)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if django_cache.get(done_key):
-                return django_cache.get(results_key) or {}
-            time.sleep(1)
-        return None
+    def _compute_single_decision(cls, neighbor, season):
+        """单个邻县LLM决策（在线程中调用，结束后关闭DB连接）"""
+        from django.db import connection
+        try:
+            events = AIGovernorService.make_decisions(neighbor, season)
+            return neighbor.id, events
+        except Exception as e:
+            logger.warning(
+                "AI governor decision failed for %s: %s",
+                neighbor.county_name, e,
+            )
+            return neighbor.id, []
+        finally:
+            connection.close()
 
     @classmethod
     def _compute_decisions_sync(cls, neighbors, season):
-        """逐个调用LLM做决策（同步阻塞，用于缓存未命中时）"""
+        """并行调用LLM做决策（ThreadPoolExecutor，~10s代替~50s）"""
         decision_results = {}
-        for neighbor in neighbors:
-            try:
-                decision_results[neighbor.id] = AIGovernorService.make_decisions(
-                    neighbor, season)
-            except Exception as e:
-                logger.warning(
-                    "AI governor decision failed for %s: %s",
-                    neighbor.county_name, e,
-                )
-                decision_results[neighbor.id] = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(cls._compute_single_decision, n, season): n
+                for n in neighbors
+            }
+            for future in as_completed(futures):
+                nid, events = future.result()
+                decision_results[nid] = events
         return decision_results
 
     @classmethod
@@ -310,24 +287,36 @@ class NeighborService:
 
     @classmethod
     def precompute_decisions(cls, game_id, season):
-        """后台预计算邻县AI决策，逐个完成存入缓存。在独立线程中运行。"""
+        """后台预计算邻县AI决策，并行完成后存入DB。在独立线程中运行。"""
         from django.db import connection
 
-        lock_key = _CACHE_KEY_LOCK.format(game_id=game_id, season=season)
-        results_key = _CACHE_KEY_RESULTS.format(game_id=game_id, season=season)
-        done_key = _CACHE_KEY_DONE.format(game_id=game_id, season=season)
-
         try:
-            # 设置锁（防止重复触发）
-            if not django_cache.add(lock_key, True, _PRECOMPUTE_CACHE_TTL):
+            # 使用 update_or_create 作为锁：如果已有 computing 状态的记录则跳过
+            precompute, created = NeighborPrecompute.objects.update_or_create(
+                game_id=game_id,
+                defaults={'season': season, 'status': 'computing', 'results': {}},
+            )
+            if not created and precompute.status == 'computing':
                 logger.info("Precompute already running for game %s season %s, skipping",
                             game_id, season)
                 return
+            if not created and precompute.status == 'done' and precompute.season == season:
+                logger.info("Precompute already done for game %s season %s, skipping",
+                            game_id, season)
+                return
+            # 确保状态为 computing（对于已有 done 记录但 season 不同的情况）
+            if not created:
+                precompute.season = season
+                precompute.status = 'computing'
+                precompute.results = {}
+                precompute.save(update_fields=['season', 'status', 'results', 'updated_at'])
 
             from ..models import GameState
             game = GameState.objects.get(id=game_id)
             neighbors = list(game.neighbors.all())
             if not neighbors:
+                precompute.status = 'done'
+                precompute.save(update_fields=['status', 'updated_at'])
                 return
 
             # 深拷贝避免线程间数据冲突
@@ -340,70 +329,77 @@ class NeighborService:
             logger.info("Starting precompute for game %s season %s (%d neighbors)",
                         game_id, season, len(neighbor_copies))
 
-            # 逐个计算，每完成一个就更新缓存
+            # 并行计算所有邻县
             results = {}
-            for nid, n_copy in neighbor_copies:
+
+            def _compute_one(nid, n_copy):
+                from django.db import connection as thread_conn
                 try:
                     events = AIGovernorService.make_decisions(n_copy, season)
-                    results[str(nid)] = {
+                    return nid, {
                         "events": events,
                         "county_data": n_copy.county_data,
                         "last_reasoning": getattr(n_copy, 'last_reasoning', ''),
                         "county_name": n_copy.county_name,
                         "governor_name": n_copy.governor_name,
                     }
-                    # 每完成一个就更新缓存（供前端轮询状态）
-                    django_cache.set(results_key, results, _PRECOMPUTE_CACHE_TTL)
-                    logger.info("Precomputed neighbor %s (%s) for game %s season %s [%d/%d]",
-                                n_copy.county_name, nid, game_id, season,
-                                len(results), len(neighbor_copies))
                 except Exception as e:
                     logger.warning(
                         "Precompute failed for neighbor %s (%s): %s",
                         n_copy.county_name, nid, e)
+                    return nid, None
+                finally:
+                    thread_conn.close()
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(_compute_one, nid, n_copy): nid
+                    for nid, n_copy in neighbor_copies
+                }
+                for future in as_completed(futures):
+                    nid, result = future.result()
+                    if result is not None:
+                        results[str(nid)] = result
+                    # 每完成一个就更新DB（供前端轮询状态）
+                    precompute.results = results
+                    precompute.save(update_fields=['results', 'updated_at'])
+                    logger.info("Precomputed neighbor %s for game %s season %s [%d/%d]",
+                                nid, game_id, season,
+                                len(results), len(neighbor_copies))
 
             # 标记完成
-            django_cache.set(done_key, True, _PRECOMPUTE_CACHE_TTL)
+            precompute.status = 'done'
+            precompute.save(update_fields=['status', 'updated_at'])
             logger.info("Precompute done for game %s season %s: %d/%d succeeded",
                         game_id, season, len(results), len(neighbor_copies))
 
         except Exception:
             logger.warning("Neighbor precompute failed", exc_info=True)
+            # 标记完成以免 advance 永远等
+            NeighborPrecompute.objects.filter(game_id=game_id).update(status='done')
         finally:
-            # 确保锁释放（即使出错也标记 done 以免 advance 永远等）
-            django_cache.set(done_key, True, _PRECOMPUTE_CACHE_TTL)
             connection.close()
 
     # ==================== 状态查询（供前端轮询） ====================
 
     @classmethod
     def get_precompute_status(cls, game_id, season):
-        """获取预计算进度，返回 {status, completed_neighbors, total}"""
-        lock_key = _CACHE_KEY_LOCK.format(game_id=game_id, season=season)
-        results_key = _CACHE_KEY_RESULTS.format(game_id=game_id, season=season)
-        done_key = _CACHE_KEY_DONE.format(game_id=game_id, season=season)
+        """获取预计算进度，返回 {status, completed, completed_count}"""
+        precompute = NeighborPrecompute.objects.filter(game_id=game_id).first()
 
-        is_done = django_cache.get(done_key)
-        is_locked = django_cache.get(lock_key)
-        results = django_cache.get(results_key) or {}
+        if not precompute or precompute.season != season:
+            return {"status": "idle", "completed": [], "completed_count": 0}
 
         completed = []
-        for nid, entry in results.items():
+        for nid, entry in precompute.results.items():
             completed.append({
                 "neighbor_id": int(nid),
                 "county_name": entry.get("county_name", ""),
                 "governor_name": entry.get("governor_name", ""),
             })
 
-        if is_done:
-            s = "done"
-        elif is_locked:
-            s = "computing"
-        else:
-            s = "idle"
-
         return {
-            "status": s,
+            "status": precompute.status if precompute.status in ('computing', 'done') else 'idle',
             "completed": completed,
             "completed_count": len(completed),
         }

@@ -132,7 +132,7 @@
       html += '<div class="nd-section"><h4>集市</h4>';
       cd.markets.forEach(function (m) {
         html += '<div class="nd-market">' + escapeHtml(m.name) +
-          ' — 商户' + m.merchants + '，贸易指数' + m.trade_index + '</div>';
+          ' — 商户' + m.merchants + '，月贸易额' + (m.gmv || 0) + '两</div>';
       });
       html += '</div>';
     }

@@ -64,6 +64,18 @@
     medical_maint: "医疗维护",
   };
 
+  var MEDICAL_NAMES = { 0: "无", 1: "初级", 2: "中级", 3: "高级" };
+
+  function calcMedicalCost(level, county) {
+    if (level <= 0) return 0;
+    var villages = county.villages || [];
+    var totalPop = 0;
+    for (var i = 0; i < villages.length; i++) totalPop += (villages[i].population || 0);
+    var pi = county.price_index || 1.0;
+    var scale = (totalPop / 10000) * pi;
+    return Math.round(5 * scale * Math.pow(2, level - 1));
+  }
+
   // Export core utilities
   var C = Game.components;
   C.INFRA_MAX_LEVEL = INFRA_MAX_LEVEL;
@@ -74,4 +86,6 @@
   C.escapeHtml = escapeHtml;
   C.showToast = showToast;
   C.ADMIN_COST_LABELS = ADMIN_COST_LABELS;
+  C.MEDICAL_NAMES = MEDICAL_NAMES;
+  C.calcMedicalCost = calcMedicalCost;
 })();
