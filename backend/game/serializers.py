@@ -93,7 +93,7 @@ class GameDetailSerializer(serializers.ModelSerializer):
 
     def get_available_investments(self, obj):
         from .services import InvestmentService
-        return InvestmentService.get_available_actions(obj.county_data)
+        return InvestmentService.get_available_actions(obj.county_data, season=obj.current_season)
 
 
 class GameListSerializer(serializers.ModelSerializer):

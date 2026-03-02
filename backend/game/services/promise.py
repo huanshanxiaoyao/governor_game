@@ -138,11 +138,44 @@ class PromiseService:
                 cls._resolve_promise(promise, game, 'FULFILLED')
                 events.append(f'承诺已履行：{promise.description}（清名+3）')
             elif game.current_season >= promise.deadline_season:
-                # Deadline reached without fulfillment
-                cls._resolve_promise(promise, game, 'BROKEN')
-                events.append(f'承诺已违约：{promise.description}（清名-5）')
+                # Deadline reached — but defer if project is still under construction
+                if cls._is_in_construction(promise, game):
+                    events.append(f'承诺延期：{promise.description}（项目建设中，暂不计为违约）')
+                else:
+                    cls._resolve_promise(promise, game, 'BROKEN')
+                    events.append(f'承诺已违约：{promise.description}（清名-5）')
 
         return events
+
+    # Promise type → investment action 映射（仅限基建/延迟类投资）
+    _TYPE_TO_ACTION = {
+        'BUILD_SCHOOL': 'fund_village_school',
+        'BUILD_IRRIGATION': 'build_irrigation',
+        'RECLAIM_LAND': 'reclaim_land',
+        'REPAIR_ROADS': 'repair_roads',
+        'BUILD_GRANARY': 'build_granary',
+        'BUILD_MEDICAL': 'build_medical',
+    }
+
+    @classmethod
+    def _is_in_construction(cls, promise, game):
+        """检查承诺对应的项目是否仍在建设中（active_investments）。"""
+        county = game.county_data
+        active = county.get('active_investments', [])
+
+        action = cls._TYPE_TO_ACTION.get(promise.promise_type)
+        if not action:
+            return False
+
+        target_village = promise.context.get('target_village')
+        for inv in active:
+            if inv.get('action') != action:
+                continue
+            # 对村庄定向投资，还需匹配村庄
+            if target_village and inv.get('target_village') and inv['target_village'] != target_village:
+                continue
+            return True
+        return False
 
     @classmethod
     def _validate_promise(cls, promise, game):

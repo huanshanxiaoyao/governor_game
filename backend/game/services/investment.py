@@ -2,7 +2,7 @@
 
 from ..models import EventLog
 from .constants import (
-    MAX_MONTH, month_name,
+    MAX_MONTH, month_name, month_of_year,
     INFRA_MAX_LEVEL, INFRA_TYPES,
     calculate_infra_cost, calculate_infra_months,
 )
@@ -110,10 +110,11 @@ class InvestmentService:
         return spec.get("delay_months", 0)
 
     @classmethod
-    def validate(cls, county, action, target_village=None):
+    def validate(cls, county, action, target_village=None, season=None):
         """
         验证投资操作是否合法。
         Returns (is_valid: bool, reason: str). reason 为空字符串表示合法。
+        season: 可选，传入时检查月份限制（如开垦荒地不可在七月八月）。
         """
         ensure_county_ledgers(county)
         if action not in cls.INVESTMENT_TYPES:
@@ -121,6 +122,12 @@ class InvestmentService:
 
         spec = cls.INVESTMENT_TYPES[action]
         actual_cost = cls.get_actual_cost(county, action)
+
+        # 月份限制：开垦荒地不可在七月八月（农忙时节）
+        if action == "reclaim_land" and season is not None:
+            moy = month_of_year(season)
+            if moy in (7, 8):
+                return False, "七月八月农忙时节，不宜开垦荒地"
 
         # 资金检查
         if county.get("treasury", 0) < actual_cost:
@@ -169,30 +176,14 @@ class InvestmentService:
         return True, ""
 
     @classmethod
-    def execute(cls, game, action, target_village=None):
+    def apply_effects(cls, county, action, season, target_village=None):
+        """Pure-data investment application — no game.save(), no EventLog.
+        Shared by player execute() and AI governor paths.
+        Returns (actual_cost, message).
         """
-        Execute an investment action.
-        Returns (success: bool, message: str).
-        """
-        county = game.county_data
-
-        if game.current_season > MAX_MONTH:
-            return False, "游戏已结束，无法投资"
-
-        # Validate
-        is_valid, reason = cls.validate(county, action, target_village)
-        if not is_valid:
-            return False, reason
-
         spec = cls.INVESTMENT_TYPES[action]
         price_index = county.get("price_index", 1.0)
         actual_cost = cls.get_actual_cost(county, action)
-
-        # Find village index if needed
-        village_idx = None
-        if spec["requires_village"] and target_village:
-            village_names = [v["name"] for v in county["villages"]]
-            village_idx = village_names.index(target_village)
 
         # Deduct cost
         county["treasury"] -= actual_cost
@@ -205,69 +196,75 @@ class InvestmentService:
             county["admin_cost"] += admin_increase
             if "admin_cost_detail" in county:
                 county["admin_cost_detail"]["bailiff_cost"] += admin_increase
-            game.county_data = county
-            game.save()
             msg = f"衙役等级提升至{county['bailiff_level']}，治安+8，年行政开支+{admin_increase}两"
-            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
-            return True, msg
+            return actual_cost, msg
 
         if action == "build_granary":
             county["has_granary"] = True
             county["morale"] = min(100, county["morale"] + 5)
-            game.county_data = county
-            game.save()
             msg = "义仓建成，民心+5，秋季灾害人口损失×0.65"
-            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
-            return True, msg
+            return actual_cost, msg
 
         if action == "relief":
             county["disaster_this_year"]["relieved"] = True
             county["morale"] = min(100, county["morale"] + 8)
-            game.county_data = county
-            game.save()
             msg = "赈灾救济已实施，民心+8，秋季灾害人口损失×0.65"
-            cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
-            return True, msg
+            return actual_cost, msg
 
         # Delayed investments: compute completion month
-        current = game.current_season
         if action == "reclaim_land":
-            # Completes at next 九月 (harvest): months 9, 21, 33
-            harvest_months = [m for m in [9, 21, 33] if m > current]
-            if not harvest_months:
-                completion = MAX_MONTH + 1  # won't complete in this game
-            else:
-                completion = harvest_months[0]
+            completion = season + 2
         else:
             delay = cls.get_delay_months(county, action)
-            completion = current + delay
+            completion = season + delay
 
         investment = {
             "action": action,
-            "started_season": current,
+            "started_season": season,
             "completion_season": completion,
             "description": spec["description"],
         }
-        if village_idx is not None:
+        if spec["requires_village"] and target_village:
             investment["target_village"] = target_village
 
         county["active_investments"].append(investment)
-        game.county_data = county
-        game.save()
 
         if completion > MAX_MONTH:
             msg = f"{spec['description']}已启动（花费{actual_cost}两），但将在任期结束后才完成"
         else:
             msg = f"{spec['description']}已启动（花费{actual_cost}两），预计{month_name(completion)}完成"
 
+        return actual_cost, msg
+
+    @classmethod
+    def execute(cls, game, action, target_village=None):
+        """
+        Execute an investment action (player path).
+        Returns (success: bool, message: str).
+        """
+        county = game.county_data
+
+        if game.current_season > MAX_MONTH:
+            return False, "游戏已结束，无法投资"
+
+        # Validate
+        is_valid, reason = cls.validate(county, action, target_village, season=game.current_season)
+        if not is_valid:
+            return False, reason
+
+        actual_cost, msg = cls.apply_effects(
+            county, action, game.current_season, target_village)
+
         if action == 'build_irrigation':
             msg += '。您可以与各村地主协商，请其出资分担费用。'
 
+        game.county_data = county
+        game.save()
         cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
         return True, msg
 
     @classmethod
-    def _get_target_village_disabled_reason(cls, county, action):
+    def _get_target_village_disabled_reason(cls, county, action, season=None):
         """For village-targeted actions, return disable reason or None if any village is eligible."""
         village_names = [v.get("name") for v in county.get("villages", []) if v.get("name")]
         if not village_names:
@@ -275,7 +272,7 @@ class InvestmentService:
 
         reasons = []
         for village_name in village_names:
-            is_valid, reason = cls.validate(county, action, village_name)
+            is_valid, reason = cls.validate(county, action, village_name, season=season)
             if is_valid:
                 return None
             reasons.append(reason)
@@ -287,7 +284,7 @@ class InvestmentService:
         return "暂无可选目标村庄"
 
     @classmethod
-    def get_available_actions(cls, county):
+    def get_available_actions(cls, county, season=None):
         """Return list of investment actions with pre-calculated costs and disable reasons."""
         ensure_county_ledgers(county)
         result = []
@@ -308,9 +305,9 @@ class InvestmentService:
             disabled_reason = None
             if spec["requires_village"]:
                 # For village-targeted actions, only disable when no valid village can be selected.
-                disabled_reason = cls._get_target_village_disabled_reason(county, action)
+                disabled_reason = cls._get_target_village_disabled_reason(county, action, season=season)
             else:
-                _, reason = cls.validate(county, action)
+                _, reason = cls.validate(county, action, season=season)
                 if reason:
                     disabled_reason = reason
 

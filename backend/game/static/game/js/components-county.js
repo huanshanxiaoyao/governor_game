@@ -224,6 +224,32 @@
 
     // Active promises
     loadActivePromises();
+
+    // Negotiation count indicator
+    loadActiveNegotiations();
+  }
+
+  function loadActiveNegotiations() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var container = el("negotiation-count-info");
+    if (!container) return;
+
+    Game.api.getActiveNegotiations(g.id)
+      .then(function (data) {
+        var negotiations = data.negotiations || [];
+        Game.state.activeNegotiations = negotiations;
+        container.innerHTML = "";
+        if (negotiations.length > 0) {
+          var link = h("div", "negotiation-count-link",
+            '<a href="#" id="nego-count-goto">现在有 ' + negotiations.length + ' 个谈判进行中</a>');
+          container.appendChild(link);
+        }
+      })
+      .catch(function () {
+        Game.state.activeNegotiations = [];
+        container.innerHTML = "";
+      });
   }
 
   function loadActivePromises() {
@@ -1117,6 +1143,7 @@
   C.renderHeader = renderHeader;
   C.renderDashboard = renderDashboard;
   C.loadActivePromises = loadActivePromises;
+  C.loadActiveNegotiations = loadActiveNegotiations;
   C.renderPromises = renderPromises;
   C.renderVillages = renderVillages;
   C.openVillageDetail = openVillageDetail;

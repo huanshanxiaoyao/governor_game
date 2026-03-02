@@ -84,6 +84,9 @@
     getActiveNegotiation: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/negotiations/active/");
     },
+    getActiveNegotiations: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/negotiations/active-list/");
+    },
     sendNegotiationChat: function (gameId, sessionId, message, speakerRole) {
       var body = { message: message };
       if (speakerRole) body.speaker_role = speakerRole;

@@ -22,6 +22,7 @@ urlpatterns = [
     path("games/<int:game_id>/promises/", views.PromiseListView.as_view(), name="game-promises"),
     # Negotiation endpoints
     path("games/<int:game_id>/negotiations/active/", views.ActiveNegotiationView.as_view(), name="negotiation-active"),
+    path("games/<int:game_id>/negotiations/active-list/", views.ActiveNegotiationsListView.as_view(), name="negotiation-active-list"),
     path("games/<int:game_id>/negotiations/start-irrigation/", views.StartIrrigationNegotiationView.as_view(), name="negotiation-start-irrigation"),
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
     # Neighbor counties

@@ -611,6 +611,25 @@ class ActiveNegotiationView(APIView):
         return Response({"active": True, "session": serializer.data})
 
 
+class ActiveNegotiationsListView(APIView):
+    """
+    GET /api/games/{id}/negotiations/active-list/  — get all active negotiations
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        sessions = NegotiationSession.objects.filter(
+            game=game, status='active',
+        ).select_related('agent').order_by('id')
+        serializer = NegotiationSessionSerializer(sessions, many=True)
+        return Response({"negotiations": serializer.data})
+
+
 class NegotiationChatView(APIView):
     """
     POST /api/games/{id}/negotiations/{session_id}/chat/  — send negotiation message

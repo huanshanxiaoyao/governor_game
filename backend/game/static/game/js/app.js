@@ -72,6 +72,8 @@
         .then(function (data) {
           components.showToast("新游戏已创建", "success");
           Game.setGame(data);
+          api.precomputeNeighbors(data.id).catch(function () {});
+          startPrecomputePolling(data.id);
           screens.show("screen-game");
           screens.showTab("tab-dashboard");
         })
@@ -96,6 +98,8 @@
           });
         }
         Game.setGame(data);
+        api.precomputeNeighbors(data.id).catch(function () {});
+        startPrecomputePolling(data.id);
         screens.show("screen-game");
         screens.showTab("tab-dashboard");
       })
@@ -553,6 +557,38 @@
   if (el("nego-speaker")) {
     el("nego-speaker").addEventListener("change", syncNegotiationInputMode);
   }
+
+  // Negotiation count link → switch to 人脉 tab and scroll to first negotiating agent
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest("#nego-count-goto");
+    if (!link) return;
+    e.preventDefault();
+    screens.showTab("tab-relationships");
+    // After tab renders, scroll to first agent with active negotiation
+    setTimeout(function () {
+      var negotiations = Game.state.activeNegotiations || [];
+      if (negotiations.length > 0) {
+        var cardEl = document.getElementById("agent-card-" + negotiations[0].agent_name);
+        if (cardEl) cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  });
+
+  // Enter negotiation from agent card badge
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".btn-nego-enter");
+    if (!btn) return;
+    var sessionId = parseInt(btn.dataset.sessionId);
+    var negotiations = Game.state.activeNegotiations || [];
+    for (var i = 0; i < negotiations.length; i++) {
+      if (negotiations[i].id === sessionId) {
+        Game.state.activeNegotiation = negotiations[i];
+        components.openNegotiationModal(negotiations[i]);
+        syncNegotiationInputMode();
+        return;
+      }
+    }
+  });
 
   // Start irrigation negotiation (from village buttons)
   document.addEventListener("click", function (e) {

@@ -305,8 +305,16 @@
       return;
     }
 
+    // Build lookup of active negotiations by agent name
+    var negoByAgent = {};
+    var activeNegos = Game.state.activeNegotiations || [];
+    activeNegos.forEach(function (s) {
+      negoByAgent[s.agent_name] = s;
+    });
+
     agents.forEach(function (a) {
       var card = h("div", "relationship-card");
+      card.id = "agent-card-" + a.name;
 
       // Affinity coloring
       var aff = a.affinity;
@@ -328,6 +336,17 @@
         '<div class="affinity-bar">' +
           '<div class="affinity-bar-fill" style="width:' + barPct.toFixed(1) + '%;background:' + barColor + ';"></div>' +
         '</div>';
+
+      // Negotiation badge
+      var agentNego = negoByAgent[a.name];
+      if (agentNego) {
+        var typeName = EVENT_TYPE_NAMES[agentNego.event_type] || agentNego.event_type;
+        html +=
+          '<div class="nego-agent-badge">' +
+            '<span class="nego-badge-text">' + typeName + '谈判进行中</span>' +
+            '<button class="btn btn-primary btn-small btn-nego-enter" data-session-id="' + agentNego.id + '">进入谈判</button>' +
+          '</div>';
+      }
 
       // Recent memories
       if (a.memory && a.memory.length > 0) {
