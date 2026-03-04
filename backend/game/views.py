@@ -20,13 +20,16 @@ from .serializers import (
     NeighborEventLogSerializer,
     NegotiationChatSerializer,
     NegotiationSessionSerializer,
+    FactionSerializer,
+    MonarchProfileSerializer,
+    OfficialAgentSerializer,
     PromiseSerializer,
     StartIrrigationSerializer,
     TaxRateSerializer,
 )
 from .services import (
     AgentService, CountyService, InvestmentService,
-    NegotiationService, NeighborService, SettlementService,
+    NegotiationService, NeighborService, OfficialdomService, SettlementService,
 )
 from .services.constants import MAX_MONTH
 
@@ -113,6 +116,9 @@ class GameListCreateView(APIView):
 
         # Create AI-governed neighbor counties
         NeighborService.create_neighbors(game)
+
+        # Initialize officialdom hierarchy (emperor, factions, officials)
+        OfficialdomService.initialize_officialdom(game)
 
         detail = GameDetailSerializer(game)
         return Response(detail.data, status=status.HTTP_201_CREATED)
@@ -922,3 +928,55 @@ class NeighborSummaryV2View(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(summary)
+
+
+class OfficialdomView(APIView):
+    """
+    GET /api/games/{id}/officialdom/  — 官场层级数据
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        data = OfficialdomService.get_officialdom(game)
+        if data is None:
+            return Response({
+                "available": False,
+                "message": "本局游戏尚未生成官场数据",
+            })
+
+        monarch_profile = data['monarch_profile']
+        emperor = data['emperor']
+
+        # 序列化省份数据
+        provinces_data = {}
+        for prov_name, prov_info in data.get('provinces', {}).items():
+            provinces_data[prov_name] = {
+                'governor': OfficialAgentSerializer(prov_info['governor']).data if prov_info['governor'] else None,
+                'commissioners': OfficialAgentSerializer(prov_info['commissioners'], many=True).data,
+                'prefects': OfficialAgentSerializer(prov_info['prefects'], many=True).data,
+            }
+
+        result = {
+            "available": True,
+            "monarch": {
+                "archetype": monarch_profile.archetype,
+                "archetype_display": monarch_profile.get_archetype_display(),
+                "agent": OfficialAgentSerializer(emperor).data if emperor else None,
+                "gameplay_attributes": monarch_profile.attributes,
+            },
+            "cabinet": OfficialAgentSerializer(data['cabinet'], many=True).data,
+            "ministries": {
+                name: OfficialAgentSerializer(agents, many=True).data
+                for name, agents in data['ministries'].items()
+            },
+            "censorate": OfficialAgentSerializer(data['censorate'], many=True).data,
+            "provinces": provinces_data,
+            "player_province": data.get('player_province', ''),
+            "factions": FactionSerializer(data['factions'], many=True).data,
+        }
+        return Response(result)

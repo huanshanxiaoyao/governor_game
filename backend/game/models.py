@@ -66,15 +66,31 @@ class Agent(models.Model):
     ]
 
     ROLE_CHOICES = [
+        # 县级
         ('ADVISOR', '师爷'),
         ('DEPUTY', '县丞'),
         ('PREFECT', '知府'),
         ('GENTRY', '士绅'),
         ('VILLAGER', '村民'),
+        # 官场体系
+        ('EMPEROR', '皇帝'),
+        ('CABINET_CHIEF', '内阁首辅'),
+        ('CABINET_MEMBER', '内阁成员'),
+        ('MINISTER', '尚书'),
+        ('VICE_MINISTER', '侍郎'),
+        ('CHIEF_CENSOR', '左都御史'),
+        ('VICE_CENSOR', '左副都御史'),
+        ('CENSOR', '监察御史'),
+        ('GOVERNOR_GENERAL', '总督'),
+        ('PROVINCIAL_GOVERNOR', '巡抚'),
+        ('PROVINCIAL_COMMISSIONER', '布政使/按察使'),
+        ('PREFECT_PEER', '知州'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='agents')
     name = models.CharField(max_length=50, help_text='名字')
+    source_name = models.CharField(max_length=50, blank=True, default='',
+                                   help_text='历史原型真名（如 徐阶）')
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, help_text='角色')
     role_title = models.CharField(max_length=50, help_text='显示称谓 (师爷/知府/地主/耆老/里长)')
     tier = models.CharField(max_length=5, choices=TIER_CHOICES, help_text='层级')
@@ -336,3 +352,55 @@ class NeighborPrecompute(models.Model):
 
     def __str__(self):
         return f"Precompute Game#{self.game_id} S{self.season} [{self.status}]"
+
+
+class MonarchProfile(models.Model):
+    """君主档案 — 每局游戏一个，决定全局政治气候"""
+    ARCHETYPE_CHOICES = [
+        ('diligent', '勤政型'),
+        ('delegating', '怠政型'),
+        ('moderate', '中庸型'),
+    ]
+
+    game = models.OneToOneField(GameState, on_delete=models.CASCADE,
+                                related_name='monarch')
+    agent = models.OneToOneField(Agent, on_delete=models.SET_NULL,
+                                 related_name='monarch_profile',
+                                 null=True, blank=True,
+                                 help_text='关联的皇帝Agent')
+    archetype = models.CharField(max_length=20, choices=ARCHETYPE_CHOICES,
+                                 help_text='君主原型')
+    attributes = models.JSONField(default=dict,
+                                  help_text='治国系数 (tax_pressure, corruption_risk等)')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'monarch_profiles'
+
+    def __str__(self):
+        return f"Monarch Game#{self.game_id} ({self.get_archetype_display()})"
+
+
+class Faction(models.Model):
+    """朝廷派系"""
+    game = models.ForeignKey(GameState, on_delete=models.CASCADE,
+                             related_name='factions')
+    name = models.CharField(max_length=50, help_text='派系名称')
+    ideology = models.JSONField(default=dict,
+                                help_text='派系意识形态 (state_vs_people等)')
+    leader = models.ForeignKey(Agent, on_delete=models.SET_NULL,
+                               null=True, blank=True,
+                               related_name='led_factions',
+                               help_text='派系领袖')
+    imperial_favor = models.IntegerField(default=50,
+                                         help_text='圣眷 (0-100)')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'factions'
+        indexes = [
+            models.Index(fields=['game']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} (圣眷:{self.imperial_favor}) - Game#{self.game_id}"

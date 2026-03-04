@@ -684,8 +684,18 @@
       loadStaffInfo();
     } else if (tabId === "tab-neighbors") {
       loadNeighbors();
+    } else if (tabId === "tab-officialdom") {
+      loadOfficialdom();
     }
   };
+
+  function loadOfficialdom() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    if (Game.officialdom && !Game.officialdom.loaded) {
+      Game.officialdom.load(g.id);
+    }
+  }
 
   function loadRelationships() {
     var g = Game.state.currentGame;

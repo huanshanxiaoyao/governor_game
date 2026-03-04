@@ -1,0 +1,1022 @@
+{
+  "北直隶": {
+    "description": "明永乐年间北直隶，包括顺天府等 8 府 2 直隶州",
+    "府州": [
+      {
+        "name": "顺天府",
+        "type": "府",
+        "description": "京师顺天府，领州 4 县 23"
+      },
+      {
+        "name": "保定府",
+        "type": "府",
+        "description": "保定府，领州 3 县 17"
+      },
+      {
+        "name": "河间府",
+        "type": "府",
+        "description": "河间府，领州 2 县 16"
+      },
+      {
+        "name": "真定府",
+        "type": "府",
+        "description": "真定府，领州 5 县 27"
+      },
+      {
+        "name": "顺德府",
+        "type": "府",
+        "description": "顺德府，领县 9"
+      },
+      {
+        "name": "广平府",
+        "type": "府",
+        "description": "广平府，领县 9"
+      },
+      {
+        "name": "大名府",
+        "type": "府",
+        "description": "大名府，领州 1 县 10"
+      },
+      {
+        "name": "永平府",
+        "type": "府",
+        "description": "永平府，领州 1 县 5"
+      },
+      {
+        "name": "隆庆州",
+        "type": "直隶州",
+        "description": "隆庆直隶州，领县 1"
+      },
+      {
+        "name": "保安州",
+        "type": "直隶州",
+        "description": "保安直隶州"
+      }
+    ]
+  },
+  "南直隶": {
+    "description": "明永乐年间南直隶，包括应天府等 14 府 4 直隶州",
+    "府州": [
+      {
+        "name": "应天府",
+        "type": "府",
+        "description": "南京应天府，领县 8"
+      },
+      {
+        "name": "凤阳府",
+        "type": "府",
+        "description": "中都凤阳府，领州 5 县 13"
+      },
+      {
+        "name": "淮安府",
+        "type": "府",
+        "description": "淮安府，领州 2 县 9"
+      },
+      {
+        "name": "扬州府",
+        "type": "府",
+        "description": "扬州府，领州 3 县 7"
+      },
+      {
+        "name": "苏州府",
+        "type": "府",
+        "description": "苏州府，领州 1 县 7"
+      },
+      {
+        "name": "松江府",
+        "type": "府",
+        "description": "松江府，领县 3"
+      },
+      {
+        "name": "常州府",
+        "type": "府",
+        "description": "常州府，领县 5"
+      },
+      {
+        "name": "镇江府",
+        "type": "府",
+        "description": "镇江府，领县 3"
+      },
+      {
+        "name": "庐州府",
+        "type": "府",
+        "description": "庐州府，领州 2 县 6"
+      },
+      {
+        "name": "安庆府",
+        "type": "府",
+        "description": "安庆府，领县 6"
+      },
+      {
+        "name": "太平府",
+        "type": "府",
+        "description": "太平府，领县 3"
+      },
+      {
+        "name": "池州府",
+        "type": "府",
+        "description": "池州府，领县 6"
+      },
+      {
+        "name": "宁国府",
+        "type": "府",
+        "description": "宁国府，领县 6"
+      },
+      {
+        "name": "徽州府",
+        "type": "府",
+        "description": "徽州府，领县 6"
+      },
+      {
+        "name": "徐州",
+        "type": "直隶州",
+        "description": "徐州直隶州，领县 4"
+      },
+      {
+        "name": "滁州",
+        "type": "直隶州",
+        "description": "滁州直隶州，领县 2"
+      },
+      {
+        "name": "和州",
+        "type": "直隶州",
+        "description": "和州直隶州，领县 1"
+      },
+      {
+        "name": "广德州",
+        "type": "直隶州",
+        "description": "广德直隶州，领县 1"
+      }
+    ]
+  },
+  "山东布政使司": {
+    "description": "山东等处承宣布政使司，领府 6 州 15 县 99",
+    "府州": [
+      {
+        "name": "济南府",
+        "type": "府",
+        "description": "济南府，领州 4 县 26"
+      },
+      {
+        "name": "兖州府",
+        "type": "府",
+        "description": "兖州府，领州 4 县 23"
+      },
+      {
+        "name": "东昌府",
+        "type": "府",
+        "description": "东昌府，领州 3 县 15"
+      },
+      {
+        "name": "青州府",
+        "type": "府",
+        "description": "青州府，领州 1 县 13"
+      },
+      {
+        "name": "登州府",
+        "type": "府",
+        "description": "登州府，领州 1 县 7"
+      },
+      {
+        "name": "莱州府",
+        "type": "府",
+        "description": "莱州府，领州 2 县 5"
+      }
+    ]
+  },
+  "山西布政使司": {
+    "description": "山西等处承宣布政使司，领府 3 州 21 县 75",
+    "府州": [
+      {
+        "name": "太原府",
+        "type": "府",
+        "description": "太原府，领州 6 县 22"
+      },
+      {
+        "name": "平阳府",
+        "type": "府",
+        "description": "平阳府，领州 6 县 29"
+      },
+      {
+        "name": "大同府",
+        "type": "府",
+        "description": "大同府，领州 4 县 7"
+      },
+      {
+        "name": "汾州",
+        "type": "直隶州",
+        "description": "汾州直隶州，领县 3"
+      },
+      {
+        "name": "辽州",
+        "type": "直隶州",
+        "description": "辽州直隶州，领县 2"
+      },
+      {
+        "name": "沁州",
+        "type": "直隶州",
+        "description": "沁州直隶州，领县 2"
+      },
+      {
+        "name": "潞州",
+        "type": "直隶州",
+        "description": "潞州直隶州，领县 6"
+      },
+      {
+        "name": "泽州",
+        "type": "直隶州",
+        "description": "泽州直隶州，领县 4"
+      }
+    ]
+  },
+  "河南布政使司": {
+    "description": "河南等处承宣布政使司，领府 7 州 13 县 94",
+    "府州": [
+      {
+        "name": "开封府",
+        "type": "府",
+        "description": "开封府，领州 6 县 37"
+      },
+      {
+        "name": "河南府",
+        "type": "府",
+        "description": "河南府，领州 1 县 12"
+      },
+      {
+        "name": "南阳府",
+        "type": "府",
+        "description": "南阳府，领州 2 县 11"
+      },
+      {
+        "name": "汝宁府",
+        "type": "府",
+        "description": "汝宁府，领州 2 县 11"
+      },
+      {
+        "name": "怀庆府",
+        "type": "府",
+        "description": "怀庆府，领县 6"
+      },
+      {
+        "name": "卫辉府",
+        "type": "府",
+        "description": "卫辉府，领县 6"
+      },
+      {
+        "name": "彰德府",
+        "type": "府",
+        "description": "彰德府，领州 1 县 6"
+      },
+      {
+        "name": "汝州",
+        "type": "直隶州",
+        "description": "汝州直隶州，领县 4"
+      }
+    ]
+  },
+  "陕西布政使司": {
+    "description": "陕西等处承宣布政使司，领府 8 州 22 县 94",
+    "府州": [
+      {
+        "name": "西安府",
+        "type": "府",
+        "description": "西安府，领州 6 县 30"
+      },
+      {
+        "name": "凤翔府",
+        "type": "府",
+        "description": "凤翔府，领州 1 县 7"
+      },
+      {
+        "name": "汉中府",
+        "type": "府",
+        "description": "汉中府，领州 2 县 13"
+      },
+      {
+        "name": "平凉府",
+        "type": "府",
+        "description": "平凉府，领州 2 县 7"
+      },
+      {
+        "name": "巩昌府",
+        "type": "府",
+        "description": "巩昌府，领州 3 县 14"
+      },
+      {
+        "name": "临洮府",
+        "type": "府",
+        "description": "临洮府，领州 2 县 3"
+      },
+      {
+        "name": "庆阳府",
+        "type": "府",
+        "description": "庆阳府，领州 1 县 4"
+      },
+      {
+        "name": "延安府",
+        "type": "府",
+        "description": "延安府，领州 3 县 16"
+      }
+    ]
+  },
+  "四川布政使司": {
+    "description": "四川等处承宣布政使司，领府 12 州 21 县 97",
+    "府州": [
+      {
+        "name": "成都府",
+        "type": "府",
+        "description": "成都府，领州 6 县 16"
+      },
+      {
+        "name": "保宁府",
+        "type": "府",
+        "description": "保宁府，领州 2 县 5"
+      },
+      {
+        "name": "顺庆府",
+        "type": "府",
+        "description": "顺庆府，领州 2 县 2"
+      },
+      {
+        "name": "夔州府",
+        "type": "府",
+        "description": "夔州府，领州 1 县 10"
+      },
+      {
+        "name": "重庆府",
+        "type": "府",
+        "description": "重庆府，领州 3 县 11"
+      },
+      {
+        "name": "遵义军民府",
+        "type": "府",
+        "description": "遵义军民府，领州 1 县 2"
+      },
+      {
+        "name": "叙州府",
+        "type": "府",
+        "description": "叙州府，领州 2 县 7"
+      },
+      {
+        "name": "龙安府",
+        "type": "府",
+        "description": "龙安府，领县 3"
+      },
+      {
+        "name": "马湖府",
+        "type": "府",
+        "description": "马湖府，领县 1"
+      },
+      {
+        "name": "镇雄府",
+        "type": "府",
+        "description": "镇雄府"
+      },
+      {
+        "name": "潼川州",
+        "type": "直隶州",
+        "description": "潼川直隶州"
+      },
+      {
+        "name": "雅州",
+        "type": "直隶州",
+        "description": "雅州直隶州"
+      },
+      {
+        "name": "眉州",
+        "type": "直隶州",
+        "description": "眉州直隶州"
+      },
+      {
+        "name": "嘉定州",
+        "type": "直隶州",
+        "description": "嘉定直隶州"
+      },
+      {
+        "name": "泸州",
+        "type": "直隶州",
+        "description": "泸州直隶州"
+      }
+    ]
+  },
+  "湖广布政使司": {
+    "description": "湖广等处承宣布政使司，领府 13 州 5",
+    "府州": [
+      {
+        "name": "武昌府",
+        "type": "府",
+        "description": "武昌府，领州 1 县 9"
+      },
+      {
+        "name": "汉阳府",
+        "type": "府",
+        "description": "汉阳府，领县 2"
+      },
+      {
+        "name": "黄州府",
+        "type": "府",
+        "description": "黄州府，领州 1 县 7"
+      },
+      {
+        "name": "德安府",
+        "type": "府",
+        "description": "德安府，领州 1 县 5"
+      },
+      {
+        "name": "襄阳府",
+        "type": "府",
+        "description": "襄阳府，领州 1 县 10"
+      },
+      {
+        "name": "荆州府",
+        "type": "府",
+        "description": "荆州府，领州 2 县 11"
+      },
+      {
+        "name": "岳州府",
+        "type": "府",
+        "description": "岳州府，领州 1 县 7"
+      },
+      {
+        "name": "常德府",
+        "type": "府",
+        "description": "常德府，领县 4"
+      },
+      {
+        "name": "辰州府",
+        "type": "府",
+        "description": "辰州府，领州 1 县 6"
+      },
+      {
+        "name": "长沙府",
+        "type": "府",
+        "description": "长沙府，领州 1 县 11"
+      },
+      {
+        "name": "宝庆府",
+        "type": "府",
+        "description": "宝庆府，领州 1 县 4"
+      },
+      {
+        "name": "永州府",
+        "type": "府",
+        "description": "永州府，领州 1 县 6"
+      },
+      {
+        "name": "衡州府",
+        "type": "府",
+        "description": "衡州府，领州 1 县 9"
+      },
+      {
+        "name": "安陆州",
+        "type": "直隶州",
+        "description": "安陆直隶州，领县 2"
+      },
+      {
+        "name": "沔阳州",
+        "type": "直隶州",
+        "description": "沔阳直隶州，领县 1"
+      },
+      {
+        "name": "荆门州",
+        "type": "直隶州",
+        "description": "荆门直隶州，领县 1"
+      },
+      {
+        "name": "靖州",
+        "type": "直隶州",
+        "description": "靖州直隶州，领县 3"
+      },
+      {
+        "name": "郴州",
+        "type": "直隶州",
+        "description": "郴州直隶州，领县 5"
+      }
+    ]
+  },
+  "浙江布政使司": {
+    "description": "浙江等处承宣布政使司，领府 11 县 76",
+    "府州": [
+      {
+        "name": "杭州府",
+        "type": "府",
+        "description": "杭州府，领县 9"
+      },
+      {
+        "name": "嘉兴府",
+        "type": "府",
+        "description": "嘉兴府，领县 7"
+      },
+      {
+        "name": "湖州府",
+        "type": "府",
+        "description": "湖州府，领县 7"
+      },
+      {
+        "name": "严州府",
+        "type": "府",
+        "description": "严州府，领县 6"
+      },
+      {
+        "name": "绍兴府",
+        "type": "府",
+        "description": "绍兴府，领县 8"
+      },
+      {
+        "name": "宁波府",
+        "type": "府",
+        "description": "宁波府，领县 5"
+      },
+      {
+        "name": "台州府",
+        "type": "府",
+        "description": "台州府，领县 6"
+      },
+      {
+        "name": "金华府",
+        "type": "府",
+        "description": "金华府，领县 8"
+      },
+      {
+        "name": "衢州府",
+        "type": "府",
+        "description": "衢州府，领县 5"
+      },
+      {
+        "name": "温州府",
+        "type": "府",
+        "description": "温州府，领县 5"
+      },
+      {
+        "name": "处州府",
+        "type": "府",
+        "description": "处州府，领县 10"
+      }
+    ]
+  },
+  "江西布政使司": {
+    "description": "江西等处承宣布政使司，领府 13 州 1 县 77",
+    "府州": [
+      {
+        "name": "南昌府",
+        "type": "府",
+        "description": "南昌府，领州 1 县 7"
+      },
+      {
+        "name": "瑞州府",
+        "type": "府",
+        "description": "瑞州府，领县 3"
+      },
+      {
+        "name": "九江府",
+        "type": "府",
+        "description": "九江府，领县 5"
+      },
+      {
+        "name": "南康府",
+        "type": "府",
+        "description": "南康府，领县 3"
+      },
+      {
+        "name": "饶州府",
+        "type": "府",
+        "description": "饶州府，领县 6"
+      },
+      {
+        "name": "广信府",
+        "type": "府",
+        "description": "广信府，领县 6"
+      },
+      {
+        "name": "抚州府",
+        "type": "府",
+        "description": "抚州府，领县 5"
+      },
+      {
+        "name": "建昌府",
+        "type": "府",
+        "description": "建昌府，领县 4"
+      },
+      {
+        "name": "袁州府",
+        "type": "府",
+        "description": "袁州府，领县 4"
+      },
+      {
+        "name": "临江府",
+        "type": "府",
+        "description": "临江府，领县 3"
+      },
+      {
+        "name": "吉安府",
+        "type": "府",
+        "description": "吉安府，领县 9"
+      },
+      {
+        "name": "赣州府",
+        "type": "府",
+        "description": "赣州府，领县 10"
+      },
+      {
+        "name": "南安府",
+        "type": "府",
+        "description": "南安府，领县 3"
+      }
+    ]
+  },
+  "福建布政使司": {
+    "description": "福建等处承宣布政使司，领府 8",
+    "府州": [
+      {
+        "name": "福州府",
+        "type": "府",
+        "description": "福州府，领县 9"
+      },
+      {
+        "name": "兴化府",
+        "type": "府",
+        "description": "兴化府，领县 2"
+      },
+      {
+        "name": "泉州府",
+        "type": "府",
+        "description": "泉州府，领县 7"
+      },
+      {
+        "name": "漳州府",
+        "type": "府",
+        "description": "漳州府，领县 10"
+      },
+      {
+        "name": "建宁府",
+        "type": "府",
+        "description": "建宁府，领县 8"
+      },
+      {
+        "name": "延平府",
+        "type": "府",
+        "description": "延平府，领县 7"
+      },
+      {
+        "name": "邵武府",
+        "type": "府",
+        "description": "邵武府，领县 4"
+      },
+      {
+        "name": "汀州府",
+        "type": "府",
+        "description": "汀州府，领县 8"
+      }
+    ]
+  },
+  "广东布政使司": {
+    "description": "广东等处承宣布政使司，领府 10",
+    "府州": [
+      {
+        "name": "广州府",
+        "type": "府",
+        "description": "广州府，领州 1 县 15"
+      },
+      {
+        "name": "肇庆府",
+        "type": "府",
+        "description": "肇庆府，领州 1 县 11"
+      },
+      {
+        "name": "韶州府",
+        "type": "府",
+        "description": "韶州府，领县 6"
+      },
+      {
+        "name": "南雄府",
+        "type": "府",
+        "description": "南雄府，领县 2"
+      },
+      {
+        "name": "惠州府",
+        "type": "府",
+        "description": "惠州府，领州 1 县 10"
+      },
+      {
+        "name": "潮州府",
+        "type": "府",
+        "description": "潮州府，领县 11"
+      },
+      {
+        "name": "高州府",
+        "type": "府",
+        "description": "高州府，领州 1 县 5"
+      },
+      {
+        "name": "雷州府",
+        "type": "府",
+        "description": "雷州府，领县 3"
+      },
+      {
+        "name": "廉州府",
+        "type": "府",
+        "description": "廉州府，领州 1 县 2"
+      },
+      {
+        "name": "琼州府",
+        "type": "府",
+        "description": "琼州府，领州 3 县 10"
+      }
+    ]
+  },
+  "广西布政使司": {
+    "description": "广西等处承宣布政使司，领府 7 州 48 县 50",
+    "府州": [
+      {
+        "name": "桂林府",
+        "type": "府",
+        "description": "桂林府，领州 2 县 7"
+      },
+      {
+        "name": "平乐府",
+        "type": "府",
+        "description": "平乐府，领州 1 县 7"
+      },
+      {
+        "name": "梧州府",
+        "type": "府",
+        "description": "梧州府，领州 1 县 9"
+      },
+      {
+        "name": "浔州府",
+        "type": "府",
+        "description": "浔州府，领县 3"
+      },
+      {
+        "name": "南宁府",
+        "type": "府",
+        "description": "南宁府，领州 3 县 3"
+      },
+      {
+        "name": "柳州府",
+        "type": "府",
+        "description": "柳州府，领州 2 县 10"
+      },
+      {
+        "name": "庆远府",
+        "type": "府",
+        "description": "庆远府，领州 4 县 5"
+      }
+    ]
+  },
+  "云南布政使司": {
+    "description": "云南等处承宣布政使司，领府 7 军民府 7 州 30 县 39",
+    "府州": [
+      {
+        "name": "云南府",
+        "type": "府",
+        "description": "云南府，领州 4 县 9"
+      },
+      {
+        "name": "澂江府",
+        "type": "府",
+        "description": "澂江府，领州 2 县 3"
+      },
+      {
+        "name": "临安府",
+        "type": "府",
+        "description": "临安府，领州 5 县 5"
+      },
+      {
+        "name": "广西府",
+        "type": "府",
+        "description": "广西府，领州 3"
+      },
+      {
+        "name": "楚雄府",
+        "type": "府",
+        "description": "楚雄府，领州 2 县 5"
+      },
+      {
+        "name": "大理府",
+        "type": "府",
+        "description": "大理府，领州 4 县 3"
+      },
+      {
+        "name": "顺宁府",
+        "type": "府",
+        "description": "顺宁府，领州 1"
+      },
+      {
+        "name": "寻甸军民府",
+        "type": "军民府",
+        "description": "寻甸军民府"
+      },
+      {
+        "name": "武定军民府",
+        "type": "军民府",
+        "description": "武定军民府，领州 2 县 1"
+      },
+      {
+        "name": "曲靖军民府",
+        "type": "军民府",
+        "description": "曲靖军民府，领州 4 县 2"
+      },
+      {
+        "name": "元江军民府",
+        "type": "军民府",
+        "description": "元江军民府，领州 1"
+      },
+      {
+        "name": "姚安军民府",
+        "type": "军民府",
+        "description": "姚安军民府，领州 1 县 1"
+      },
+      {
+        "name": "鹤庆军民府",
+        "type": "军民府",
+        "description": "鹤庆军民府，领州 2"
+      },
+      {
+        "name": "丽江军民府",
+        "type": "军民府",
+        "description": "丽江军民府，领州 4"
+      }
+    ]
+  },
+  "贵州布政使司": {
+    "description": "贵州等处承宣布政使司，永乐十一年 (1413 年) 设置，领府 8 州 1",
+    "府州": [
+      {
+        "name": "贵阳军民府",
+        "type": "府",
+        "description": "贵阳军民府，领州 3 县 2"
+      },
+      {
+        "name": "安顺军民府",
+        "type": "府",
+        "description": "安顺军民府，领州 2"
+      },
+      {
+        "name": "都匀府",
+        "type": "府",
+        "description": "都匀府，领县 1 州 2"
+      },
+      {
+        "name": "平越军民府",
+        "type": "府",
+        "description": "平越军民府，领州 1 县 3"
+      },
+      {
+        "name": "黎平府",
+        "type": "府",
+        "description": "黎平府，领县 1"
+      },
+      {
+        "name": "思南府",
+        "type": "府",
+        "description": "思南府，领县 3"
+      },
+      {
+        "name": "思州府",
+        "type": "府",
+        "description": "思州府"
+      },
+      {
+        "name": "镇远府",
+        "type": "府",
+        "description": "镇远府，领县 2"
+      },
+      {
+        "name": "铜仁府",
+        "type": "府",
+        "description": "铜仁府，领县 1"
+      },
+      {
+        "name": "石阡府",
+        "type": "府",
+        "description": "石阡府，领县 1"
+      },
+      {
+        "name": "普安州",
+        "type": "直隶州",
+        "description": "普安直隶州"
+      }
+    ]
+  },
+  "交趾布政使司": {
+    "description": "交趾等处承宣布政使司，永乐五年 (1407 年) 设置，宣德三年 (1428 年) 废止，领府 17 州 5",
+    "府州": [
+      {
+        "name": "交州府",
+        "type": "府",
+        "description": "交州府，领州 5"
+      },
+      {
+        "name": "北江府",
+        "type": "府",
+        "description": "北江府，领州 3"
+      },
+      {
+        "name": "谅江府",
+        "type": "府",
+        "description": "谅江府，领州 2"
+      },
+      {
+        "name": "三江府",
+        "type": "府",
+        "description": "三江府，领州 3"
+      },
+      {
+        "name": "建平府",
+        "type": "府",
+        "description": "建平府，领州 1"
+      },
+      {
+        "name": "新安府",
+        "type": "府",
+        "description": "新安府，领州 2"
+      },
+      {
+        "name": "建昌府",
+        "type": "府",
+        "description": "建昌府"
+      },
+      {
+        "name": "奉化府",
+        "type": "府",
+        "description": "奉化府"
+      },
+      {
+        "name": "清化府",
+        "type": "府",
+        "description": "清化府，领州 4"
+      },
+      {
+        "name": "镇蛮府",
+        "type": "府",
+        "description": "镇蛮府"
+      },
+      {
+        "name": "谅山府",
+        "type": "府",
+        "description": "谅山府，领州 7"
+      },
+      {
+        "name": "新平府",
+        "type": "府",
+        "description": "新平府，领州 1"
+      },
+      {
+        "name": "演州府",
+        "type": "府",
+        "description": "演州府，领州 1"
+      },
+      {
+        "name": "乂安府",
+        "type": "府",
+        "description": "乂安府，领州 3"
+      },
+      {
+        "name": "顺化府",
+        "type": "府",
+        "description": "顺化府，领州 2"
+      },
+      {
+        "name": "太原府",
+        "type": "府",
+        "description": "太原府"
+      },
+      {
+        "name": "宣化府",
+        "type": "府",
+        "description": "宣化府"
+      },
+      {
+        "name": "升华府",
+        "type": "府",
+        "description": "升华府，领州 1"
+      },
+      {
+        "name": "嘉兴州",
+        "type": "直隶州",
+        "description": "嘉兴直隶州"
+      },
+      {
+        "name": "归化州",
+        "type": "直隶州",
+        "description": "归化直隶州"
+      },
+      {
+        "name": "广威州",
+        "type": "直隶州",
+        "description": "广威直隶州"
+      },
+      {
+        "name": "宁化州",
+        "type": "直隶州",
+        "description": "宁化直隶州"
+      },
+      {
+        "name": "演州",
+        "type": "直隶州",
+        "description": "演州直隶州 (后降为州)"
+      }
+    ]
+  }
+}

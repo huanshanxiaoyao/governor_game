@@ -79,6 +79,7 @@
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
     <button class="tab-btn" data-tab="tab-staff">幕僚</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
+    <button class="tab-btn" data-tab="tab-officialdom">官场</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
   </nav>
 
@@ -185,6 +186,13 @@
   <!-- Tab: Neighbors (邻县) -->
   <div id="tab-neighbors" class="tab-content hidden">
     <div id="neighbors-list">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+
+  <!-- Tab: Officialdom (官场) -->
+  <div id="tab-officialdom" class="tab-content hidden">
+    <div id="officialdom-content">
       <p class="hint">加载中...</p>
     </div>
   </div>
@@ -314,6 +322,7 @@
 <script src="{% static 'game/js/components-county.js' %}"></script>
 <script src="{% static 'game/js/components-social.js' %}"></script>
 <script src="{% static 'game/js/components-neighbors.js' %}"></script>
+<script src="{% static 'game/js/components-officialdom.js' %}"></script>
 <script src="{% static 'game/js/screens.js' %}"></script>
 <script src="{% static 'game/js/app.js' %}"></script>
 

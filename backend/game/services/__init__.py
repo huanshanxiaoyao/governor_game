@@ -35,6 +35,7 @@ from .agent import AgentService
 from .negotiation import NegotiationService
 from .promise import PromiseService
 from .llm_role_reviews import LLMRoleReviewService
+from .officialdom import OfficialdomService
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -70,4 +71,5 @@ __all__ = [
     "NegotiationService",
     "PromiseService",
     "LLMRoleReviewService",
+    "OfficialdomService",
 ]

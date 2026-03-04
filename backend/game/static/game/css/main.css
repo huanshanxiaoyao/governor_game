@@ -1579,6 +1579,253 @@ body {
   white-space: pre-wrap;
 }
 
+/* === Officialdom (官场) === */
+.officialdom-section {
+  margin-bottom: 24px;
+}
+.officialdom-section .section-title {
+  font-size: 1.1em;
+  color: #5c4a2a;
+  border-bottom: 2px solid #c9b99a;
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+
+/* Monarch */
+.monarch-section { text-align: center; }
+.monarch-card {
+  background: linear-gradient(135deg, #fff8e7, #f5ecd7);
+  border: 2px solid #d4a840;
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.monarch-badge {
+  display: inline-block;
+  background: #8b4513;
+  color: #fff;
+  padding: 2px 12px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  margin-bottom: 8px;
+}
+.monarch-name { font-size: 1.5em; color: #5c4a2a; margin: 4px 0; }
+.monarch-title { color: #8b7355; font-size: 0.95em; margin-bottom: 8px; }
+.monarch-style { color: #6b5b3e; font-size: 0.9em; margin-bottom: 12px; }
+.monarch-stats { text-align: left; }
+.attr-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.attr-label { width: 72px; font-size: 0.85em; color: #6b5b3e; text-align: right; }
+.attr-bar { flex: 1; height: 8px; background: #e8dcc8; border-radius: 4px; overflow: hidden; }
+.attr-fill { height: 100%; background: #8b4513; border-radius: 4px; transition: width 0.3s; }
+.attr-val { width: 36px; font-size: 0.8em; color: #8b7355; text-align: right; }
+
+/* Official cards */
+.official-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.official-card {
+  background: #fff;
+  border: 1px solid #d4c9a8;
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 140px;
+  position: relative;
+}
+.official-card .card-title { font-size: 0.8em; color: #8b7355; }
+.official-card .card-name { font-size: 1em; font-weight: 600; color: #3a3428; margin: 2px 0; }
+.rank-badge {
+  display: inline-block;
+  background: #e8dcc8;
+  color: #5c4a2a;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  margin-right: 4px;
+}
+.faction-tag {
+  display: inline-block;
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #f0ebe0;
+  color: #6b5b3e;
+}
+
+/* Faction colors */
+.faction-0 { border-left: 3px solid #c04040; }
+.faction-1 { border-left: 3px solid #3070b0; }
+.faction-2 { border-left: 3px solid #409040; }
+.faction-3 { border-left: 3px solid #9060a0; }
+.official-card.faction-0 .faction-tag { background: #fde8e8; color: #a03030; }
+.official-card.faction-1 .faction-tag { background: #e0ecf8; color: #2060a0; }
+.official-card.faction-2 .faction-tag { background: #e0f0e0; color: #307030; }
+.official-card.faction-3 .faction-tag { background: #f0e8f4; color: #705080; }
+
+/* Ministries grid */
+.ministries-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.ministry-group {
+  background: #faf6ee;
+  border: 1px solid #e0d8c0;
+  border-radius: 8px;
+  padding: 10px;
+}
+.ministry-name {
+  font-size: 0.95em;
+  color: #5c4a2a;
+  margin-bottom: 8px;
+  text-align: center;
+}
+.ministry-group .official-card { min-width: auto; width: 100%; margin-bottom: 6px; }
+.shilang-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid #e0d8c0;
+}
+.shilang-group .official-card { min-width: auto; flex: 1; margin-bottom: 0; }
+
+/* Compact official card (for 侍郎/监察御史 etc.) */
+.official-card-compact {
+  padding: 6px 10px;
+  min-width: 100px;
+}
+.official-card-compact .card-title { font-size: 0.75em; }
+.official-card-compact .card-name { font-size: 0.9em; }
+
+/* Censorate tree */
+.censorate-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.censors-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Commissioners row */
+.commissioners-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Chain arrow */
+.chain-arrow { color: #8b7355; font-size: 1.2em; text-align: center; }
+
+/* Player card */
+.player-card {
+  background: #eef3ff !important;
+  border-color: #6080c0 !important;
+  text-align: center;
+}
+.player-card .card-title { color: #4060a0; font-weight: 600; }
+
+/* Province count in section title */
+.province-count { font-size: 0.8em; color: #8b7355; font-weight: normal; }
+
+/* Province collapsible blocks */
+.province-block {
+  border: 1px solid #e0d8c0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.province-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #faf6ee;
+  cursor: pointer;
+  user-select: none;
+}
+.province-header:hover { background: #f5eed8; }
+.province-toggle {
+  font-size: 0.8em;
+  color: #8b7355;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.province-expanded .province-toggle { transform: rotate(90deg); }
+.province-name { color: #5c4a2a; font-size: 1em; }
+.province-meta { font-size: 0.85em; color: #8b7355; margin-left: auto; }
+.player-province-badge {
+  display: inline-block;
+  background: #4060a0;
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.75em;
+  margin-left: 6px;
+}
+.province-body {
+  display: none;
+  padding: 12px 14px;
+}
+.province-expanded .province-body { display: block; }
+
+/* Province sub-levels */
+.prov-level { margin-bottom: 4px; }
+.prov-governor { text-align: center; }
+.commissioners-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.prefects-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.prefects-grid .official-card-compact {
+  min-width: 110px;
+  flex: 0 0 auto;
+}
+
+/* Factions */
+.faction-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.faction-card {
+  background: #fff;
+  border: 1px solid #d4c9a8;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 220px;
+  flex: 1;
+}
+.faction-card.faction-0 { border-top: 3px solid #c04040; }
+.faction-card.faction-1 { border-top: 3px solid #3070b0; }
+.faction-card.faction-2 { border-top: 3px solid #409040; }
+.faction-card.faction-3 { border-top: 3px solid #9060a0; }
+.faction-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.faction-favor { font-size: 0.85em; color: #8b7355; }
+.faction-favor-bar {
+  height: 6px; background: #e8dcc8; border-radius: 3px;
+  overflow: hidden; margin-bottom: 6px;
+}
+.favor-fill { height: 100%; background: #d4a840; border-radius: 3px; }
+.faction-meta { font-size: 0.85em; color: #6b5b3e; margin-bottom: 4px; }
+.faction-desc { font-size: 0.85em; color: #8b7355; line-height: 1.4; }
+
 /* === Responsive === */
 @media (max-width: 600px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1589,4 +1836,5 @@ body {
   .summary2-panel-grid { grid-template-columns: 1fr; }
   .background-choices { flex-direction: column; }
   .liufang-grid { grid-template-columns: repeat(2, 1fr); }
+  .ministries-grid { grid-template-columns: repeat(2, 1fr); }
 }

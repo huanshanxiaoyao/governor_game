@@ -1,0 +1,740 @@
+# xingzhengquhua.json vs xingzhengquhua2.json 内容差异报告
+
+- 样式差异（仅空白不同）: 131 处
+- 实质差异: 113 处
+
+## 实质差异清单
+- `云南布政使司.description` (value)
+  - file1: `云南等处承宣布政使司，领府7军民府7`
+  - file2: `云南等处承宣布政使司，领府 7 军民府 7 州 30 县 39`
+- `云南布政使司.府州[0].description` (value)
+  - file1: `云南府`
+  - file2: `云南府，领州 4 县 9`
+- `云南布政使司.府州[0].州县.length` (len)
+  - file1: `0`
+  - file2: `13`
+- `云南布政使司.府州[1].description` (value)
+  - file1: `澂江府`
+  - file2: `澂江府，领州 2 县 3`
+- `云南布政使司.府州[1].州县.length` (len)
+  - file1: `0`
+  - file2: `5`
+- `云南布政使司.府州[2].description` (value)
+  - file1: `临安府`
+  - file2: `临安府，领州 5 县 5`
+- `云南布政使司.府州[2].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `云南布政使司.府州[3].description` (value)
+  - file1: `广西府`
+  - file2: `广西府，领州 3`
+- `云南布政使司.府州[3].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `云南布政使司.府州[4].description` (value)
+  - file1: `楚雄府`
+  - file2: `楚雄府，领州 2 县 5`
+- `云南布政使司.府州[4].州县.length` (len)
+  - file1: `0`
+  - file2: `7`
+- `云南布政使司.府州[5].description` (value)
+  - file1: `大理府`
+  - file2: `大理府，领州 4 县 3`
+- `云南布政使司.府州[5].州县.length` (len)
+  - file1: `0`
+  - file2: `7`
+- `云南布政使司.府州[6].description` (value)
+  - file1: `顺宁府`
+  - file2: `顺宁府，领州 1`
+- `云南布政使司.府州[6].州县.length` (len)
+  - file1: `0`
+  - file2: `1`
+- `云南布政使司.府州[7].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `云南布政使司.府州[8].description` (value)
+  - file1: `武定军民府`
+  - file2: `武定军民府，领州 2 县 1`
+- `云南布政使司.府州[8].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `云南布政使司.府州[9].description` (value)
+  - file1: `曲靖军民府`
+  - file2: `曲靖军民府，领州 4 县 2`
+- `云南布政使司.府州[9].州县.length` (len)
+  - file1: `0`
+  - file2: `6`
+- `云南布政使司.府州[10].description` (value)
+  - file1: `元江军民府`
+  - file2: `元江军民府，领州 1`
+- `云南布政使司.府州[10].州县.length` (len)
+  - file1: `0`
+  - file2: `1`
+- `云南布政使司.府州[11].description` (value)
+  - file1: `姚安军民府`
+  - file2: `姚安军民府，领州 1 县 1`
+- `云南布政使司.府州[11].州县.length` (len)
+  - file1: `0`
+  - file2: `2`
+- `云南布政使司.府州[12].description` (value)
+  - file1: `鹤庆军民府`
+  - file2: `鹤庆军民府，领州 2`
+- `云南布政使司.府州[12].州县.length` (len)
+  - file1: `0`
+  - file2: `2`
+- `云南布政使司.府州[13].description` (value)
+  - file1: `丽江军民府`
+  - file2: `丽江军民府，领州 4`
+- `云南布政使司.府州[13].州县.length` (len)
+  - file1: `0`
+  - file2: `4`
+- `交趾布政使司.府州[6].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `交趾布政使司.府州[7].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `交趾布政使司.府州[9].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `交趾布政使司.府州[15].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `交趾布政使司.府州[16].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+- `四川布政使司.府州[6].州县[6]` (value)
+  - file1: `隆昌县`
+  - file2: `筠连县`
+- `广西布政使司.description` (value)
+  - file1: `广西等处承宣布政使司，领府7`
+  - file2: `广西等处承宣布政使司，领府 7 州 48 县 50`
+- `广西布政使司.府州[0].description` (value)
+  - file1: `桂林府`
+  - file2: `桂林府，领州 2 县 7`
+- `广西布政使司.府州[0].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `广西布政使司.府州[1].description` (value)
+  - file1: `平乐府`
+  - file2: `平乐府，领州 1 县 7`
+- `广西布政使司.府州[1].州县.length` (len)
+  - file1: `0`
+  - file2: `8`
+- `广西布政使司.府州[2].description` (value)
+  - file1: `梧州府`
+  - file2: `梧州府，领州 1 县 9`
+- `广西布政使司.府州[2].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `广西布政使司.府州[3].description` (value)
+  - file1: `浔州府`
+  - file2: `浔州府，领县 3`
+- `广西布政使司.府州[3].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `广西布政使司.府州[4].description` (value)
+  - file1: `南宁府`
+  - file2: `南宁府，领州 3 县 3`
+- `广西布政使司.府州[4].州县.length` (len)
+  - file1: `0`
+  - file2: `7`
+- `广西布政使司.府州[5].description` (value)
+  - file1: `柳州府`
+  - file2: `柳州府，领州 2 县 10`
+- `广西布政使司.府州[5].州县.length` (len)
+  - file1: `0`
+  - file2: `12`
+- `广西布政使司.府州[6].description` (value)
+  - file1: `庆远府`
+  - file2: `庆远府，领州 4 县 5`
+- `广西布政使司.府州[6].州县.length` (len)
+  - file1: `0`
+  - file2: `9`
+- `江西布政使司.description` (value)
+  - file1: `江西等处承宣布政使司，领府13`
+  - file2: `江西等处承宣布政使司，领府 13 州 1 县 77`
+- `江西布政使司.府州[0].description` (value)
+  - file1: `南昌府`
+  - file2: `南昌府，领州 1 县 7`
+- `江西布政使司.府州[0].州县.length` (len)
+  - file1: `0`
+  - file2: `8`
+- `江西布政使司.府州[1].description` (value)
+  - file1: `瑞州府`
+  - file2: `瑞州府，领县 3`
+- `江西布政使司.府州[1].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `江西布政使司.府州[2].description` (value)
+  - file1: `九江府`
+  - file2: `九江府，领县 5`
+- `江西布政使司.府州[2].州县.length` (len)
+  - file1: `0`
+  - file2: `5`
+- `江西布政使司.府州[3].description` (value)
+  - file1: `南康府`
+  - file2: `南康府，领县 3`
+- `江西布政使司.府州[3].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `江西布政使司.府州[4].description` (value)
+  - file1: `饶州府`
+  - file2: `饶州府，领县 6`
+- `江西布政使司.府州[4].州县.length` (len)
+  - file1: `0`
+  - file2: `6`
+- `江西布政使司.府州[5].description` (value)
+  - file1: `广信府`
+  - file2: `广信府，领县 6`
+- `江西布政使司.府州[5].州县.length` (len)
+  - file1: `0`
+  - file2: `6`
+- `江西布政使司.府州[6].description` (value)
+  - file1: `抚州府`
+  - file2: `抚州府，领县 5`
+- `江西布政使司.府州[6].州县.length` (len)
+  - file1: `0`
+  - file2: `5`
+- `江西布政使司.府州[7].description` (value)
+  - file1: `建昌府`
+  - file2: `建昌府，领县 4`
+- `江西布政使司.府州[7].州县.length` (len)
+  - file1: `0`
+  - file2: `4`
+- `江西布政使司.府州[8].description` (value)
+  - file1: `袁州府`
+  - file2: `袁州府，领县 4`
+- `江西布政使司.府州[8].州县.length` (len)
+  - file1: `0`
+  - file2: `4`
+- `江西布政使司.府州[9].description` (value)
+  - file1: `临江府`
+  - file2: `临江府，领县 3`
+- `江西布政使司.府州[9].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `江西布政使司.府州[10].description` (value)
+  - file1: `吉安府`
+  - file2: `吉安府，领县 9`
+- `江西布政使司.府州[10].州县.length` (len)
+  - file1: `0`
+  - file2: `9`
+- `江西布政使司.府州[11].description` (value)
+  - file1: `赣州府`
+  - file2: `赣州府，领县 10`
+- `江西布政使司.府州[11].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `江西布政使司.府州[12].description` (value)
+  - file1: `南安府`
+  - file2: `南安府，领县 3`
+- `江西布政使司.府州[12].州县.length` (len)
+  - file1: `0`
+  - file2: `3`
+- `湖广布政使司.府州[0].description` (value)
+  - file1: `武昌府`
+  - file2: `武昌府，领州 1 县 9`
+- `湖广布政使司.府州[0].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `湖广布政使司.府州[1].description` (value)
+  - file1: `汉阳府`
+  - file2: `汉阳府，领县 2`
+- `湖广布政使司.府州[1].州县.length` (len)
+  - file1: `0`
+  - file2: `2`
+- `湖广布政使司.府州[2].description` (value)
+  - file1: `黄州府`
+  - file2: `黄州府，领州 1 县 7`
+- `湖广布政使司.府州[2].州县.length` (len)
+  - file1: `0`
+  - file2: `8`
+- `湖广布政使司.府州[3].description` (value)
+  - file1: `德安府`
+  - file2: `德安府，领州 1 县 5`
+- `湖广布政使司.府州[3].州县.length` (len)
+  - file1: `0`
+  - file2: `6`
+- `湖广布政使司.府州[4].description` (value)
+  - file1: `襄阳府`
+  - file2: `襄阳府，领州 1 县 10`
+- `湖广布政使司.府州[4].州县.length` (len)
+  - file1: `0`
+  - file2: `11`
+- `湖广布政使司.府州[5].description` (value)
+  - file1: `荆州府`
+  - file2: `荆州府，领州 2 县 11`
+- `湖广布政使司.府州[5].州县.length` (len)
+  - file1: `0`
+  - file2: `13`
+- `湖广布政使司.府州[6].description` (value)
+  - file1: `岳州府`
+  - file2: `岳州府，领州 1 县 7`
+- `湖广布政使司.府州[6].州县.length` (len)
+  - file1: `0`
+  - file2: `8`
+- `湖广布政使司.府州[7].description` (value)
+  - file1: `常德府`
+  - file2: `常德府，领县 4`
+- `湖广布政使司.府州[7].州县.length` (len)
+  - file1: `0`
+  - file2: `4`
+- `湖广布政使司.府州[8].description` (value)
+  - file1: `辰州府`
+  - file2: `辰州府，领州 1 县 6`
+- `湖广布政使司.府州[8].州县.length` (len)
+  - file1: `0`
+  - file2: `7`
+- `湖广布政使司.府州[9].description` (value)
+  - file1: `长沙府`
+  - file2: `长沙府，领州 1 县 11`
+- `湖广布政使司.府州[9].州县.length` (len)
+  - file1: `0`
+  - file2: `12`
+- `湖广布政使司.府州[10].description` (value)
+  - file1: `宝庆府`
+  - file2: `宝庆府，领州 1 县 4`
+- `湖广布政使司.府州[10].州县.length` (len)
+  - file1: `0`
+  - file2: `5`
+- `湖广布政使司.府州[11].description` (value)
+  - file1: `永州府`
+  - file2: `永州府，领州 1 县 6`
+- `湖广布政使司.府州[11].州县.length` (len)
+  - file1: `0`
+  - file2: `7`
+- `湖广布政使司.府州[12].description` (value)
+  - file1: `衡州府`
+  - file2: `衡州府，领州 1 县 9`
+- `湖广布政使司.府州[12].州县.length` (len)
+  - file1: `0`
+  - file2: `10`
+- `湖广布政使司.府州[13].description` (value)
+  - file1: `安陆直隶州`
+  - file2: `安陆直隶州，领县 2`
+- `湖广布政使司.府州[13].州县` (missing_in_file1)
+  - file1: `None`
+  - file2: `['京山县', '景陵县']`
+- `湖广布政使司.府州[14].description` (value)
+  - file1: `沔阳直隶州`
+  - file2: `沔阳直隶州，领县 1`
+- `湖广布政使司.府州[14].州县` (missing_in_file1)
+  - file1: `None`
+  - file2: `['玉沙县']`
+- `湖广布政使司.府州[15].description` (value)
+  - file1: `荆门直隶州`
+  - file2: `荆门直隶州，领县 1`
+- `湖广布政使司.府州[15].州县` (missing_in_file1)
+  - file1: `None`
+  - file2: `['当阳县']`
+- `湖广布政使司.府州[16].description` (value)
+  - file1: `靖州直隶州`
+  - file2: `靖州直隶州，领县 3`
+- `湖广布政使司.府州[16].州县` (missing_in_file1)
+  - file1: `None`
+  - file2: `['会同县', '通道县', '绥宁县']`
+- `湖广布政使司.府州[17].description` (value)
+  - file1: `郴州直隶州`
+  - file2: `郴州直隶州，领县 5`
+- `湖广布政使司.府州[17].州县` (missing_in_file1)
+  - file1: `None`
+  - file2: `['永兴县', '宜章县', '兴宁县', '桂阳县', '桂东县']`
+- `贵州布政使司.府州[6].州县` (missing_in_file2)
+  - file1: `[]`
+  - file2: `None`
+
+## 样式差异清单（仅空白）
+- `交趾布政使司.description`
+  - file1: `交趾等处承宣布政使司，永乐五年(1407年)设置，宣德三年(1428年)废止，领府17州5`
+  - file2: `交趾等处承宣布政使司，永乐五年 (1407 年) 设置，宣德三年 (1428 年) 废止，领府 17 州 5`
+- `交趾布政使司.府州[0].description`
+  - file1: `交州府，领州5`
+  - file2: `交州府，领州 5`
+- `交趾布政使司.府州[1].description`
+  - file1: `北江府，领州3`
+  - file2: `北江府，领州 3`
+- `交趾布政使司.府州[2].description`
+  - file1: `谅江府，领州2`
+  - file2: `谅江府，领州 2`
+- `交趾布政使司.府州[3].description`
+  - file1: `三江府，领州3`
+  - file2: `三江府，领州 3`
+- `交趾布政使司.府州[4].description`
+  - file1: `建平府，领州1`
+  - file2: `建平府，领州 1`
+- `交趾布政使司.府州[5].description`
+  - file1: `新安府，领州2`
+  - file2: `新安府，领州 2`
+- `交趾布政使司.府州[8].description`
+  - file1: `清化府，领州4`
+  - file2: `清化府，领州 4`
+- `交趾布政使司.府州[10].description`
+  - file1: `谅山府，领州7`
+  - file2: `谅山府，领州 7`
+- `交趾布政使司.府州[11].description`
+  - file1: `新平府，领州1`
+  - file2: `新平府，领州 1`
+- `交趾布政使司.府州[12].description`
+  - file1: `演州府，领州1`
+  - file2: `演州府，领州 1`
+- `交趾布政使司.府州[13].description`
+  - file1: `乂安府，领州3`
+  - file2: `乂安府，领州 3`
+- `交趾布政使司.府州[14].description`
+  - file1: `顺化府，领州2`
+  - file2: `顺化府，领州 2`
+- `交趾布政使司.府州[17].description`
+  - file1: `升华府，领州1`
+  - file2: `升华府，领州 1`
+- `交趾布政使司.府州[22].description`
+  - file1: `演州直隶州(后降为州)`
+  - file2: `演州直隶州 (后降为州)`
+- `北直隶.description`
+  - file1: `明永乐年间北直隶，包括顺天府等8府2直隶州`
+  - file2: `明永乐年间北直隶，包括顺天府等 8 府 2 直隶州`
+- `北直隶.府州[0].description`
+  - file1: `京师顺天府，领州4县23`
+  - file2: `京师顺天府，领州 4 县 23`
+- `北直隶.府州[1].description`
+  - file1: `保定府，领州3县17`
+  - file2: `保定府，领州 3 县 17`
+- `北直隶.府州[2].description`
+  - file1: `河间府，领州2县16`
+  - file2: `河间府，领州 2 县 16`
+- `北直隶.府州[3].description`
+  - file1: `真定府，领州5县27`
+  - file2: `真定府，领州 5 县 27`
+- `北直隶.府州[4].description`
+  - file1: `顺德府，领县9`
+  - file2: `顺德府，领县 9`
+- `北直隶.府州[5].description`
+  - file1: `广平府，领县9`
+  - file2: `广平府，领县 9`
+- `北直隶.府州[6].description`
+  - file1: `大名府，领州1县10`
+  - file2: `大名府，领州 1 县 10`
+- `北直隶.府州[7].description`
+  - file1: `永平府，领州1县5`
+  - file2: `永平府，领州 1 县 5`
+- `北直隶.府州[8].description`
+  - file1: `隆庆直隶州，领县1`
+  - file2: `隆庆直隶州，领县 1`
+- `南直隶.description`
+  - file1: `明永乐年间南直隶，包括应天府等14府4直隶州`
+  - file2: `明永乐年间南直隶，包括应天府等 14 府 4 直隶州`
+- `南直隶.府州[0].description`
+  - file1: `南京应天府，领县8`
+  - file2: `南京应天府，领县 8`
+- `南直隶.府州[1].description`
+  - file1: `中都凤阳府，领州5县13`
+  - file2: `中都凤阳府，领州 5 县 13`
+- `南直隶.府州[2].description`
+  - file1: `淮安府，领州2县9`
+  - file2: `淮安府，领州 2 县 9`
+- `南直隶.府州[3].description`
+  - file1: `扬州府，领州3县7`
+  - file2: `扬州府，领州 3 县 7`
+- `南直隶.府州[4].description`
+  - file1: `苏州府，领州1县7`
+  - file2: `苏州府，领州 1 县 7`
+- `南直隶.府州[5].description`
+  - file1: `松江府，领县3`
+  - file2: `松江府，领县 3`
+- `南直隶.府州[6].description`
+  - file1: `常州府，领县5`
+  - file2: `常州府，领县 5`
+- `南直隶.府州[7].description`
+  - file1: `镇江府，领县3`
+  - file2: `镇江府，领县 3`
+- `南直隶.府州[8].description`
+  - file1: `庐州府，领州2县6`
+  - file2: `庐州府，领州 2 县 6`
+- `南直隶.府州[9].description`
+  - file1: `安庆府，领县6`
+  - file2: `安庆府，领县 6`
+- `南直隶.府州[10].description`
+  - file1: `太平府，领县3`
+  - file2: `太平府，领县 3`
+- `南直隶.府州[11].description`
+  - file1: `池州府，领县6`
+  - file2: `池州府，领县 6`
+- `南直隶.府州[12].description`
+  - file1: `宁国府，领县6`
+  - file2: `宁国府，领县 6`
+- `南直隶.府州[13].description`
+  - file1: `徽州府，领县6`
+  - file2: `徽州府，领县 6`
+- `南直隶.府州[14].description`
+  - file1: `徐州直隶州，领县4`
+  - file2: `徐州直隶州，领县 4`
+- `南直隶.府州[15].description`
+  - file1: `滁州直隶州，领县2`
+  - file2: `滁州直隶州，领县 2`
+- `南直隶.府州[16].description`
+  - file1: `和州直隶州，领县1`
+  - file2: `和州直隶州，领县 1`
+- `南直隶.府州[17].description`
+  - file1: `广德直隶州，领县1`
+  - file2: `广德直隶州，领县 1`
+- `四川布政使司.description`
+  - file1: `四川等处承宣布政使司，领府12州21县97`
+  - file2: `四川等处承宣布政使司，领府 12 州 21 县 97`
+- `四川布政使司.府州[0].description`
+  - file1: `成都府，领州6县16`
+  - file2: `成都府，领州 6 县 16`
+- `四川布政使司.府州[1].description`
+  - file1: `保宁府，领州2县5`
+  - file2: `保宁府，领州 2 县 5`
+- `四川布政使司.府州[2].description`
+  - file1: `顺庆府，领州2县2`
+  - file2: `顺庆府，领州 2 县 2`
+- `四川布政使司.府州[3].description`
+  - file1: `夔州府，领州1县10`
+  - file2: `夔州府，领州 1 县 10`
+- `四川布政使司.府州[4].description`
+  - file1: `重庆府，领州3县11`
+  - file2: `重庆府，领州 3 县 11`
+- `四川布政使司.府州[5].description`
+  - file1: `遵义军民府，领州1县2`
+  - file2: `遵义军民府，领州 1 县 2`
+- `四川布政使司.府州[6].description`
+  - file1: `叙州府，领州2县7`
+  - file2: `叙州府，领州 2 县 7`
+- `四川布政使司.府州[7].description`
+  - file1: `龙安府，领县3`
+  - file2: `龙安府，领县 3`
+- `四川布政使司.府州[8].description`
+  - file1: `马湖府，领县1`
+  - file2: `马湖府，领县 1`
+- `山东布政使司.description`
+  - file1: `山东等处承宣布政使司，领府6州15县99`
+  - file2: `山东等处承宣布政使司，领府 6 州 15 县 99`
+- `山东布政使司.府州[0].description`
+  - file1: `济南府，领州4县26`
+  - file2: `济南府，领州 4 县 26`
+- `山东布政使司.府州[1].description`
+  - file1: `兖州府，领州4县23`
+  - file2: `兖州府，领州 4 县 23`
+- `山东布政使司.府州[2].description`
+  - file1: `东昌府，领州3县15`
+  - file2: `东昌府，领州 3 县 15`
+- `山东布政使司.府州[3].description`
+  - file1: `青州府，领州1县13`
+  - file2: `青州府，领州 1 县 13`
+- `山东布政使司.府州[4].description`
+  - file1: `登州府，领州1县7`
+  - file2: `登州府，领州 1 县 7`
+- `山东布政使司.府州[5].description`
+  - file1: `莱州府，领州2县5`
+  - file2: `莱州府，领州 2 县 5`
+- `山西布政使司.description`
+  - file1: `山西等处承宣布政使司，领府3州21县75`
+  - file2: `山西等处承宣布政使司，领府 3 州 21 县 75`
+- `山西布政使司.府州[0].description`
+  - file1: `太原府，领州6县22`
+  - file2: `太原府，领州 6 县 22`
+- `山西布政使司.府州[1].description`
+  - file1: `平阳府，领州6县29`
+  - file2: `平阳府，领州 6 县 29`
+- `山西布政使司.府州[2].description`
+  - file1: `大同府，领州4县7`
+  - file2: `大同府，领州 4 县 7`
+- `山西布政使司.府州[3].description`
+  - file1: `汾州直隶州，领县3`
+  - file2: `汾州直隶州，领县 3`
+- `山西布政使司.府州[4].description`
+  - file1: `辽州直隶州，领县2`
+  - file2: `辽州直隶州，领县 2`
+- `山西布政使司.府州[5].description`
+  - file1: `沁州直隶州，领县2`
+  - file2: `沁州直隶州，领县 2`
+- `山西布政使司.府州[6].description`
+  - file1: `潞州直隶州，领县6`
+  - file2: `潞州直隶州，领县 6`
+- `山西布政使司.府州[7].description`
+  - file1: `泽州直隶州，领县4`
+  - file2: `泽州直隶州，领县 4`
+- `广东布政使司.description`
+  - file1: `广东等处承宣布政使司，领府10`
+  - file2: `广东等处承宣布政使司，领府 10`
+- `广东布政使司.府州[0].description`
+  - file1: `广州府，领州1县15`
+  - file2: `广州府，领州 1 县 15`
+- `广东布政使司.府州[1].description`
+  - file1: `肇庆府，领州1县11`
+  - file2: `肇庆府，领州 1 县 11`
+- `广东布政使司.府州[2].description`
+  - file1: `韶州府，领县6`
+  - file2: `韶州府，领县 6`
+- `广东布政使司.府州[3].description`
+  - file1: `南雄府，领县2`
+  - file2: `南雄府，领县 2`
+- `广东布政使司.府州[4].description`
+  - file1: `惠州府，领州1县10`
+  - file2: `惠州府，领州 1 县 10`
+- `广东布政使司.府州[5].description`
+  - file1: `潮州府，领县11`
+  - file2: `潮州府，领县 11`
+- `广东布政使司.府州[6].description`
+  - file1: `高州府，领州1县5`
+  - file2: `高州府，领州 1 县 5`
+- `广东布政使司.府州[7].description`
+  - file1: `雷州府，领县3`
+  - file2: `雷州府，领县 3`
+- `广东布政使司.府州[8].description`
+  - file1: `廉州府，领州1县2`
+  - file2: `廉州府，领州 1 县 2`
+- `广东布政使司.府州[9].description`
+  - file1: `琼州府，领州3县10`
+  - file2: `琼州府，领州 3 县 10`
+- `河南布政使司.description`
+  - file1: `河南等处承宣布政使司，领府7州13县94`
+  - file2: `河南等处承宣布政使司，领府 7 州 13 县 94`
+- `河南布政使司.府州[0].description`
+  - file1: `开封府，领州6县37`
+  - file2: `开封府，领州 6 县 37`
+- `河南布政使司.府州[1].description`
+  - file1: `河南府，领州1县12`
+  - file2: `河南府，领州 1 县 12`
+- `河南布政使司.府州[2].description`
+  - file1: `南阳府，领州2县11`
+  - file2: `南阳府，领州 2 县 11`
+- `河南布政使司.府州[3].description`
+  - file1: `汝宁府，领州2县11`
+  - file2: `汝宁府，领州 2 县 11`
+- `河南布政使司.府州[4].description`
+  - file1: `怀庆府，领县6`
+  - file2: `怀庆府，领县 6`
+- `河南布政使司.府州[5].description`
+  - file1: `卫辉府，领县6`
+  - file2: `卫辉府，领县 6`
+- `河南布政使司.府州[6].description`
+  - file1: `彰德府，领州1县6`
+  - file2: `彰德府，领州 1 县 6`
+- `河南布政使司.府州[7].description`
+  - file1: `汝州直隶州，领县4`
+  - file2: `汝州直隶州，领县 4`
+- `浙江布政使司.description`
+  - file1: `浙江等处承宣布政使司，领府11县76`
+  - file2: `浙江等处承宣布政使司，领府 11 县 76`
+- `浙江布政使司.府州[0].description`
+  - file1: `杭州府，领县9`
+  - file2: `杭州府，领县 9`
+- `浙江布政使司.府州[1].description`
+  - file1: `嘉兴府，领县7`
+  - file2: `嘉兴府，领县 7`
+- `浙江布政使司.府州[2].description`
+  - file1: `湖州府，领县7`
+  - file2: `湖州府，领县 7`
+- `浙江布政使司.府州[3].description`
+  - file1: `严州府，领县6`
+  - file2: `严州府，领县 6`
+- `浙江布政使司.府州[4].description`
+  - file1: `绍兴府，领县8`
+  - file2: `绍兴府，领县 8`
+- `浙江布政使司.府州[5].description`
+  - file1: `宁波府，领县5`
+  - file2: `宁波府，领县 5`
+- `浙江布政使司.府州[6].description`
+  - file1: `台州府，领县6`
+  - file2: `台州府，领县 6`
+- `浙江布政使司.府州[7].description`
+  - file1: `金华府，领县8`
+  - file2: `金华府，领县 8`
+- `浙江布政使司.府州[8].description`
+  - file1: `衢州府，领县5`
+  - file2: `衢州府，领县 5`
+- `浙江布政使司.府州[9].description`
+  - file1: `温州府，领县5`
+  - file2: `温州府，领县 5`
+- `浙江布政使司.府州[10].description`
+  - file1: `处州府，领县10`
+  - file2: `处州府，领县 10`
+- `湖广布政使司.description`
+  - file1: `湖广等处承宣布政使司，领府13州5`
+  - file2: `湖广等处承宣布政使司，领府 13 州 5`
+- `福建布政使司.description`
+  - file1: `福建等处承宣布政使司，领府8`
+  - file2: `福建等处承宣布政使司，领府 8`
+- `福建布政使司.府州[0].description`
+  - file1: `福州府，领县9`
+  - file2: `福州府，领县 9`
+- `福建布政使司.府州[1].description`
+  - file1: `兴化府，领县2`
+  - file2: `兴化府，领县 2`
+- `福建布政使司.府州[2].description`
+  - file1: `泉州府，领县7`
+  - file2: `泉州府，领县 7`
+- `福建布政使司.府州[3].description`
+  - file1: `漳州府，领县10`
+  - file2: `漳州府，领县 10`
+- `福建布政使司.府州[4].description`
+  - file1: `建宁府，领县8`
+  - file2: `建宁府，领县 8`
+- `福建布政使司.府州[5].description`
+  - file1: `延平府，领县7`
+  - file2: `延平府，领县 7`
+- `福建布政使司.府州[6].description`
+  - file1: `邵武府，领县4`
+  - file2: `邵武府，领县 4`
+- `福建布政使司.府州[7].description`
+  - file1: `汀州府，领县8`
+  - file2: `汀州府，领县 8`
+- `贵州布政使司.description`
+  - file1: `贵州等处承宣布政使司，永乐十一年(1413年)设置，领府8州1`
+  - file2: `贵州等处承宣布政使司，永乐十一年 (1413 年) 设置，领府 8 州 1`
+- `贵州布政使司.府州[0].description`
+  - file1: `贵阳军民府，领州3县2`
+  - file2: `贵阳军民府，领州 3 县 2`
+- `贵州布政使司.府州[1].description`
+  - file1: `安顺军民府，领州2`
+  - file2: `安顺军民府，领州 2`
+- `贵州布政使司.府州[2].description`
+  - file1: `都匀府，领县1州2`
+  - file2: `都匀府，领县 1 州 2`
+- `贵州布政使司.府州[3].description`
+  - file1: `平越军民府，领州1县3`
+  - file2: `平越军民府，领州 1 县 3`
+- `贵州布政使司.府州[4].description`
+  - file1: `黎平府，领县1`
+  - file2: `黎平府，领县 1`
+- `贵州布政使司.府州[5].description`
+  - file1: `思南府，领县3`
+  - file2: `思南府，领县 3`
+- `贵州布政使司.府州[7].description`
+  - file1: `镇远府，领县2`
+  - file2: `镇远府，领县 2`
+- `贵州布政使司.府州[8].description`
+  - file1: `铜仁府，领县1`
+  - file2: `铜仁府，领县 1`
+- `贵州布政使司.府州[9].description`
+  - file1: `石阡府，领县1`
+  - file2: `石阡府，领县 1`
+- `陕西布政使司.description`
+  - file1: `陕西等处承宣布政使司，领府8州22县94`
+  - file2: `陕西等处承宣布政使司，领府 8 州 22 县 94`
+- `陕西布政使司.府州[0].description`
+  - file1: `西安府，领州6县30`
+  - file2: `西安府，领州 6 县 30`
+- `陕西布政使司.府州[1].description`
+  - file1: `凤翔府，领州1县7`
+  - file2: `凤翔府，领州 1 县 7`
+- `陕西布政使司.府州[2].description`
+  - file1: `汉中府，领州2县13`
+  - file2: `汉中府，领州 2 县 13`
+- `陕西布政使司.府州[3].description`
+  - file1: `平凉府，领州2县7`
+  - file2: `平凉府，领州 2 县 7`
+- `陕西布政使司.府州[4].description`
+  - file1: `巩昌府，领州3县14`
+  - file2: `巩昌府，领州 3 县 14`
+- `陕西布政使司.府州[5].description`
+  - file1: `临洮府，领州2县3`
+  - file2: `临洮府，领州 2 县 3`
+- `陕西布政使司.府州[6].description`
+  - file1: `庆阳府，领州1县4`
+  - file2: `庆阳府，领州 1 县 4`
+- `陕西布政使司.府州[7].description`
+  - file1: `延安府，领州3县16`
+  - file2: `延安府，领州 3 县 16`

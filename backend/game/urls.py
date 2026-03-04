@@ -25,6 +25,8 @@ urlpatterns = [
     path("games/<int:game_id>/negotiations/active-list/", views.ActiveNegotiationsListView.as_view(), name="negotiation-active-list"),
     path("games/<int:game_id>/negotiations/start-irrigation/", views.StartIrrigationNegotiationView.as_view(), name="negotiation-start-irrigation"),
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
+    # Officialdom
+    path("games/<int:game_id>/officialdom/", views.OfficialdomView.as_view(), name="game-officialdom"),
     # Neighbor counties
     path("games/<int:game_id>/neighbors/precompute/", views.NeighborPrecomputeView.as_view(), name="neighbor-precompute"),
     path("games/<int:game_id>/neighbors/", views.NeighborListView.as_view(), name="neighbor-list"),

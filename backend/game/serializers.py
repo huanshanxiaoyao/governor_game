@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    EventLog, GameState, NeighborCounty, NeighborEventLog,
+    Agent, EventLog, Faction, GameState, MonarchProfile,
+    NeighborCounty, NeighborEventLog,
     NegotiationSession, PlayerProfile, Promise,
 )
 
@@ -206,3 +207,64 @@ class NegotiationSessionSerializer(serializers.ModelSerializer):
             'agent_name', 'agent_role_title',
             'created_at', 'resolved_at',
         ]
+
+
+# ── 官场体系 ──
+
+class OfficialAgentSerializer(serializers.ModelSerializer):
+    rank = serializers.SerializerMethodField()
+    faction_name = serializers.SerializerMethodField()
+    org = serializers.SerializerMethodField()
+    province = serializers.SerializerMethodField()
+    prefecture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Agent
+        fields = [
+            'id', 'name', 'source_name', 'role', 'role_title',
+            'rank', 'faction_name', 'org', 'province', 'prefecture',
+        ]
+
+    def get_rank(self, obj):
+        return obj.attributes.get('rank')
+
+    def get_faction_name(self, obj):
+        return obj.attributes.get('faction_name')
+
+    def get_org(self, obj):
+        return obj.attributes.get('org')
+
+    def get_province(self, obj):
+        return obj.attributes.get('province', '')
+
+    def get_prefecture(self, obj):
+        return obj.attributes.get('prefecture', '')
+
+
+class FactionSerializer(serializers.ModelSerializer):
+    leader_name = serializers.CharField(source='leader.name', default='', read_only=True)
+    leader_source_name = serializers.CharField(source='leader.source_name', default='', read_only=True)
+    member_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Faction
+        fields = [
+            'id', 'name', 'ideology', 'imperial_favor',
+            'leader_name', 'leader_source_name', 'member_count',
+        ]
+
+    def get_member_count(self, obj):
+        return Agent.objects.filter(
+            game=obj.game,
+            attributes__faction_name=obj.name,
+        ).count()
+
+
+class MonarchProfileSerializer(serializers.ModelSerializer):
+    archetype_display = serializers.CharField(
+        source='get_archetype_display', read_only=True
+    )
+
+    class Meta:
+        model = MonarchProfile
+        fields = ['archetype', 'archetype_display', 'attributes']

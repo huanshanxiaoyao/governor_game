@@ -131,6 +131,10 @@
     getNeighborSummaryV2: function (gameId, neighborId) {
       return request("GET", "/api/games/" + gameId + "/neighbors/" + neighborId + "/summary-v2/");
     },
+    // Officialdom
+    getOfficialdom: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/officialdom/");
+    },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {
       var params = [];
