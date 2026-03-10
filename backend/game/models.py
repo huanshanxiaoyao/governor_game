@@ -4,10 +4,25 @@ from django.contrib.auth.models import User
 
 class GameState(models.Model):
     """游戏存档 - 核心表"""
+    ROLE_CHOICES = [
+        ('COUNTY_MAGISTRATE', '知县'),
+        ('PREFECT', '知府'),
+        ('GOVERNOR', '巡抚'),
+        ('CABINET', '内阁'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='games')
     current_season = models.IntegerField(default=1, help_text='当前月份 (1-36)')
-    county_data = models.JSONField(default=dict, help_text='所有县域数据')
+    county_data = models.JSONField(default=dict, help_text='所有县域数据（知县游戏用）')
     pending_events = models.JSONField(default=list, help_text='待处理事件')
+    player_role = models.CharField(
+        max_length=20, choices=ROLE_CHOICES, default='COUNTY_MAGISTRATE',
+        help_text='玩家当前官职层级',
+    )
+    player_unit = models.ForeignKey(
+        'AdminUnit', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='player_game', help_text='玩家当前治理的行政单元',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -19,6 +34,47 @@ class GameState(models.Model):
 
     def __str__(self):
         return f"Game #{self.id} - User:{self.user.username} Season:{self.current_season}"
+
+    def get_unit_data(self):
+        """返回玩家单位的数据（县级游戏兼容 county_data）"""
+        if self.player_unit_id is not None:
+            return self.player_unit.unit_data
+        return self.county_data
+
+
+class AdminUnit(models.Model):
+    """行政单位 — 支持县/府/省/朝廷各层级，构成可扩展的治理层级树"""
+    UNIT_TYPE_CHOICES = [
+        ('COUNTY', '县/州'),
+        ('PREFECTURE', '府'),
+        ('PROVINCE', '省'),
+        ('EMPIRE', '朝廷'),
+    ]
+
+    game = models.ForeignKey(
+        'GameState', on_delete=models.CASCADE, related_name='admin_units',
+    )
+    unit_type = models.CharField(max_length=15, choices=UNIT_TYPE_CHOICES)
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL, related_name='children',
+    )
+    unit_data = models.JSONField(default=dict, help_text='行政单元状态数据（与county_data同结构或府/省专用结构）')
+    is_player_controlled = models.BooleanField(default=False)
+    ai_agent = models.ForeignKey(
+        'Agent', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='governed_units', help_text='AI治理官员（非玩家控制时）',
+    )
+
+    class Meta:
+        db_table = 'admin_units'
+        indexes = [
+            models.Index(fields=['game', 'unit_type']),
+            models.Index(fields=['parent']),
+        ]
+
+    def __str__(self):
+        name = self.unit_data.get('county_name') or self.unit_data.get('prefecture_name', '')
+        return f"AdminUnit({self.get_unit_type_display()}) {name} - Game#{self.game_id}"
 
 
 class PlayerProfile(models.Model):
@@ -47,6 +103,9 @@ class PlayerProfile(models.Model):
     integrity = models.IntegerField(default=50, help_text='清名：公正廉洁的口碑')
     competence = models.IntegerField(default=30, help_text='能名：干练能干的口碑')
     popularity = models.IntegerField(default=10, help_text='人缘：官场好相处的口碑')
+
+    # 家产（个人财富，两）
+    personal_wealth = models.FloatField(default=0.0, help_text='家产（两）：任内积累的个人财富，含合法薪俸与灰色所得')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -283,11 +342,20 @@ class NeighborCounty(models.Model):
         ('jinqu', '进取型'),
         ('yuanhua', '圆滑型'),
     ]
+    ARCHETYPE_CHOICES = [
+        ('VIRTUOUS', '循吏型'),
+        ('MIDDLING', '中庸守成型'),
+        ('CORRUPT', '贪酷恶劣型'),
+    ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='neighbors')
     county_name = models.CharField(max_length=100, help_text='邻县名称')
     governor_name = models.CharField(max_length=50, help_text='AI知县姓名')
     governor_style = models.CharField(max_length=20, choices=STYLE_CHOICES, help_text='施政风格')
+    governor_archetype = models.CharField(
+        max_length=10, choices=ARCHETYPE_CHOICES, default='MIDDLING',
+        help_text='知县施政类型（循吏/中庸/贪酷）'
+    )
     governor_bio = models.TextField(blank=True, default='', help_text='知县人设描述')
     county_data = models.JSONField(default=dict, help_text='同玩家county_data结构')
     last_reasoning = models.TextField(blank=True, default='', help_text='上月LLM决策reasoning')

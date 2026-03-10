@@ -12,6 +12,13 @@ COUNTY_TYPE_CHOICES = [
     ("disaster_prone", "黄淮灾荒型"),
 ]
 
+PREFECTURE_TYPE_CHOICES = [
+    ("fiscal_heavy", "财赋重府"),
+    ("frontier_heavy", "边防要府"),
+    ("balanced_inland", "均衡内陆"),
+    ("remote_poor", "贫困边远"),
+]
+
 
 class CreateGameSerializer(serializers.Serializer):
     background = serializers.ChoiceField(
@@ -24,6 +31,21 @@ class CreateGameSerializer(serializers.Serializer):
         allow_null=True,
         default=None,
         help_text="县域类型（不传则随机）: fiscal_core/clan_governance/coastal/disaster_prone",
+    )
+
+
+class CreatePrefectureSerializer(serializers.Serializer):
+    background = serializers.ChoiceField(
+        choices=PlayerProfile.BACKGROUND_CHOICES,
+        default='OFFICIAL',
+        help_text="出身背景: HUMBLE/SCHOLAR/OFFICIAL",
+    )
+    prefecture_type = serializers.ChoiceField(
+        choices=PREFECTURE_TYPE_CHOICES,
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="府域类型（不传则随机）: fiscal_heavy/frontier_heavy/balanced_inland/remote_poor",
     )
 
 
@@ -70,6 +92,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
     background_display = serializers.CharField(
         source="get_background_display", read_only=True,
     )
+    wealth_tier = serializers.SerializerMethodField()
 
     class Meta:
         model = PlayerProfile
@@ -77,18 +100,32 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "background", "background_display",
             "knowledge", "skill",
             "integrity", "competence", "popularity",
+            "personal_wealth", "wealth_tier",
         ]
+
+    def get_wealth_tier(self, obj):
+        w = obj.personal_wealth or 0
+        if w < 50:
+            return "清贫"
+        if w < 200:
+            return "小康"
+        if w < 500:
+            return "殷实"
+        if w < 1000:
+            return "富裕"
+        return "巨富"
 
 
 class GameDetailSerializer(serializers.ModelSerializer):
     player = PlayerProfileSerializer(read_only=True)
     available_investments = serializers.SerializerMethodField()
+    disaster_relief_advice = serializers.SerializerMethodField()
 
     class Meta:
         model = GameState
         fields = [
-            "id", "current_season", "county_data",
-            "player", "available_investments",
+            "id", "current_season", "player_role", "county_data",
+            "player", "available_investments", "disaster_relief_advice",
             "created_at", "updated_at",
         ]
 
@@ -96,11 +133,18 @@ class GameDetailSerializer(serializers.ModelSerializer):
         from .services import InvestmentService
         return InvestmentService.get_available_actions(obj.county_data, season=obj.current_season)
 
+    def get_disaster_relief_advice(self, obj):
+        from .services import SettlementService
+        return SettlementService.compute_relief_advice(
+            obj.county_data,
+            season=obj.current_season,
+        )
+
 
 class GameListSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameState
-        fields = ["id", "current_season", "created_at", "updated_at"]
+        fields = ["id", "current_season", "player_role", "created_at", "updated_at"]
 
 
 class ChatMessageSerializer(serializers.Serializer):
@@ -132,6 +176,19 @@ class StartIrrigationSerializer(serializers.Serializer):
         max_length=50,
         help_text="目标村庄名称",
     )
+
+
+class EmergencyBorrowSerializer(serializers.Serializer):
+    neighbor_id = serializers.IntegerField(min_value=1, help_text="邻县ID")
+    amount = serializers.FloatField(min_value=1, help_text="借粮数量（斤）")
+
+
+class EmergencyGrainAmountSerializer(serializers.Serializer):
+    amount = serializers.FloatField(min_value=1, help_text="粮食数量（斤）")
+
+
+class EmergencyDebugToggleSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField(help_text="是否显式展示隐藏触发")
 
 
 class EventLogSerializer(serializers.ModelSerializer):
@@ -170,13 +227,17 @@ class NeighborCountySummarySerializer(serializers.ModelSerializer):
     governor_style_display = serializers.CharField(
         source='get_governor_style_display', read_only=True,
     )
+    governor_archetype_display = serializers.CharField(
+        source='get_governor_archetype_display', read_only=True,
+    )
     county_type_name = serializers.SerializerMethodField()
 
     class Meta:
         model = NeighborCounty
         fields = [
             'id', 'county_name', 'governor_name', 'governor_style',
-            'governor_style_display', 'governor_bio', 'county_type_name',
+            'governor_style_display', 'governor_archetype', 'governor_archetype_display',
+            'governor_bio', 'county_type_name',
             'county_data', 'last_reasoning',
         ]
 

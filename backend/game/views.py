@@ -5,13 +5,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
-    Agent, EventLog, GameState, NeighborCounty, NeighborEventLog,
+    AdminUnit, Agent, EventLog, GameState, NeighborCounty, NeighborEventLog,
     NegotiationSession, PlayerProfile, Promise,
 )
 from .serializers import (
     ChatMessageSerializer,
     CommercialTaxRateSerializer,
     CreateGameSerializer,
+    EmergencyBorrowSerializer,
+    EmergencyDebugToggleSerializer,
+    EmergencyGrainAmountSerializer,
     EventLogSerializer,
     GameDetailSerializer,
     GameListSerializer,
@@ -30,8 +33,16 @@ from .serializers import (
 from .services import (
     AgentService, CountyService, InvestmentService,
     NegotiationService, NeighborService, OfficialdomService, SettlementService,
+    EmergencyService,
 )
 from .services.constants import MAX_MONTH
+
+
+def _blocked_by_takeover(game):
+    reason = EmergencyService.governance_block_reason(game.county_data)
+    if not reason:
+        return None
+    return Response({"error": reason}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LoginView(APIView):
@@ -103,13 +114,36 @@ class GameListCreateView(APIView):
         )
 
         # Create player profile with background-specific defaults
+        import random as _random
+        from .services.magistrate_service import MagistrateService
         defaults = PlayerProfile.BACKGROUND_DEFAULTS[background]
+        WEALTH_START = {
+            'HUMBLE':  (_random.uniform(10, 30)),
+            'SCHOLAR': (_random.uniform(40, 80)),
+            'OFFICIAL': (_random.uniform(120, 200)),
+        }
         PlayerProfile.objects.create(
             game=game,
             background=background,
             knowledge=defaults["knowledge"],
             skill=defaults["skill"],
+            personal_wealth=round(WEALTH_START.get(background, 20), 1),
         )
+
+        # Generate player ideology flavor and store in county_data
+        flavor = MagistrateService.generate_player_flavor(background)
+        game.county_data['player_profile_flavor'] = flavor
+        game.save(update_fields=['county_data'])
+
+        # 创建玩家控制的行政单位（县级）
+        _player_unit = AdminUnit.objects.create(
+            game=game,
+            unit_type='COUNTY',
+            unit_data=game.county_data,
+            is_player_controlled=True,
+        )
+        game.player_unit = _player_unit
+        game.save(update_fields=['player_unit'])
 
         # Initialize NPC agents
         AgentService.initialize_agents(game)
@@ -154,6 +188,10 @@ class InvestView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
         serializer = InvestActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -185,6 +223,10 @@ class RequestLandSurveyView(APIView):
             game = GameState.objects.get(id=game_id, user=request.user)
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
 
         village_name = request.data.get("village_name")
         if not village_name:
@@ -290,6 +332,9 @@ class TaxRateView(APIView):
                 {"error": "游戏已结束"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
 
         serializer = TaxRateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -357,6 +402,9 @@ class CommercialTaxRateView(APIView):
                 {"error": "游戏已结束"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
 
         serializer = CommercialTaxRateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -629,6 +677,7 @@ class ActiveNegotiationsListView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
+        NegotiationService.expire_stale_negotiations(game, current_season=game.current_season)
         sessions = NegotiationSession.objects.filter(
             game=game, status='active',
         ).select_related('agent').order_by('id')
@@ -665,6 +714,8 @@ class NegotiationChatView(APIView):
         if err:
             return err
 
+        NegotiationService.expire_stale_negotiations(game, current_season=game.current_season)
+        session.refresh_from_db()
         history = NegotiationService.get_negotiation_history(session)
         session_data = NegotiationSessionSerializer(session).data
         return Response({
@@ -677,6 +728,8 @@ class NegotiationChatView(APIView):
         if err:
             return err
 
+        NegotiationService.expire_stale_negotiations(game, current_season=game.current_season)
+        session.refresh_from_db()
         if session.status != 'active':
             return Response(
                 {"error": "该谈判已结束"},
@@ -768,6 +821,10 @@ class StartIrrigationNegotiationView(APIView):
             game = GameState.objects.get(id=game_id, user=request.user)
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
 
         serializer = StartIrrigationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -979,4 +1036,164 @@ class OfficialdomView(APIView):
             "player_province": data.get('player_province', ''),
             "factions": FactionSerializer(data['factions'], many=True).data,
         }
+        return Response(result)
+
+
+class DisasterReliefView(APIView):
+    """
+    POST /api/games/{id}/disaster-relief/  — 提交灾害减免申请（九月提交，十月批示）
+
+    Body: { "claimed_loss": <两> }
+      claimed_loss: 玩家申报的秋税上缴减免额度（两）。
+      仅九月可提交，每年一次；十月统一给出批示并执行秋税扣减。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        claimed_loss = request.data.get("claimed_loss")
+        if claimed_loss is None:
+            return Response(
+                {"error": "请提供申请减免的灾损数额（claimed_loss，单位：两）"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            claimed_loss = float(claimed_loss)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "claimed_loss 必须为数字"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = SettlementService.process_disaster_relief(game, claimed_loss)
+        if result.get("success") is False and "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class EmergencyPrefectureReliefView(APIView):
+    """POST /api/games/{id}/emergency/prefecture-relief/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        result = EmergencyService.request_prefecture_relief(game)
+        if result.get("success") is False:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class EmergencyBorrowNeighborView(APIView):
+    """POST /api/games/{id}/emergency/borrow-neighbor/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        serializer = EmergencyBorrowSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = EmergencyService.borrow_from_neighbor(
+            game,
+            neighbor_id=serializer.validated_data["neighbor_id"],
+            amount=serializer.validated_data["amount"],
+        )
+        if result.get("success") is False:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class EmergencyGentryReliefView(APIView):
+    """POST /api/games/{id}/emergency/gentry-relief/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        serializer = EmergencyGrainAmountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = EmergencyService.negotiate_gentry_relief(
+            game,
+            requested_amount=serializer.validated_data["amount"],
+        )
+        if result.get("success") is False:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class EmergencyForceLevyView(APIView):
+    """POST /api/games/{id}/emergency/force-levy/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        serializer = EmergencyGrainAmountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = EmergencyService.force_levy_gentry(
+            game,
+            amount=serializer.validated_data["amount"],
+        )
+        if result.get("success") is False:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class EmergencyDebugToggleView(APIView):
+    """POST /api/games/{id}/emergency/debug-toggle/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = EmergencyDebugToggleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = EmergencyService.set_debug_reveal(
+            game,
+            enabled=serializer.validated_data["enabled"],
+        )
         return Response(result)

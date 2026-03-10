@@ -45,8 +45,11 @@
     listGames: function () {
       return request("GET", "/api/games/");
     },
-    createGame: function (background) {
-      return request("POST", "/api/games/", { background: background });
+    createGame: function (background, countyType) {
+      return request("POST", "/api/games/", {
+        background: background,
+        county_type: countyType,
+      });
     },
     getGame: function (id) {
       return request("GET", "/api/games/" + id + "/");
@@ -73,6 +76,27 @@
     },
     setCommercialTaxRate: function (id, rate) {
       return request("POST", "/api/games/" + id + "/commercial-tax-rate/", { commercial_tax_rate: rate });
+    },
+    applyDisasterRelief: function (id, claimedLoss) {
+      return request("POST", "/api/games/" + id + "/disaster-relief/", { claimed_loss: claimedLoss });
+    },
+    emergencyPrefectureRelief: function (id) {
+      return request("POST", "/api/games/" + id + "/emergency/prefecture-relief/", {});
+    },
+    emergencyBorrowNeighbor: function (id, neighborId, amount) {
+      return request("POST", "/api/games/" + id + "/emergency/borrow-neighbor/", {
+        neighbor_id: neighborId,
+        amount: amount,
+      });
+    },
+    emergencyGentryRelief: function (id, amount) {
+      return request("POST", "/api/games/" + id + "/emergency/gentry-relief/", { amount: amount });
+    },
+    emergencyForceLevy: function (id, amount) {
+      return request("POST", "/api/games/" + id + "/emergency/force-levy/", { amount: amount });
+    },
+    emergencySetDebugReveal: function (id, enabled) {
+      return request("POST", "/api/games/" + id + "/emergency/debug-toggle/", { enabled: enabled });
     },
     getSummary: function (id) {
       return request("GET", "/api/games/" + id + "/summary/");
@@ -134,6 +158,45 @@
     // Officialdom
     getOfficialdom: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/officialdom/");
+    },
+    // Prefecture (知府)
+    createPrefecture: function (background, prefectureType) {
+      var body = { background: background };
+      if (prefectureType) body.prefecture_type = prefectureType;
+      return request("POST", "/api/prefecture/create/", body);
+    },
+    getPrefectureOverview: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/");
+    },
+    advancePrefectureMonth: function (gameId) {
+      return request("POST", "/api/prefecture/" + gameId + "/advance/", {});
+    },
+    getPrefectureCountyDetail: function (gameId, unitId) {
+      return request("GET", "/api/prefecture/" + gameId + "/counties/" + unitId + "/");
+    },
+    setPrefectureQuota: function (gameId, assignments) {
+      return request("POST", "/api/prefecture/" + gameId + "/quota/", { assignments: assignments });
+    },
+    sendPrefectureDirective: function (gameId, unitId, directive) {
+      return request("POST", "/api/prefecture/" + gameId + "/directive/", { unit_id: unitId, directive: directive });
+    },
+    inspectPrefectureCounty: function (gameId, unitId, inspectType) {
+      return request("POST", "/api/prefecture/" + gameId + "/inspect/", { unit_id: unitId, inspect_type: inspectType });
+    },
+    getPrefectureInvestStatus: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/invest/");
+    },
+    investPrefecture: function (gameId, project, level) {
+      return request("POST", "/api/prefecture/" + gameId + "/invest/", { project: project, level: level });
+    },
+    getPrefectureTalent: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/talent/");
+    },
+    getPrefectureJudicialCases: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/judicial/");
+    },
+    decidePrefectureCase: function (gameId, caseId, action) {
+      return request("POST", "/api/prefecture/" + gameId + "/judicial/decide/", { case_id: caseId, action: action });
     },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {

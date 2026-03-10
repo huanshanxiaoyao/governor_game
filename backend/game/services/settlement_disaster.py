@@ -3,6 +3,7 @@
 import random
 
 from ..models import EventLog
+from .constants import RIVER_DISASTER_REDUCTION_PER_LEVEL
 from .ledger import ensure_county_ledgers, ensure_village_ledgers
 
 
@@ -56,9 +57,10 @@ class DisasterMixin:
             report["events"].append("北方边报频传，朝中气氛紧张")
 
     @classmethod
-    def _disaster_check(cls, county, report, game=None):
+    def _disaster_check(cls, county, report, game=None, prefecture_ctx=None):
         """Summer disaster check (doc 06 §3).
         When game is provided, also creates EventLog (player path).
+        prefecture_ctx: optional dict with river_level (河道治理) for flood/drought reduction.
         """
         ensure_county_ledgers(county)
         env = county["environment"]
@@ -67,15 +69,19 @@ class DisasterMixin:
         irr_level = county.get("irrigation_level", 0)
         overdev = cls._overdevelopment_bonus(county)
 
+        # 河道治理：相对减少洪灾和旱灾概率（每级 -15%，最多2级）
+        river_level = (prefecture_ctx or {}).get("river_level", 0)
+        river_reduction = 1.0 - river_level * RIVER_DISASTER_REDUCTION_PER_LEVEL
+
+        raw_flood = (
+            max(0.02 if env["flood_risk"] > 0 else 0,
+                env["flood_risk"] * (1 - irr_level * 0.1)) + overdev
+        )
+        raw_drought = 0.15 * (1 - env["agriculture_suitability"]) + overdev
+
         disaster_table = [
-            (
-                "flood",
-                max(0.02 if env["flood_risk"] > 0 else 0,
-                    env["flood_risk"] * (1 - irr_level * 0.1)) + overdev,
-                (0.4, 0.7),
-                -10,
-            ),
-            ("drought", 0.15 * (1 - env["agriculture_suitability"]) + overdev, (0.3, 0.6), -8),
+            ("flood",  raw_flood  * river_reduction, (0.4, 0.7), -10),
+            ("drought", raw_drought * river_reduction, (0.3, 0.6), -8),
             ("locust", 0.08, (0.2, 0.4), -5),
             ("plague", 0.05 * medical_mult, (0.05, 0.15), -15),
         ]

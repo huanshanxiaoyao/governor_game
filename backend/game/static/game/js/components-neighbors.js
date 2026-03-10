@@ -9,6 +9,7 @@
   var el = C.el, h = C.h, escapeHtml = C.escapeHtml;
   var calcMedicalCost = C.calcMedicalCost;
   var MEDICAL_NAMES = C.MEDICAL_NAMES;
+  var ADMIN_COST_LABELS = C.ADMIN_COST_LABELS;
 
   var GOVERNOR_STYLE_COLORS = {
     minben: "#27ae60",
@@ -16,6 +17,12 @@
     baoshou: "#8a7a5a",
     jinqu: "#c0392b",
     yuanhua: "#8e44ad",
+  };
+
+  var GOVERNOR_ARCHETYPE_COLORS = {
+    VIRTUOUS: "#1a7a4a",
+    MIDDLING: "#6b5d45",
+    CORRUPT:  "#a93226",
   };
 
   function renderNeighborsList(neighbors) {
@@ -35,6 +42,9 @@
       (cd.villages || []).forEach(function (v) { totalPop += v.population; });
 
       var styleColor = GOVERNOR_STYLE_COLORS[n.governor_style] || "#8a7a5a";
+      var archetypeColor = GOVERNOR_ARCHETYPE_COLORS[n.governor_archetype] || "#6b5d45";
+      var archetypeLabel = escapeHtml(n.governor_archetype_display || "");
+      var styleLabel = escapeHtml(n.governor_style_display || n.governor_style);
 
       var card = h("div", "neighbor-card");
       card.dataset.neighborId = n.id;
@@ -45,14 +55,15 @@
         '</div>' +
         '<div class="neighbor-governor">' +
           '<span class="neighbor-governor-name">' + escapeHtml(n.governor_name) + ' 知县</span>' +
-          '<span class="neighbor-style-tag" style="background:' + styleColor + ';">' +
-            escapeHtml(n.governor_style_display || n.governor_style) + '</span>' +
+          '<span class="neighbor-archetype-tag" style="background:' + archetypeColor + ';">' + archetypeLabel + '</span>' +
+          '<span class="neighbor-style-tag" style="background:' + styleColor + ';">' + styleLabel + '</span>' +
         '</div>' +
         '<div class="neighbor-stats">' +
           '<span>人口 ' + totalPop + '</span>' +
           '<span>县库 ' + Math.round(cd.treasury || 0) + '两</span>' +
           '<span>民心 ' + Math.round(cd.morale || 0) + '</span>' +
           '<span>治安 ' + Math.round(cd.security || 0) + '</span>' +
+          '<span>行政开支 ' + Math.round(cd.admin_cost || 0) + '两/年</span>' +
         '</div>' +
         (n.last_reasoning ?
           '<div class="neighbor-analysis">' +
@@ -73,6 +84,7 @@
     el("neighbor-detail-title").textContent = neighbor.county_name + " — " + neighbor.governor_name + " 知县";
 
     var styleColor = GOVERNOR_STYLE_COLORS[neighbor.governor_style] || "#8a7a5a";
+    var archetypeColor = GOVERNOR_ARCHETYPE_COLORS[neighbor.governor_archetype] || "#6b5d45";
     var totalPop = 0;
     (cd.villages || []).forEach(function (v) { totalPop += v.population; });
 
@@ -83,6 +95,8 @@
       '<div class="nd-section">' +
         '<h4>知县人设</h4>' +
         '<div class="nd-governor-card">' +
+          '<span class="neighbor-archetype-tag" style="background:' + archetypeColor + ';">' +
+            escapeHtml(neighbor.governor_archetype_display || '') + '</span>' +
           '<span class="neighbor-style-tag" style="background:' + styleColor + ';">' +
             escapeHtml(neighbor.governor_style_display || neighbor.governor_style) + '</span>' +
           '<p>' + escapeHtml(neighbor.governor_bio || '') + '</p>' +
@@ -109,6 +123,37 @@
           '<div class="nd-stat"><span class="nd-stat-label">医疗</span><span class="nd-stat-value">' + MEDICAL_NAMES[ml] + (neighborMedCost > 0 ? '(' + neighborMedCost + '两/年)' : '') + '</span></div>' +
         '</div>' +
       '</div>';
+
+    var adminCostDetail = cd.admin_cost_detail || {};
+    var adminCostKeys = [
+      "official_salary", "deputy_salary", "advisor_fee", "clerks_cost",
+      "bailiff_cost", "school_cost", "office_cost", "irrigation_maint", "medical_maint",
+    ];
+    var adminRows = "";
+    adminCostKeys.forEach(function (k) {
+      if (adminCostDetail[k] === undefined) return;
+      adminRows +=
+        '<div class="nd-admin-row">' +
+          '<span class="nd-admin-label">' + escapeHtml(ADMIN_COST_LABELS[k] || k) + '</span>' +
+          '<span class="nd-admin-value">' + adminCostDetail[k] + '两</span>' +
+        '</div>';
+    });
+    if (adminRows) {
+      html +=
+        '<div class="nd-section">' +
+          '<h4>年度行政开支</h4>' +
+          '<details class="nd-admin-details">' +
+            '<summary>合计 ' + Math.round(cd.admin_cost || 0) + ' 两/年（点击展开明细）</summary>' +
+            '<div class="nd-admin-list">' +
+              adminRows +
+              '<div class="nd-admin-row nd-admin-total">' +
+                '<span class="nd-admin-label"><strong>合计</strong></span>' +
+                '<span class="nd-admin-value"><strong>' + Math.round(cd.admin_cost || 0) + '两</strong></span>' +
+              '</div>' +
+            '</div>' +
+          '</details>' +
+        '</div>';
+    }
 
     // 村庄表
     if (cd.villages && cd.villages.length > 0) {

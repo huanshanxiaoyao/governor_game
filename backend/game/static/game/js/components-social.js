@@ -269,6 +269,21 @@
     PROMISE: "#8e44ad",
   };
 
+  function getSettlementPayload(logData) {
+    if (!logData) return null;
+    if (logData.settlement_report) return logData.settlement_report;
+    if (!logData.events && !logData.monthly_snapshot && !logData.autumn && !logData.winter_snapshot) {
+      return null;
+    }
+    var payload = {};
+    if (logData.events) payload.events = logData.events;
+    if (logData.monthly_snapshot) payload.monthly_snapshot = logData.monthly_snapshot;
+    if (logData.population_update) payload.population_update = logData.population_update;
+    if (logData.autumn) payload.autumn = logData.autumn;
+    if (logData.winter_snapshot) payload.winter_snapshot = logData.winter_snapshot;
+    return payload;
+  }
+
   function renderEventLogs(logs) {
     var container = el("events-list");
     container.innerHTML = "";
@@ -282,6 +297,20 @@
       var catLabel = CATEGORY_LABELS[log.category] || log.category;
       var catColor = CATEGORY_COLORS[log.category] || "#8a7a5a";
       var seasonText = Game.seasonName(log.season);
+      var extraHtml = "";
+
+      if (log.category === "SETTLEMENT") {
+        var settlementPayload = getSettlementPayload(log.data);
+        if (settlementPayload) {
+          extraHtml =
+            '<details class="event-log-settlement-details">' +
+              "<summary>查看当月月报</summary>" +
+              '<pre class="event-log-settlement-json">' +
+                escapeHtml(JSON.stringify(settlementPayload, null, 2)) +
+              "</pre>" +
+            "</details>";
+        }
+      }
 
       var item = h("div", "event-log-item");
       item.innerHTML =
@@ -289,7 +318,8 @@
           '<span class="event-log-category" style="background:' + catColor + ';">' + catLabel + '</span>' +
           '<span class="event-log-season">' + seasonText + '</span>' +
         '</div>' +
-        '<div class="event-log-desc">' + escapeHtml(log.description || log.event_type) + '</div>';
+        '<div class="event-log-desc">' + escapeHtml(log.description || log.event_type) + '</div>' +
+        extraHtml;
       container.appendChild(item);
     });
   }

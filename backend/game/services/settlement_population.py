@@ -3,6 +3,8 @@
 from .constants import (
     MAX_YIELD_PER_MU,
     ANNUAL_CONSUMPTION,
+    CORVEE_PER_CAPITA,
+    GRAIN_PER_LIANG,
     BASE_GROWTH_RATE,
     GROWTH_RATE_CLAMP,
     MIGRATION_SIGNIFICANT_DIFF,
@@ -28,9 +30,11 @@ class PopulationMixin:
             gentry_pct = village.get("gentry_land_pct", 0.3)
             peasant_farmland = village["farmland"] * (1 - gentry_pct)
         irrigation_bonus = 1 + irrigation * 0.15
-        # Carrying capacity intentionally ignores agriculture_suitability (balance update).
+        # 承载力忽略农业适宜度（平衡性设计）
+        # 分母含徭役折银粮食当量：村民须卖粮缴徭役，年均额外耗粮 CORVEE_PER_CAPITA * GRAIN_PER_LIANG
+        effective_consumption = ANNUAL_CONSUMPTION + CORVEE_PER_CAPITA * GRAIN_PER_LIANG
         ceiling = (peasant_farmland * MAX_YIELD_PER_MU
-                   * irrigation_bonus * (1 - tax_rate) / ANNUAL_CONSUMPTION)
+                   * irrigation_bonus * (1 - tax_rate) / effective_consumption)
         return int(ceiling)
 
     @staticmethod

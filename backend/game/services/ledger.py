@@ -70,6 +70,11 @@ def ensure_village_ledgers(village):
 
 def ensure_county_ledgers(county):
     """Ensure all villages have dual-ledger fields."""
+    # Granary lifecycle fields (backward-compatible for old saves)
+    county.setdefault("granary_rebuild_cost", None)
+    county.setdefault("granary_needs_rebuild", False)
+    county.setdefault("granary_last_used_season", None)
+
     for village in county.get("villages", []):
         ensure_village_ledgers(village)
     return county
@@ -266,11 +271,13 @@ def refresh_village_grain_ledgers(
     # Derive village reserve baseline with opening-rule semantics:
     # reserve_base = annual_income - 4 months consumption.
     village_reserve_bases = []
+    village_peasant_pops = []
     total_reserve_base = 0.0
     for village in county.get("villages", []):
         ensure_village_ledgers(village)
         peasant = village["peasant_ledger"]
         peasant_pop = max(0, _safe_int(peasant.get("registered_population", 0)))
+        village_peasant_pops.append(peasant_pop)
         peasant_land = max(0.0, _safe_float(peasant.get("farmland", 0.0)))
         peasant_income = peasant_land * MAX_YIELD_PER_MU * ag_suit * irrigation_mult * (1 - tax_rate)
         reserve_base = peasant_income - peasant_pop * ANNUAL_CONSUMPTION * (4.0 / 12.0)
@@ -278,9 +285,21 @@ def refresh_village_grain_ledgers(
         total_reserve_base += reserve_base
 
     county_reserve = _safe_float(county.get("peasant_grain_reserve", 0.0), 0.0)
-    reserve_scale = 1.0
-    if total_reserve_base > 0 and county_reserve > 0:
+    aligned_reserves = []
+    if abs(total_reserve_base) > 1e-9:
         reserve_scale = county_reserve / total_reserve_base
+        aligned_reserves = [base * reserve_scale for base in village_reserve_bases]
+    else:
+        # Zero-base fallback: keep county total consistent via population-weight split.
+        total_peasant_pop = sum(village_peasant_pops)
+        if total_peasant_pop > 0:
+            aligned_reserves = [
+                county_reserve * (pop / total_peasant_pop)
+                for pop in village_peasant_pops
+            ]
+        elif village_reserve_bases:
+            even_share = county_reserve / len(village_reserve_bases)
+            aligned_reserves = [even_share for _ in village_reserve_bases]
 
     remaining = _months_until_harvest(current_season)
 
@@ -289,7 +308,7 @@ def refresh_village_grain_ledgers(
         peasant = village["peasant_ledger"]
 
         peasant_pop = max(0, _safe_int(peasant.get("registered_population", 0)))
-        peasant_reserve = village_reserve_bases[idx] * reserve_scale
+        peasant_reserve = aligned_reserves[idx] if idx < len(aligned_reserves) else 0.0
         peasant["grain_surplus"] = round(peasant_reserve, 1)
 
         per_month_consumption = peasant_pop * ANNUAL_CONSUMPTION / 12

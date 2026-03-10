@@ -244,9 +244,19 @@ class AIGovernorService:
         else:
             investments_summary = "无"
 
+        # 知府指令
+        pending_directives = county.get('pending_directives', [])
+        if pending_directives:
+            directive_lines = [f"  [{d['season']}季] {d['directive']}" for d in pending_directives[-3:]]
+            directives_desc = "知府近期指令：\n" + "\n".join(directive_lines)
+        else:
+            directives_desc = ""
+
         game_knowledge = cls.GAME_KNOWLEDGE_TEMPLATE
         if county_type_desc:
             game_knowledge += f"\n六、县域特色\n- {county_type_desc}\n"
+        if directives_desc:
+            game_knowledge += f"\n七、上级指令\n{directives_desc}\n"
 
         # 医疗等级及各级年费描述
         current_medical = county.get('medical_level', 0)
@@ -484,7 +494,7 @@ class AIGovernorService:
         # Build AI-governor-flavored event description
         if investment == "hire_bailiffs":
             evt = (f"{neighbor.governor_name}增设衙役，等级升至{county['bailiff_level']}，"
-                   f"治安+8，花费{actual_cost}两")
+                   f"县治安+8、各村治安+5，花费{actual_cost}两")
         elif investment == "build_granary":
             evt = (f"{neighbor.governor_name}建成义仓，民心+5，"
                    f"秋季灾害人口损失×0.65，花费{actual_cost}两")

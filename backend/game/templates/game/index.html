@@ -36,7 +36,18 @@
 
   <div class="new-game-panel">
     <h3>开始新游戏</h3>
-    <p>选择出身背景：</p>
+    <p>1）选择角色：</p>
+    <div class="role-choices">
+      <button class="btn btn-role" data-role="COUNTY">
+        <strong>知县</strong>
+        <span>县域治理·三年任期</span>
+      </button>
+      <button class="btn btn-role" data-role="PREFECTURE">
+        <strong>知府</strong>
+        <span>府域统辖·三年任期</span>
+      </button>
+    </div>
+    <p style="margin-top: 14px;">2）选择出身背景：</p>
     <div class="background-choices">
       <button class="btn btn-background" data-bg="HUMBLE">
         <strong>寒门子弟</strong>
@@ -50,6 +61,52 @@
         <strong>官宦之后</strong>
         <span>知识4 / 技能5</span>
       </button>
+    </div>
+    <div id="county-type-section" class="hidden">
+      <p style="margin-top: 14px;">3）选择治理县域类型：</p>
+      <div class="county-type-choices">
+        <button class="btn btn-county-type" data-county-type="fiscal_core">
+          <strong>财赋核心型</strong>
+          <span>高收入 / 高上缴压力</span>
+        </button>
+        <button class="btn btn-county-type" data-county-type="clan_governance">
+          <strong>宗族治理型</strong>
+          <span>宗族势力强 / 社会稳定度较高</span>
+        </button>
+        <button class="btn btn-county-type" data-county-type="coastal">
+          <strong>沿海治理型</strong>
+          <span>海防压力高 / 财政偏紧</span>
+        </button>
+        <button class="btn btn-county-type" data-county-type="disaster_prone">
+          <strong>黄淮灾荒型</strong>
+          <span>灾害风险高 / 民生脆弱</span>
+        </button>
+      </div>
+    </div>
+    <div id="prefecture-type-section" class="hidden">
+      <p style="margin-top: 14px;">3）选择府域类型：</p>
+      <div class="county-type-choices">
+        <button class="btn btn-prefecture-type" data-prefecture-type="fiscal_heavy">
+          <strong>财赋重府</strong>
+          <span>赋税重镇 / 上缴压力大</span>
+        </button>
+        <button class="btn btn-prefecture-type" data-prefecture-type="frontier_heavy">
+          <strong>边防要府</strong>
+          <span>军务繁重 / 财政紧张</span>
+        </button>
+        <button class="btn btn-prefecture-type" data-prefecture-type="balanced_inland">
+          <strong>均衡内陆</strong>
+          <span>较为平稳 / 均衡发展</span>
+        </button>
+        <button class="btn btn-prefecture-type" data-prefecture-type="remote_poor">
+          <strong>贫困边远</strong>
+          <span>底子薄弱 / 挑战极大</span>
+        </button>
+      </div>
+    </div>
+    <div class="new-game-actions">
+      <button id="btn-start-game" class="btn btn-primary" disabled>开始新游戏</button>
+      <span id="new-game-selection-hint" class="hint">请先选择角色与出身</span>
     </div>
   </div>
 
@@ -68,14 +125,15 @@
       <span id="season-display"></span>
       <span id="treasury-display"></span>
     </div>
+    <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
   </div>
+  <div id="neighbor-precompute-status" class="precompute-status-inline header-precompute"></div>
 
   <!-- Tab Navigation -->
   <nav class="tab-nav">
     <button class="tab-btn active" data-tab="tab-dashboard">县情总览</button>
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
-    <button class="tab-btn" data-tab="tab-report">月报</button>
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
     <button class="tab-btn" data-tab="tab-staff">幕僚</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
@@ -91,6 +149,7 @@
     <div id="info-row" class="info-row"></div>
     <div id="environment-info"></div>
     <div id="surplus-info"></div>
+    <div id="quota-info"></div>
     <div id="disaster-alert" class="disaster-alert hidden"></div>
     <div id="investments-list"></div>
     <div id="irrigation-negotiate-section" class="hidden"></div>
@@ -151,6 +210,41 @@
       </div>
     </div>
 
+    <div id="relief-action-section" class="action-section hidden">
+      <h3>灾害减免申请</h3>
+      <div id="relief-status" class="hint">仅九月可提交，十月统一批示</div>
+      <div id="relief-advice" class="hint"></div>
+      <div class="tax-control relief-control">
+        <input type="number" id="relief-claimed-loss" min="1" step="1" placeholder="申报减免额度（两）">
+        <button id="btn-fill-relief-suggestion" class="btn btn-small">填入县丞建议</button>
+        <button id="btn-submit-relief" class="btn btn-primary btn-small">向知府申请</button>
+      </div>
+    </div>
+
+    <div id="emergency-action-section" class="action-section hidden">
+      <h3>粮荒紧急处置</h3>
+      <div id="emergency-status" class="hint">当前未进入紧急状态</div>
+      <div class="tax-control relief-control">
+        <label><input type="checkbox" id="emergency-debug-toggle"> 测试期显式展示隐藏触发</label>
+      </div>
+      <div class="tax-control relief-control">
+        <button id="btn-emergency-prefecture" class="btn btn-small">向知府申请拨粮</button>
+      </div>
+      <div class="tax-control relief-control">
+        <select id="emergency-neighbor-select"></select>
+        <input type="number" id="emergency-borrow-amount" min="1" step="1" placeholder="借粮数量（斤）">
+        <button id="btn-emergency-borrow" class="btn btn-small">向邻县借粮</button>
+      </div>
+      <div class="tax-control relief-control">
+        <input type="number" id="emergency-gentry-amount" min="1" step="1" placeholder="协商放粮数量（斤）">
+        <button id="btn-emergency-gentry" class="btn btn-small">号召地主放粮（谈判）</button>
+      </div>
+      <div class="tax-control relief-control">
+        <input type="number" id="emergency-force-amount" min="1" step="1" placeholder="强制征调总量（斤）">
+        <button id="btn-emergency-force" class="btn btn-primary btn-small">强制调用地主余粮</button>
+      </div>
+    </div>
+
     <div class="action-section">
       <h3>投资施政</h3>
       <div id="invest-cards" class="invest-grid"></div>
@@ -199,6 +293,7 @@
 
   <!-- Tab: Events (县志) -->
   <div id="tab-events" class="tab-content hidden">
+    <div id="monthly-reports-log"></div>
     <div class="events-controls">
       <select id="events-category-filter">
         <option value="">全部分类</option>
@@ -216,14 +311,6 @@
     <div id="events-list"></div>
   </div>
 
-  <!-- Tab: Report -->
-  <div id="tab-report" class="tab-content hidden">
-    <div id="report-content">
-      <p class="hint">推进月份后将在此显示月报</p>
-    </div>
-    <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
-    <div id="neighbor-precompute-status" class="precompute-status"></div>
-  </div>
 </section>
 
 <!-- ==================== Screen 4: End Summary ==================== -->
@@ -235,6 +322,20 @@
     <button id="btn-back-from-summary" class="btn btn-primary">返回游戏列表</button>
   </div>
 </section>
+
+<!-- ==================== County Advance Result Modal ==================== -->
+<div id="advance-result-modal" class="modal hidden">
+  <div class="modal-content advance-result-content">
+    <div class="advance-modal-header">
+      <h4 id="advance-result-title">施政月报</h4>
+      <button id="advance-result-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="advance-result-body" class="advance-result-body"></div>
+    <div class="advance-modal-footer">
+      <button id="advance-result-view-log" class="btn btn-small">查看县志</button>
+    </div>
+  </div>
+</div>
 
 <!-- ==================== Negotiation Chat Modal ==================== -->
 <div id="negotiation-modal" class="modal hidden">
@@ -312,6 +413,140 @@
   </div>
 </div>
 
+<!-- ==================== Screen 5: Prefecture (知府) ==================== -->
+<section id="screen-prefecture" class="screen hidden">
+  <!-- Header -->
+  <div class="game-header">
+    <button id="btn-pref-back" class="btn btn-small">返回列表</button>
+    <div id="pref-header-info" class="header-info"></div>
+  </div>
+
+  <!-- Calendar strip + advance controls -->
+  <div class="pref-cal-row">
+    <div id="pref-calendar-strip"></div>
+    <div class="pref-cal-actions">
+      <button id="btn-pref-advance" class="btn btn-primary btn-advance">推进月份</button>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav" id="pref-tab-nav">
+    <button class="tab-btn active" data-tab="pref-tab-overview">府情总览</button>
+    <button class="tab-btn" data-tab="pref-tab-counties">下辖县州</button>
+    <button class="tab-btn" data-tab="pref-tab-infra">公共事业</button>
+    <button class="tab-btn pref-judicial-tab-btn" data-tab="pref-tab-judicial">司法<span id="judicial-tab-badge" class="judicial-tab-badge hidden"></span></button>
+    <button class="tab-btn" data-tab="pref-tab-log">府志</button>
+  </nav>
+
+  <!-- Tab: Overview -->
+  <div id="pref-tab-overview" class="tab-content active">
+    <div id="pref-quota-area">
+      <div id="pref-quota-progress"></div>
+      <button id="btn-pref-quota" class="btn btn-small hidden">分配年度定额（正月）</button>
+    </div>
+    <div id="pref-key-metrics"></div>
+    <div id="pref-county-mini-list"></div>
+  </div>
+
+  <!-- Tab: Counties -->
+  <div id="pref-tab-counties" class="tab-content hidden">
+    <div id="pref-counties-table-wrap">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+
+  <!-- Tab: Infra -->
+  <div id="pref-tab-infra" class="tab-content hidden">
+    <div id="pref-infra-content"><p class="hint">加载中...</p></div>
+  </div>
+
+  <!-- Tab: Judicial (司法) -->
+  <div id="pref-tab-judicial" class="tab-content hidden">
+    <div id="pref-judicial-content"><p class="hint">加载中...</p></div>
+  </div>
+
+  <!-- Tab: Log (府志) -->
+  <div id="pref-tab-log" class="tab-content hidden">
+    <div id="pref-log-content"><p class="hint">尚无府志记录</p></div>
+  </div>
+</section>
+
+<!-- ==================== Prefecture Modals ==================== -->
+
+<!-- County Detail Modal -->
+<div id="pref-county-modal" class="modal hidden">
+  <div class="modal-content pref-county-modal-content">
+    <div class="pref-modal-header">
+      <h4 id="pref-county-modal-title">县详情</h4>
+      <button id="pref-county-modal-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="pref-county-modal-body" class="pref-county-modal-body"></div>
+  </div>
+</div>
+
+<!-- Quota Distribution Modal -->
+<div id="pref-quota-modal" class="modal hidden">
+  <div class="modal-content pref-quota-modal-content">
+    <div class="pref-modal-header">
+      <h4>分配年度定额</h4>
+      <button id="pref-quota-modal-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="pref-quota-modal-body"></div>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button id="btn-pref-quota-confirm" class="btn btn-primary btn-small">确认分配</button>
+    </div>
+  </div>
+</div>
+
+<!-- Directive Modal -->
+<div id="pref-directive-modal" class="modal hidden">
+  <div class="modal-content modal-sm">
+    <h4 id="pref-directive-modal-title" style="margin-bottom:10px;">下达指令</h4>
+    <textarea id="pref-directive-input" rows="4" placeholder="输入指令内容..." style="width:100%;padding:8px;border:1px solid #c8b98a;border-radius:4px;font-size:0.95em;resize:vertical;"></textarea>
+    <div class="modal-actions" style="margin-top:10px;">
+      <button id="btn-pref-directive-send" class="btn btn-primary btn-small">下达</button>
+      <button id="btn-pref-directive-cancel" class="btn btn-small">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Prefecture Advance Result Modal ==================== -->
+<div id="pref-advance-modal" class="modal hidden">
+  <div class="modal-content advance-result-content">
+    <div class="advance-modal-header">
+      <h4 id="pref-advance-modal-title">府政月报</h4>
+      <button id="pref-advance-modal-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="pref-advance-modal-body" class="advance-result-body"></div>
+    <div class="advance-modal-footer">
+      <button id="pref-advance-view-log" class="btn btn-small">查看府志</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Judicial Case Modal ==================== -->
+<div id="pref-judicial-modal" class="modal hidden">
+  <div class="modal-content judicial-modal-content">
+    <div class="judicial-modal-header">
+      <div class="judicial-header-left">
+        <span class="judicial-badge" id="judicial-badge"></span>
+        <h4 id="judicial-modal-title">卷宗详情</h4>
+      </div>
+      <button id="btn-judicial-modal-close" class="btn btn-small">关闭</button>
+    </div>
+    <div id="judicial-modal-body" class="judicial-modal-body"></div>
+    <div class="judicial-modal-footer" id="judicial-modal-footer">
+      <button class="btn btn-judicial" id="btn-judicial-approve">核准原判</button>
+      <button class="btn btn-judicial" id="btn-judicial-retry">驳回重审</button>
+      <button class="btn btn-judicial btn-judicial-primary" id="btn-judicial-retrial">提审改判</button>
+    </div>
+    <div id="judicial-result-area" class="judicial-result-area hidden"></div>
+    <div class="judicial-modal-nav hidden" id="judicial-modal-nav">
+      <button class="btn btn-small" id="btn-judicial-close-done">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== Toast Container ==================== -->
 <div id="toast-container"></div>
 
@@ -323,6 +558,7 @@
 <script src="{% static 'game/js/components-social.js' %}"></script>
 <script src="{% static 'game/js/components-neighbors.js' %}"></script>
 <script src="{% static 'game/js/components-officialdom.js' %}"></script>
+<script src="{% static 'game/js/components-prefecture.js' %}"></script>
 <script src="{% static 'game/js/screens.js' %}"></script>
 <script src="{% static 'game/js/app.js' %}"></script>
 

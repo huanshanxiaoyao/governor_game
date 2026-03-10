@@ -36,6 +36,77 @@ class LedgerGrainBackfillTests(SimpleTestCase):
             delta=2.0,
         )
 
+    def test_refresh_aligns_negative_county_reserve_to_villages(self):
+        county = CountyService.create_initial_county("fiscal_core")
+        county["peasant_grain_reserve"] = -200000.0
+
+        refresh_village_grain_ledgers(county, current_season=6)
+
+        self.assertAlmostEqual(
+            sum(v["peasant_ledger"]["grain_surplus"] for v in county["villages"]),
+            county["peasant_grain_reserve"],
+            delta=2.0,
+        )
+        self.assertTrue(
+            all(v["peasant_ledger"]["grain_surplus"] < 0 for v in county["villages"])
+        )
+
+    def test_refresh_zero_base_fallback_keeps_county_total(self):
+        county = {
+            "environment": {"agriculture_suitability": 0.7},
+            "irrigation_level": 0,
+            "tax_rate": 0.12,
+            "peasant_grain_reserve": -120.0,
+            "villages": [
+                {
+                    "name": "甲村",
+                    "population": 0,
+                    "farmland": 0,
+                    "gentry_land_pct": 0.0,
+                    "peasant_ledger": {
+                        "registered_population": 0,
+                        "farmland": 0,
+                    },
+                    "gentry_ledger": {
+                        "registered_population": 0,
+                        "hidden_population": 0,
+                        "registered_farmland": 0,
+                        "hidden_farmland": 0,
+                        "grain_surplus": 0.0,
+                        "grain_surplus_seeded": True,
+                    },
+                },
+                {
+                    "name": "乙村",
+                    "population": 0,
+                    "farmland": 0,
+                    "gentry_land_pct": 0.0,
+                    "peasant_ledger": {
+                        "registered_population": 0,
+                        "farmland": 0,
+                    },
+                    "gentry_ledger": {
+                        "registered_population": 0,
+                        "hidden_population": 0,
+                        "registered_farmland": 0,
+                        "hidden_farmland": 0,
+                        "grain_surplus": 0.0,
+                        "grain_surplus_seeded": True,
+                    },
+                },
+            ],
+        }
+
+        refresh_village_grain_ledgers(county, current_season=6, seed_gentry_if_needed=False)
+
+        self.assertAlmostEqual(
+            sum(v["peasant_ledger"]["grain_surplus"] for v in county["villages"]),
+            county["peasant_grain_reserve"],
+            delta=0.2,
+        )
+        self.assertAlmostEqual(county["villages"][0]["peasant_ledger"]["grain_surplus"], -60.0, delta=0.1)
+        self.assertAlmostEqual(county["villages"][1]["peasant_ledger"]["grain_surplus"], -60.0, delta=0.1)
+
     def test_gentry_surplus_accounts_for_elapsed_months_since_harvest(self):
         county = CountyService.create_initial_county("fiscal_core")
         village = county["villages"][0]

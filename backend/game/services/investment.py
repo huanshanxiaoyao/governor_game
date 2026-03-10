@@ -97,6 +97,29 @@ class InvestmentService:
             return calculate_infra_cost(infra_type, target_level, county)
         spec = cls.INVESTMENT_TYPES[action]
         price_index = county.get("price_index", 1.0)
+
+        if action == "build_granary":
+            # 灾后重建默认沿用首次建仓成本（不随当前物价再波动）
+            rebuild_cost = county.get("granary_rebuild_cost")
+            try:
+                if rebuild_cost is not None:
+                    parsed = float(rebuild_cost)
+                    if parsed > 0:
+                        return round(parsed)
+            except (TypeError, ValueError):
+                pass
+
+        if action == "relief":
+            # 赈灾成本随灾害强度与物价浮动
+            disaster = county.get("disaster_this_year") or {}
+            try:
+                severity = float(disaster.get("severity", 0.0))
+            except (TypeError, ValueError):
+                severity = 0.0
+            severity = max(0.0, min(1.0, severity))
+            dynamic_multiplier = 0.8 + severity * 0.8
+            return round(spec["cost"] * price_index * dynamic_multiplier)
+
         return round(spec["cost"] * price_index)
 
     @classmethod
@@ -192,17 +215,33 @@ class InvestmentService:
         if action == "hire_bailiffs":
             county["bailiff_level"] += 1
             county["security"] = min(100, county["security"] + 8)
+            village_security_bonus = 5
+            for village in county.get("villages", []):
+                village["security"] = max(
+                    0, min(100, village.get("security", 50) + village_security_bonus)
+                )
             admin_increase = round(40 * price_index)
             county["admin_cost"] += admin_increase
             if "admin_cost_detail" in county:
                 county["admin_cost_detail"]["bailiff_cost"] += admin_increase
-            msg = f"衙役等级提升至{county['bailiff_level']}，治安+8，年行政开支+{admin_increase}两"
+            msg = (
+                f"衙役等级提升至{county['bailiff_level']}，县治安+8、"
+                f"各村治安+{village_security_bonus}，年行政开支+{admin_increase}两"
+            )
             return actual_cost, msg
 
         if action == "build_granary":
+            is_rebuild = bool(county.get("granary_needs_rebuild"))
             county["has_granary"] = True
+            county["granary_needs_rebuild"] = False
+            if not county.get("granary_rebuild_cost"):
+                county["granary_rebuild_cost"] = round(actual_cost)
             county["morale"] = min(100, county["morale"] + 5)
-            msg = "义仓建成，民心+5，秋季灾害人口损失×0.65"
+            msg = (
+                "义仓重建完成，民心+5，秋季灾害人口损失×0.65"
+                if is_rebuild else
+                "义仓建成，民心+5，秋季灾害人口损失×0.65"
+            )
             return actual_cost, msg
 
         if action == "relief":

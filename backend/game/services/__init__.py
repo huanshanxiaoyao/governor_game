@@ -36,6 +36,9 @@ from .negotiation import NegotiationService
 from .promise import PromiseService
 from .llm_role_reviews import LLMRoleReviewService
 from .officialdom import OfficialdomService
+from .magistrate_service import MagistrateService
+from .emergency import EmergencyService
+from .prefecture import PrefectureService, score_to_tier, TIER_THRESHOLDS, REPORT_MONTHS
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -72,4 +75,10 @@ __all__ = [
     "PromiseService",
     "LLMRoleReviewService",
     "OfficialdomService",
+    "MagistrateService",
+    "EmergencyService",
+    "PrefectureService",
+    "score_to_tier",
+    "TIER_THRESHOLDS",
+    "REPORT_MONTHS",
 ]

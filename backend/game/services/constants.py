@@ -119,6 +119,24 @@ def calculate_infra_months(infra_type, target_level):
 CORVEE_PER_CAPITA = 0.3          # 两/人·年
 GENTRY_POP_RATIO_COEFF = 0.12   # 地主人口比例 ≈ 占地比 × 此系数
 
+# 粮食与银两换算 (doc 06a §4.2)
+# 换算依据：设计亩产2两/亩（0.5两×4缩放）对应200斤/亩粮食产出 → 1两≈100斤
+GRAIN_PER_LIANG = 100            # 斤/两
+
+# 知府配额制 (doc 06a §4.4)
+# 配额按"标准年"估算（base_yield=0.5两/亩，无农业适宜度，含水利加成）
+QUOTA_BASE_COLLECTION_EFFICIENCY = 0.85  # 标准年征收效率（民心50基准时约0.85）
+
+# 府级基础建设对下辖县影响系数
+ROAD_COMMERCE_BONUS_PER_LEVEL = 0.10       # 跨县驿道：每级商业GMV相对加成10%
+RIVER_DISASTER_REDUCTION_PER_LEVEL = 0.15  # 河道治理：每级洪灾/旱灾概率相对减少15%
+PREF_GRANARY_POP_LOSS_MULT = 0.80          # 府级义仓：灾后人口损失额外减免20%
+
+# 灾害减免申请参数 (doc 06a §4.7)
+RELIEF_OVERREPORT_THRESHOLD = 1.5   # claimed > actual × 此倍数 → 进入高风险被查区间
+RELIEF_DETECTION_BASE_PROB = 0.30   # 刚超过阈值时的基础被查概率（超报越多越高）
+RELIEF_BASE_APPROVAL_PROB = 0.75    # 诚实申报（claimed ≤ actual）时的基础批准概率
+
 # 县域类型定义 (doc 06a §1.3, §6.1)
 # 每局创建时各数值在基准值上 ±20% 随机波动
 # 地主占地比基准 = 历史数据 × 0.7
@@ -384,8 +402,42 @@ GOVERNOR_STYLE_PROFILES = {
 }
 
 
-def generate_governor_profile(style):
-    """根据知县风格生成三层属性（基准值 + ±0.15 随机扰动），返回 dict"""
+# ===== 知县施政类型体系 =====
+
+# 每种施政类型可取的风格列表
+ARCHETYPE_TO_STYLES = {
+    'VIRTUOUS': ['minben', 'jinqu'],
+    'MIDDLING': ['baoshou', 'yuanhua'],
+    'CORRUPT':  ['zhengji', 'yuanhua'],
+}
+
+# 各县域类型对应的施政类型概率权重 [VIRTUOUS, MIDDLING, CORRUPT]
+ARCHETYPE_COUNTY_TYPE_WEIGHTS = {
+    'fiscal_core':     [0.25, 0.45, 0.30],
+    'clan_governance': [0.35, 0.45, 0.20],
+    'coastal':         [0.30, 0.45, 0.25],
+    'disaster_prone':  [0.20, 0.40, 0.40],
+}
+
+# wealth 目标权重覆盖范围（min, max），按施政类型差异化
+ARCHETYPE_WEALTH_GOAL = {
+    'VIRTUOUS': (0.04, 0.10),
+    'MIDDLING': (0.15, 0.25),
+    'CORRUPT':  (0.38, 0.55),
+}
+
+# 年度养廉银（两/年），按出身背景
+STIPEND_BY_BACKGROUND = {
+    'HUMBLE': 12,
+    'SCHOLAR': 18,
+    'OFFICIAL': 24,
+}
+
+
+def generate_governor_profile(style, archetype=None):
+    """根据知县风格（和可选的施政类型）生成三层属性，返回 dict。
+    archetype 影响 goals.wealth 权重，使贪酷型知县更倾向个人财富积累。
+    """
     base = GOVERNOR_STYLE_PROFILES.get(style)
     if not base:
         base = GOVERNOR_STYLE_PROFILES["yuanhua"]
@@ -406,4 +458,23 @@ def generate_governor_profile(style):
     profile["goals"] = {k: round(v / total, 2) for k, v in raw_goals.items()}
 
     profile["memory"] = []
+
+    # Apply archetype wealth bias: override goals.wealth and renormalize
+    if archetype and archetype in ARCHETYPE_WEALTH_GOAL:
+        w_min, w_max = ARCHETYPE_WEALTH_GOAL[archetype]
+        target_wealth = round(_random.uniform(w_min, w_max), 2)
+        goals = profile["goals"]
+        old_wealth = goals.get("wealth", 0.15)
+        delta = target_wealth - old_wealth
+        # Distribute the delta away from other goals proportionally
+        other_keys = [k for k in goals if k != "wealth"]
+        other_total = sum(goals[k] for k in other_keys)
+        if other_total > 0:
+            for k in other_keys:
+                goals[k] = max(0.02, round(goals[k] - delta * (goals[k] / other_total), 2))
+        goals["wealth"] = target_wealth
+        # Final renormalize to sum=1
+        total = sum(goals.values())
+        profile["goals"] = {k: round(v / total, 2) for k, v in goals.items()}
+
     return profile

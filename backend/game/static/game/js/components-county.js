@@ -11,6 +11,193 @@
   var INVEST_DEFS = C.INVEST_DEFS;
   var INFRA_MAX_LEVEL = C.INFRA_MAX_LEVEL;
 
+  function monthOfYear(season) {
+    return ((season - 1) % 12) + 1;
+  }
+
+  function renderReliefAction() {
+    var g = Game.state.currentGame;
+    var sectionEl = el("relief-action-section");
+    var statusEl = el("relief-status");
+    var adviceEl = el("relief-advice");
+    var inputEl = el("relief-claimed-loss");
+    var fillBtnEl = el("btn-fill-relief-suggestion");
+    var btnEl = el("btn-submit-relief");
+    if (!g || !sectionEl || !statusEl || !adviceEl || !inputEl || !fillBtnEl || !btnEl) return;
+
+    var c = g.county_data || {};
+    var app = c.relief_application || null;
+    var advice = g.disaster_relief_advice || {};
+    var month = monthOfYear(g.current_season || 1);
+    var year = Math.ceil((g.current_season || 1) / 12);
+    var assessment = c.autumn_tax_assessment || {};
+    var appInCurrentYear = !!(app && app.year === year);
+    var showByWindow = (month === 9 || month === 10) && !!c.disaster_this_year;
+    var shouldShow = appInCurrentYear || showByWindow;
+
+    sectionEl.classList.toggle("hidden", !shouldShow);
+    if (!shouldShow) return;
+
+    var enabled = false;
+    var status = "仅九月可提交，十月统一批示";
+
+    if (g.current_season > Game.MAX_MONTH) {
+      status = "任期已结束，无法提交申请";
+    } else if (app && app.year === year) {
+      var approvedAmount = app.approved_amount || 0;
+      if (app.status === "PENDING") {
+        status = "本年减免申请已提交，十月待知府批示（不可二次申报）";
+      } else if (app.status === "APPROVED") {
+        status = "十月批示：减免获批，核减上缴" + approvedAmount + "两（已执行）";
+      } else if (app.status === "PARTIAL_APPROVED") {
+        status = "十月批示：减免部分获批，核减上缴" + approvedAmount + "两（已执行）";
+      } else if (app.status === "DENIED") {
+        status = "十月批示：减免驳回，秋税按核定数额上缴";
+      } else if (app.status === "CAUGHT") {
+        status = "十月批示：申报失实被查，申请驳回并受斥责";
+      } else {
+        status = "本年减免流程已结束";
+      }
+    } else if (!c.disaster_this_year) {
+      status = "本年度无灾害，无法申请减免";
+    } else if (month < 9) {
+      status = "需等到九月方可提交减免申请";
+    } else if (month > 9) {
+      status = "九月申请窗口已过，本年不再受理";
+    } else {
+      enabled = true;
+      status = "本月可申请灾害减免（一次），十月统一批示";
+    }
+
+    if (assessment && assessment.status === "PENDING_PAYMENT" && month === 10) {
+      status += "；九月秋税已核定，十月执行上缴";
+    }
+    if (!advice.available && advice.reason && advice.reason.indexOf("已提交") !== -1) {
+      status = advice.reason;
+      enabled = false;
+    }
+
+    statusEl.textContent = status;
+    btnEl.disabled = !enabled;
+    inputEl.disabled = !enabled;
+    fillBtnEl.disabled = !(enabled && advice.available && advice.suggested_claim !== undefined);
+
+    if (advice.available) {
+      adviceEl.textContent =
+        "县丞建议：申报" + advice.suggest_min + "~" + advice.suggest_max +
+        "两，建议值" + advice.suggested_claim + "两。" +
+        (advice.advisor_note ? " " + advice.advisor_note : "");
+    } else if (advice.reason) {
+      adviceEl.textContent = "县丞评估：" + advice.reason;
+    } else {
+      adviceEl.textContent = "";
+    }
+
+    if (app && app.claimed_loss !== undefined && !enabled) {
+      inputEl.value = app.claimed_loss;
+    } else if (enabled && !inputEl.value) {
+      inputEl.placeholder = "申报减免额度（两）";
+    }
+  }
+
+  function renderEmergencyNeighbors(gameId) {
+    var selectEl = el("emergency-neighbor-select");
+    if (!selectEl) return;
+
+    function fillOptions(neighbors) {
+      selectEl.innerHTML = "";
+      if (!neighbors || neighbors.length === 0) {
+        var optEmpty = document.createElement("option");
+        optEmpty.value = "";
+        optEmpty.textContent = "暂无可选邻县";
+        selectEl.appendChild(optEmpty);
+        selectEl.disabled = true;
+        return;
+      }
+      selectEl.disabled = false;
+      neighbors.forEach(function (n) {
+        var reserve = ((n.county_data || {}).peasant_grain_reserve) || 0;
+        var opt = document.createElement("option");
+        opt.value = n.id;
+        opt.textContent = n.county_name + "（余粮" + _formatNum(reserve) + "斤）";
+        selectEl.appendChild(opt);
+      });
+    }
+
+    if (Game.state.neighbors && Game.state.neighbors.length > 0) {
+      fillOptions(Game.state.neighbors);
+      return;
+    }
+
+    if (!Game.api || !gameId) return;
+    Game.api.getNeighbors(gameId)
+      .then(function (neighbors) {
+        Game.state.neighbors = neighbors;
+        fillOptions(neighbors);
+      })
+      .catch(function () {
+        fillOptions([]);
+      });
+  }
+
+  function renderEmergencyAction() {
+    var g = Game.state.currentGame;
+    var sectionEl = el("emergency-action-section");
+    var statusEl = el("emergency-status");
+    var prefBtn = el("btn-emergency-prefecture");
+    var borrowBtn = el("btn-emergency-borrow");
+    var gentryBtn = el("btn-emergency-gentry");
+    var forceBtn = el("btn-emergency-force");
+    var debugToggle = el("emergency-debug-toggle");
+    if (!g || !sectionEl || !statusEl || !prefBtn || !borrowBtn || !gentryBtn || !forceBtn || !debugToggle) return;
+
+    var c = g.county_data || {};
+    var emergency = c.emergency || {};
+    var ps = c.peasant_surplus || {};
+    var reserve = Number(c.peasant_grain_reserve || 0);
+    var baseline = Number(
+      emergency.baseline_monthly_consumption !== undefined
+        ? emergency.baseline_monthly_consumption
+        : (ps.baseline_monthly_consumption !== undefined
+          ? ps.baseline_monthly_consumption
+          : (ps.monthly_consumption || 0))
+    );
+    var shortage = Math.max(0, baseline - reserve);
+    var active = emergency.active !== undefined ? !!emergency.active : (reserve < baseline);
+    var takeoverActive = !!((emergency.prefect_takeover || {}).active);
+    var riotActive = !!((emergency.riot || {}).active);
+    var playerStatus = emergency.player_status || "ACTIVE";
+    var streak = Number(emergency.consecutive_negative_reserve || 0);
+    var shouldShow = active || riotActive || takeoverActive || playerStatus !== "ACTIVE";
+
+    sectionEl.classList.toggle("hidden", !shouldShow);
+    if (!shouldShow) return;
+
+    var statusParts = [
+      "当前余粮: " + _formatNum(reserve) + "斤",
+      "基线月消耗: " + _formatNum(baseline) + "斤",
+      "缺口: " + _formatNum(shortage) + "斤",
+      "连续负余粮: " + _formatNum(streak) + "月",
+      "状态: " + (active ? "紧急状态" : "正常"),
+    ];
+    if (riotActive) statusParts.push("暴动中");
+    if (takeoverActive) statusParts.push("知府接管");
+    if (playerStatus === "DISMISSED") statusParts.push("已免职");
+    else if (playerStatus === "SUSPENDED") statusParts.push("暂时免职");
+    statusEl.textContent = statusParts.join(" ｜ ");
+
+    debugToggle.checked = !!emergency.debug_reveal_hidden_events;
+
+    var blocked = takeoverActive || playerStatus === "SUSPENDED" || playerStatus === "DISMISSED";
+    var disabled = g.current_season > Game.MAX_MONTH || !active || blocked;
+    prefBtn.disabled = disabled;
+    borrowBtn.disabled = disabled;
+    gentryBtn.disabled = disabled;
+    forceBtn.disabled = disabled;
+
+    renderEmergencyNeighbors(g.id);
+  }
+
   function renderHeader() {
     var g = Game.state.currentGame;
     if (!g) return;
@@ -63,6 +250,9 @@
     info.innerHTML = "";
     var pi = c.price_index || 1.0;
     var ctr = c.commercial_tax_rate !== undefined ? c.commercial_tax_rate : 0.03;
+    var granaryStatus = "未建";
+    if (c.has_granary) granaryStatus = "可用";
+    else if (c.granary_needs_rebuild) granaryStatus = "耗尽待重建";
     var items = [
       { label: "税率", value: Math.round(c.tax_rate * 100) + "%" },
       { label: "商税税率", value: (ctr * 100).toFixed(1).replace(/\.0$/, "") + "%" },
@@ -71,7 +261,7 @@
       { label: "水利", value: (c.irrigation_level || 0) + "/" + INFRA_MAX_LEVEL },
       { label: "医疗", value: (c.medical_level || 0) + "/" + INFRA_MAX_LEVEL },
       { label: "衙役", value: (c.bailiff_level || 0) + "/3" },
-      { label: "义仓", value: c.has_granary ? "已建" : "未建" },
+      { label: "义仓", value: granaryStatus },
     ];
     items.forEach(function (it) {
       var span = h("span", "info-item", "<strong>" + it.label + ":</strong> " + it.value);
@@ -157,15 +347,119 @@
       }
     }
 
+    // Quota info
+    var quotaDiv = el("quota-info");
+    if (quotaDiv) {
+      quotaDiv.innerHTML = "";
+      var quota = c.annual_quota;
+      if (quota && quota.total > 0) {
+        var quotaTitle = h("h4", "section-title", "知府配额（第" + (quota.year || 1) + "年）");
+        quotaDiv.appendChild(quotaTitle);
+
+        var fy = c.fiscal_year || {};
+        var remitRatio = c.remit_ratio || 0.65;
+
+        // Corvee: fully collected in 五月, so actual YTD is authoritative
+        var corveeRemitted = Math.round((fy.corvee_tax || 0) - (fy.corvee_retained || 0));
+        var corveeQuota = quota.corvee || 0;
+        var corveeCollected = (fy.corvee_tax || 0) > 0;
+        var corveeGap = Math.round(corveeQuota - corveeRemitted);
+
+        // Agri tax: collected at autumn; project from current tax rate + land conditions
+        var totalLand = (c.villages || []).reduce(function(sum, v) { return sum + (v.farmland || 0); }, 0);
+        var irrBonus = (c.irrigation_level || 0) * 0.15;
+        var agriSuit = (c.environment || {}).agriculture_suitability || 0.7;
+        var expectedAgriOutput = totalLand * 0.5 * agriSuit * (1 + irrBonus);
+        var expectedAgriTax = Math.round(expectedAgriOutput * c.tax_rate);
+        var expectedAgriRemit = Math.round(expectedAgriTax * remitRatio);
+        var agriQuota = quota.agricultural || 0;
+        var agriRemittedActual = Math.round(fy.agri_remitted || 0);
+        var autumnAssessment = c.autumn_tax_assessment || {};
+        var paymentPending = autumnAssessment.status === "PENDING_PAYMENT";
+        var pendingRemit = Math.round(autumnAssessment.agri_remit_due || expectedAgriRemit);
+        var autumnDone = (fy.agri_remitted || 0) > 0 || autumnAssessment.status === "PAID";
+        // Gap: use actual if autumn done, projected otherwise
+        var agriProjected = autumnDone
+          ? agriRemittedActual
+          : (paymentPending ? pendingRemit : expectedAgriRemit);
+        var agriGap = Math.round(agriQuota - agriProjected);
+
+        // Combined projected gap
+        var projectedTotal = agriProjected + corveeRemitted;
+        var totalGap = Math.round(quota.total - projectedTotal);
+
+        function gapSpan(gap, pending) {
+          if (pending) return '<span class="delta-neutral">待五月征收</span>';
+          if (gap <= 0) return '<span class="delta-positive">已满足</span>';
+          return '<span class="delta-negative">缺口 ' + gap + ' 两</span>';
+        }
+
+        var quotaRow = h("div", "env-row");
+        var quotaItems = [
+          {
+            label: "农业税",
+            value: "配额 " + agriQuota + " 两 | " +
+              (autumnDone ? "实缴 " + agriRemittedActual
+                : paymentPending ? "九月已核定，十月待缴 " + pendingRemit
+                : "预计上缴 " + expectedAgriRemit +
+                "（产出 " + Math.round(expectedAgriOutput) + " × 税率 " + Math.round(c.tax_rate * 100) + "%）") +
+              " | " + gapSpan(agriGap, false),
+          },
+          {
+            label: "徭役折银",
+            value: "配额 " + corveeQuota + " 两 | " +
+              (corveeCollected ? "实缴 " + corveeRemitted : "待五月征收") +
+              " | " + gapSpan(corveeGap, !corveeCollected),
+          },
+          {
+            label: "合计",
+            value: "总配额 " + quota.total + " 两 | 预计满足 " + projectedTotal + " 两 | " + gapSpan(totalGap, false),
+          },
+        ];
+
+        // If autumn settlement completed, append final result row
+        var qc = c.quota_completion;
+        if (qc && qc.year === quota.year) {
+          quotaItems.push({
+            label: "秋后结算",
+            value: "实缴 " + qc.actual_remitted + " 两，完成率 " + qc.completion_rate + "%",
+          });
+        }
+
+        quotaItems.forEach(function (it) {
+          var span = h("span", "env-item quota-item", "<strong>" + it.label + ":</strong> " + it.value);
+          quotaRow.appendChild(span);
+        });
+        quotaDiv.appendChild(quotaRow);
+      }
+    }
+
     // Disaster alert
     var alertDiv = el("disaster-alert");
     if (c.disaster_this_year) {
       var d = c.disaster_this_year;
       var dName = DISASTER_NAMES[d.type] || d.type;
+      var reliefHint = "";
+      var app = c.relief_application || {};
+      var appMonth = monthOfYear(g.current_season);
+      if (app && app.status === "PENDING") {
+        reliefHint = "；减免申请已提交，十月待批示";
+      } else if (app && app.status === "APPROVED") {
+        reliefHint = "；减免获批，已核减上缴" + (app.approved_amount || 0) + "两";
+      } else if (app && app.status === "PARTIAL_APPROVED") {
+        reliefHint = "；减免部分获批，已核减上缴" + (app.approved_amount || 0) + "两";
+      } else if (app && app.status === "DENIED") {
+        reliefHint = "；减免申请已驳回";
+      } else if (app && app.status === "CAUGHT") {
+        reliefHint = "；减免申报失实被查";
+      } else if (appMonth === 9) {
+        reliefHint = "；本月可在“施政”页提交减免申请";
+      }
       alertDiv.innerHTML =
         "<strong>" + dName + "警报</strong>" +
         "严重程度: " + (d.severity * 100).toFixed(0) + "%" +
-        (d.relieved ? " — 已赈灾" : " — <em>尚未赈灾</em>");
+        (d.relieved ? " — 已赈灾" : " — <em>尚未赈灾</em>") +
+        reliefHint;
       alertDiv.classList.remove("hidden");
     } else {
       alertDiv.classList.add("hidden");
@@ -210,14 +504,27 @@
       var p = g.player;
       var plTitle = h("h4", "section-title", "知县档案");
       plDiv.appendChild(plTitle);
+
+      var flavor = c.player_profile_flavor || {};
+      var flavorHtml = "";
+      if (flavor.core_belief) {
+        flavorHtml = '<div class="player-flavor">' +
+          '<span class="player-flavor-belief">「' + escapeHtml(flavor.core_belief) + '」</span>' +
+          (flavor.governing_style ? ' <span class="player-flavor-style">' + escapeHtml(flavor.governing_style) + '</span>' : '') +
+          '</div>';
+      }
+
+      var wealthDisplay = (p.wealth_tier || "清贫") + "（" + Math.round(p.personal_wealth || 0) + "两）";
       var card = h("div", "player-card",
+        flavorHtml +
         '<div class="player-row">' +
-          "<span><strong>出身:</strong> " + p.background_display + "</span>" +
+          "<span><strong>出身:</strong> " + escapeHtml(p.background_display) + "</span>" +
           "<span><strong>知识:</strong> " + p.knowledge.toFixed(1) + "</span>" +
           "<span><strong>技能:</strong> " + p.skill.toFixed(1) + "</span>" +
           "<span><strong>清名:</strong> " + p.integrity + "</span>" +
           "<span><strong>能名:</strong> " + p.competence + "</span>" +
           "<span><strong>人缘:</strong> " + p.popularity + "</span>" +
+          "<span><strong>家产:</strong> " + escapeHtml(wealthDisplay) + "</span>" +
         "</div>");
       plDiv.appendChild(card);
     }
@@ -550,10 +857,13 @@
       advBtn.disabled = false;
       advBtn.textContent = "推进月份";
     }
+
+    renderReliefAction();
+    renderEmergencyAction();
   }
 
   function renderReport(report) {
-    var container = el("report-content");
+    var container = el("advance-result-body");
     container.innerHTML = "";
 
     // Season header
@@ -680,9 +990,15 @@
       var commercialHtml = a.commercial_tax_ytd !== undefined
         ? '<span class="report-detail-item"><strong>年度商税(已征):</strong> ' + a.commercial_tax_ytd + '两(留存' + a.commercial_retained_ytd + '两)</span>'
         : '<span class="report-detail-item"><strong>商业税:</strong> ' + (a.commercial_tax || 0) + '两</span>';
+      var agriRemitDue = a.agri_remit_due !== undefined ? a.agri_remit_due : a.agri_remit;
+      var agriSettlementHtml = a.payment_pending
+        ? '<span class="report-detail-item"><strong>农业税(核定):</strong> ' + a.agri_tax + '两</span>' +
+          '<span class="report-detail-item"><strong>秋税应上缴:</strong> ' + agriRemitDue + '两（十月执行）</span>'
+        : '<span class="report-detail-item"><strong>农业税:</strong> ' + a.agri_tax + '两</span>' +
+          '<span class="report-detail-item"><strong>农业税上缴:</strong> ' + (a.agri_remit || agriRemitDue || 0) + '两</span>';
       var detail = h("div", "report-detail",
         '<span class="report-detail-item"><strong>农业产出:</strong> ' + a.total_agri_output + '两</span>' +
-        '<span class="report-detail-item"><strong>农业税:</strong> ' + a.agri_tax + '两</span>' +
+        agriSettlementHtml +
         corveeHtml +
         commercialHtml +
         '<span class="report-detail-item"><strong>总税收:</strong> ' + a.total_tax + '两</span>' +
@@ -692,6 +1008,34 @@
         '<span class="report-detail-item"><strong>县库余额:</strong> ' + a.treasury_after + '两</span>');
       sec.appendChild(detail);
       container.appendChild(sec);
+    }
+
+    if (report.autumn_payment) {
+      var paySec = h("div", "report-section");
+      paySec.appendChild(h("h4", "", "十月秋税上缴"));
+      var ap = report.autumn_payment;
+      var rr = ap.relief_result || {};
+      var reliefLine = "";
+      if (rr.status === "APPROVED") {
+        reliefLine = '<span class="report-detail-item"><strong>减免批示:</strong> 获批，核减' + (ap.relief_deduction || 0) + '两</span>';
+      } else if (rr.status === "PARTIAL_APPROVED") {
+        var pct = rr.approval_ratio !== undefined ? Math.round(rr.approval_ratio * 100) : null;
+        reliefLine = '<span class="report-detail-item"><strong>减免批示:</strong> 部分获批，核减' + (ap.relief_deduction || 0) + '两' + (pct !== null ? '（约' + pct + '%）' : '') + '</span>';
+      } else if (rr.status === "DENIED") {
+        reliefLine = '<span class="report-detail-item"><strong>减免批示:</strong> 驳回</span>';
+      } else if (rr.status === "CAUGHT") {
+        reliefLine = '<span class="report-detail-item"><strong>减免批示:</strong> 查实失实，驳回并惩处</span>';
+      }
+      var payDetail = h("div", "report-detail",
+        '<span class="report-detail-item"><strong>农业税:</strong> ' + ap.agri_tax + '两</span>' +
+        '<span class="report-detail-item"><strong>应上缴:</strong> ' + ap.agri_remit_due + '两</span>' +
+        '<span class="report-detail-item"><strong>实上缴:</strong> ' + ap.agri_remit_final + '两</span>' +
+        '<span class="report-detail-item"><strong>县库入账:</strong> ' + ap.agri_retained_final + '两</span>' +
+        reliefLine +
+        '<span class="report-detail-item"><strong>县库净变化:</strong> ' + ap.net_treasury_change + '两</span>' +
+        '<span class="report-detail-item"><strong>县库余额:</strong> ' + ap.treasury_after + '两</span>');
+      paySec.appendChild(payDetail);
+      container.appendChild(paySec);
     }
 
     // Winter snapshot
@@ -730,15 +1074,20 @@
 
     games.forEach(function (g) {
       var card = h("div", "game-card");
-      var seasonText = g.current_season > Game.MAX_MONTH ? "已结束" : Game.seasonName(g.current_season);
+      var isPrefect = g.player_role === 'PREFECT';
+      var maxSeason = isPrefect ? 36 : Game.MAX_MONTH;
+      var seasonText = g.current_season > maxSeason ? "已结束" : Game.seasonName(g.current_season);
+      var roleLabel = isPrefect
+        ? '<span class="game-card-role-badge">知府</span>'
+        : '<span class="game-card-role-badge game-card-role-county">知县</span>';
       card.innerHTML =
         '<div class="game-card-info">' +
-          '存档 #' + g.id +
+          roleLabel + '存档 #' + g.id +
           '<span>' + seasonText + '</span>' +
         '</div>';
-      var btn = h("button", "btn btn-small", "继续");
+      var btn = h("button", "btn btn-small btn-continue", "继续");
       btn.dataset.gameId = g.id;
-      btn.className = "btn btn-small btn-continue";
+      btn.dataset.playerRole = g.player_role || 'COUNTY_MAGISTRATE';
       card.appendChild(btn);
       container.appendChild(card);
     });

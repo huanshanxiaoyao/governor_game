@@ -3,7 +3,7 @@
 import copy
 import logging
 import random
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 
 from ..models import NeighborCounty, NeighborEventLog, NeighborPrecompute
 from .constants import (
@@ -12,12 +12,16 @@ from .constants import (
     GOVERNOR_SURNAMES,
     GOVERNOR_GIVEN_NAMES,
     NEIGHBOR_COUNTY_NAMES,
+    ARCHETYPE_TO_STYLES,
+    ARCHETYPE_COUNTY_TYPE_WEIGHTS,
     generate_governor_profile,
     month_name,
 )
+from .magistrate_service import MagistrateService
 from .county import CountyService
 from .settlement import SettlementService
 from .ai_governor import AIGovernorService
+from .emergency import EmergencyService
 
 logger = logging.getLogger('game')
 
@@ -50,6 +54,7 @@ class NeighborService:
             county_data["initial_villages"] = copy.deepcopy(county_data.get("villages", []))
         if not county_data.get("initial_snapshot"):
             county_data["initial_snapshot"] = cls._build_initial_snapshot(county_data)
+        EmergencyService.ensure_state(county_data)
 
     @staticmethod
     def _build_monthly_snapshot(county_data, season):
@@ -74,11 +79,29 @@ class NeighborService:
             "irrigation_level": county_data.get("irrigation_level", 0),
             "medical_level": county_data.get("medical_level", 0),
             "bailiff_level": county_data.get("bailiff_level", 0),
+            "emergency_active": bool((county_data.get("emergency") or {}).get("active")),
+            "riot_active": bool(((county_data.get("emergency") or {}).get("riot") or {}).get("active")),
         }
 
     @classmethod
+    def _assign_archetypes(cls, county_types):
+        """为5个邻县分配施政类型：固定2个贪酷恶劣，其余按县域类型权重随机选取。"""
+        archetypes = ['CORRUPT', 'CORRUPT']  # 保证2个贪酷型
+        for c_type in county_types[2:]:
+            weights = ARCHETYPE_COUNTY_TYPE_WEIGHTS.get(c_type, [0.40, 0.60, 0.0])
+            # 剩余槽位只从 VIRTUOUS/MIDDLING 中选，权重取前两项并重新归一化
+            w_v, w_m = weights[0], weights[1]
+            total = w_v + w_m or 1
+            archetype = random.choices(
+                ['VIRTUOUS', 'MIDDLING'], weights=[w_v / total, w_m / total], k=1
+            )[0]
+            archetypes.append(archetype)
+        random.shuffle(archetypes)
+        return archetypes
+
+    @classmethod
     def create_neighbors(cls, game):
-        """创建5个邻县，类型+知县风格各异"""
+        """创建5个邻县，类型+知县风格+施政类型各异，LLM生成人物简介"""
         player_county_type = game.county_data.get('county_type', 'fiscal_core')
 
         all_types = list(COUNTY_TYPES.keys())
@@ -90,18 +113,20 @@ class NeighborService:
             county_types.append(random.choice(all_types))
         random.shuffle(county_types)
 
-        styles = list(GOVERNOR_STYLES.keys())
-        random.shuffle(styles)
-
         used_names = set()
         surnames = list(GOVERNOR_SURNAMES)
         given_names = list(GOVERNOR_GIVEN_NAMES)
 
-        neighbors = []
+        # Assign archetypes: guaranteed 2 CORRUPT, rest random VIRTUOUS/MIDDLING
+        archetypes = cls._assign_archetypes(county_types)
+
+        # Build neighbor specs first (no I/O), then generate bios in parallel
+        specs = []
         for i in range(5):
             c_type = county_types[i]
-            style_key = styles[i]
-            style_info = GOVERNOR_STYLES[style_key]
+            archetype = archetypes[i]
+            # Pick style constrained by archetype
+            style_key = random.choice(ARCHETYPE_TO_STYLES[archetype])
 
             names_pool = list(NEIGHBOR_COUNTY_NAMES.get(c_type, ["邻县"]))
             county_name = names_pool[i % len(names_pool)]
@@ -112,18 +137,59 @@ class NeighborService:
                     used_names.add(name)
                     break
 
-            bio = f"{name}，{county_name}知县。{style_info['bio_template']}"
+            specs.append({
+                'c_type': c_type,
+                'archetype': archetype,
+                'style_key': style_key,
+                'county_name': county_name,
+                'name': name,
+            })
 
-            county_data = CountyService.create_initial_county(county_type=c_type)
-            county_data["governor_profile"] = generate_governor_profile(style_key)
+        # Generate bios in parallel (LLM calls), with per-call timeout + fallback
+
+        def _gen_bio(spec):
+            return MagistrateService.generate_neighbor_bio(
+                name=spec['name'],
+                county_name=spec['county_name'],
+                archetype=spec['archetype'],
+                style=spec['style_key'],
+                county_type=spec['c_type'],
+            )
+
+        bios = [''] * len(specs)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_idx = {executor.submit(_gen_bio, s): i for i, s in enumerate(specs)}
+            try:
+                for future in as_completed(future_to_idx, timeout=15):
+                    idx = future_to_idx[future]
+                    try:
+                        bios[idx] = future.result()
+                    except Exception as e:
+                        logger.warning("Bio generation failed for neighbor %d: %s", idx, e)
+            except FuturesTimeoutError:
+                logger.warning("Neighbor bio generation timed out; %d bio(s) will use fallback text",
+                               bios.count(''))
+
+        neighbors = []
+        for i, spec in enumerate(specs):
+            bio = bios[i] or (
+                f"{spec['name']}，{spec['county_name']}知县。"
+                f"{GOVERNOR_STYLES[spec['style_key']]['bio_template']}"
+            )
+
+            county_data = CountyService.create_initial_county(county_type=spec['c_type'])
+            EmergencyService.ensure_state(county_data)
+            county_data["governor_profile"] = generate_governor_profile(
+                spec['style_key'], archetype=spec['archetype'])
             county_data["initial_villages"] = copy.deepcopy(county_data.get("villages", []))
             county_data["initial_snapshot"] = cls._build_initial_snapshot(county_data)
 
             neighbor = NeighborCounty.objects.create(
                 game=game,
-                county_name=county_name,
-                governor_name=name,
-                governor_style=style_key,
+                county_name=spec['county_name'],
+                governor_name=spec['name'],
+                governor_style=spec['style_key'],
+                governor_archetype=spec['archetype'],
                 governor_bio=bio,
                 county_data=county_data,
             )
@@ -216,11 +282,13 @@ class NeighborService:
         all_logs = []
         county_snapshots = {}
         for n in neighbors:
+            EmergencyService.ensure_state(n.county_data)
             snapshot = copy.deepcopy(n.county_data)
             snapshot["_peer_name"] = n.county_name
             county_snapshots[n.id] = snapshot
         player_snapshot = copy.deepcopy(player_county_data) if isinstance(player_county_data, dict) else None
         if player_snapshot is not None:
+            EmergencyService.ensure_state(player_snapshot)
             player_snapshot["_peer_name"] = "玩家本县"
 
         for neighbor in neighbors:

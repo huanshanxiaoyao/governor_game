@@ -7,6 +7,8 @@ from .constants import (
     COMMERCIAL_TAX_RETENTION,
     EXCESS_CONSUMPTION_THRESHOLD,
     CORVEE_PER_CAPITA,
+    GRAIN_PER_LIANG,
+    ROAD_COMMERCE_BONUS_PER_LEVEL,
     month_of_year,
 )
 from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
@@ -34,8 +36,8 @@ class MetricsMixin:
         elif county["security"] < 30:
             delta -= 0.5
 
-        # Heavy tax penalty: -1/month (was -3/season)
-        if county["tax_rate"] > 0.15:
+        # Heavy tax penalty: -1/month at maximum rate (was -3/season)
+        if county["tax_rate"] >= 0.15:
             delta -= 1
 
         county["morale"] = max(0, min(100, county["morale"] + delta))
@@ -148,8 +150,10 @@ class MetricsMixin:
         )
 
     @classmethod
-    def _update_commercial(cls, county, month, report):
-        """月度商业更新：盈余→需求系数→GMV→商税→粮食消耗"""
+    def _update_commercial(cls, county, month, report, prefecture_ctx=None):
+        """月度商业更新：盈余→需求系数→GMV→商税→粮食消耗
+        prefecture_ctx: optional dict with road_level for inter-county commerce bonus.
+        """
         ensure_county_ledgers(county)
         total_pop = sum(
             v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
@@ -167,23 +171,38 @@ class MetricsMixin:
         )
         monthly_pcs = per_capita_surplus / months_to_harvest
 
-        # 需求系数：clamp(1 + 月均余粮/20, 0.1, 2.0)
-        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs / 20))
+        # 需求系数：用年化余粮（per_capita_surplus / 12）而非月数视角。
+        # months_to_harvest 随时间缩短会人为抬高 monthly_pcs（正月8倍，八月接近1倍），
+        # 导致 demand_factor 从正月起就锁定在 2.0 上限，使商税丧失季节性变化。
+        # 年化折算 = per_capita_surplus / 12：将"到秋收前总余粮"折成稳定的年均月率，
+        # 消除分母缩短效应；过度消费仍保留月数视角（近秋收时村民确实更放开消费）。
+        monthly_pcs_for_demand = per_capita_surplus / 12
+        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs_for_demand / 20))
 
         # 过度消费机制：当月均余粮 > 阈值时，消耗按二次方增加
         monthly_consumption = base_monthly_consumption
-        if monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
+        consumption_multiplier = 1.0
+        reserve_before = county.get("peasant_grain_reserve", 0)
+        emergency = county.get("emergency") or {}
+        halve_consumption = bool(emergency.get("halve_consumption_this_month"))
+        if reserve_before < 0 or halve_consumption:
+            # 粮荒状态下口粮配给减半（触发条件: 当前余粮为负）
+            consumption_multiplier = 0.5
+            monthly_consumption = base_monthly_consumption * consumption_multiplier
+        elif monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
             ratio = monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD
             excess_mult = 1 + ratio * ratio * 0.1
-            monthly_consumption = base_monthly_consumption * excess_mult
+            consumption_multiplier = excess_mult
+            monthly_consumption = base_monthly_consumption * consumption_multiplier
 
         # 扣除粮食消耗
         county["peasant_grain_reserve"] = county.get("peasant_grain_reserve", 0) - monthly_consumption
 
-        # 4. 即时计算各集市 GMV
+        # 4. 即时计算各集市 GMV（跨县驿道提升贸易量）
+        road_mult = 1.0 + (prefecture_ctx or {}).get("road_level", 0) * ROAD_COMMERCE_BONUS_PER_LEVEL
         for market in county["markets"]:
             market["gmv"] = round(
-                market["merchants"] * county["commercial"] * demand_factor, 1)
+                market["merchants"] * county["commercial"] * demand_factor * road_mult, 1)
 
         # 5. 月度商业税征收（地方固定留存60%，独立于 remit_ratio）
         commercial_tax_rate = county.get("commercial_tax_rate", 0.03)
@@ -207,6 +226,8 @@ class MetricsMixin:
             "monthly_per_capita_surplus": round(monthly_pcs, 1),
             "demand_factor": round(demand_factor, 2),
             "monthly_consumption": round(monthly_consumption),
+            "baseline_monthly_consumption": round(base_monthly_consumption),
+            "consumption_multiplier": round(consumption_multiplier, 2),
         }
         cls._refresh_village_ledger_metrics(county, monthly_consumption, month=month)
 
@@ -229,30 +250,37 @@ class MetricsMixin:
             "commercial_retained": 0,
             "corvee_tax": 0,
             "corvee_retained": 0,
+            "agri_tax": 0,
+            "agri_remitted": 0,
         }
         report["events"].append("新年伊始，财政年度重置")
 
     @classmethod
     def _collect_corvee(cls, county, report):
-        """半年度徭役征收（正月、五月各一半）"""
+        """年度徭役征收（五月全额）"""
         ensure_county_ledgers(county)
         # 徭役折银仅基于在册村民（地主账本人口不纳入应役人口）
         liable_pop = sum(
             v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
             for v in county["villages"]
         )
-        half_corvee = liable_pop * CORVEE_PER_CAPITA / 2
+        corvee_total = liable_pop * CORVEE_PER_CAPITA
 
         remit_ratio = county.get("remit_ratio", 0.65)
-        retained = half_corvee * (1 - remit_ratio)
+        retained = corvee_total * (1 - remit_ratio)
         county["treasury"] += retained
 
         # 累计到 fiscal_year
         fy = county.get("fiscal_year", {})
-        fy["corvee_tax"] = fy.get("corvee_tax", 0) + half_corvee
+        fy["corvee_tax"] = fy.get("corvee_tax", 0) + corvee_total
         fy["corvee_retained"] = fy.get("corvee_retained", 0) + retained
         county["fiscal_year"] = fy
 
+        # 村民无非粮食收入，徭役折银须卖粮换银缴纳，从粮食储备中扣减等值粮食
+        grain_deduction = corvee_total * GRAIN_PER_LIANG
+        county["peasant_grain_reserve"] = county.get("peasant_grain_reserve", 0) - grain_deduction
+
         report["events"].append(
-            f"征收徭役折银: {half_corvee:.1f}两（半年度），"
-            f"留存{retained:.1f}两")
+            f"征收徭役折银: {corvee_total:.1f}两（年度，五月），"
+            f"留存{retained:.1f}两，"
+            f"村民售粮{round(grain_deduction)}斤折银缴纳")

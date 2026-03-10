@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, views_prefecture
 
 urlpatterns = [
     path("login/", views.LoginView.as_view(), name="api-login"),
@@ -25,6 +25,14 @@ urlpatterns = [
     path("games/<int:game_id>/negotiations/active-list/", views.ActiveNegotiationsListView.as_view(), name="negotiation-active-list"),
     path("games/<int:game_id>/negotiations/start-irrigation/", views.StartIrrigationNegotiationView.as_view(), name="negotiation-start-irrigation"),
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
+    # Disaster relief application
+    path("games/<int:game_id>/disaster-relief/", views.DisasterReliefView.as_view(), name="game-disaster-relief"),
+    # Emergency grain actions
+    path("games/<int:game_id>/emergency/prefecture-relief/", views.EmergencyPrefectureReliefView.as_view(), name="emergency-prefecture-relief"),
+    path("games/<int:game_id>/emergency/borrow-neighbor/", views.EmergencyBorrowNeighborView.as_view(), name="emergency-borrow-neighbor"),
+    path("games/<int:game_id>/emergency/gentry-relief/", views.EmergencyGentryReliefView.as_view(), name="emergency-gentry-relief"),
+    path("games/<int:game_id>/emergency/force-levy/", views.EmergencyForceLevyView.as_view(), name="emergency-force-levy"),
+    path("games/<int:game_id>/emergency/debug-toggle/", views.EmergencyDebugToggleView.as_view(), name="emergency-debug-toggle"),
     # Officialdom
     path("games/<int:game_id>/officialdom/", views.OfficialdomView.as_view(), name="game-officialdom"),
     # Neighbor counties
@@ -33,4 +41,17 @@ urlpatterns = [
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/", views.NeighborDetailView.as_view(), name="neighbor-detail"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/events/", views.NeighborEventsView.as_view(), name="neighbor-events"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/summary-v2/", views.NeighborSummaryV2View.as_view(), name="neighbor-summary-v2"),
+    # Prefecture (知府) endpoints
+    path("prefecture/create/", views_prefecture.PrefectureCreateView.as_view(), name="prefecture-create"),
+    path("prefecture/<int:game_id>/", views_prefecture.PrefectureOverviewView.as_view(), name="prefecture-overview"),
+    path("prefecture/<int:game_id>/advance/", views_prefecture.PrefectureAdvanceView.as_view(), name="prefecture-advance"),
+    path("prefecture/<int:game_id>/counties/", views_prefecture.PrefectureCountyListView.as_view(), name="prefecture-counties"),
+    path("prefecture/<int:game_id>/counties/<int:unit_id>/", views_prefecture.PrefectureCountyDetailView.as_view(), name="prefecture-county-detail"),
+    path("prefecture/<int:game_id>/quota/", views_prefecture.PrefectureQuotaView.as_view(), name="prefecture-quota"),
+    path("prefecture/<int:game_id>/directive/", views_prefecture.PrefectureDirectiveView.as_view(), name="prefecture-directive"),
+    path("prefecture/<int:game_id>/inspect/", views_prefecture.PrefectureInspectView.as_view(), name="prefecture-inspect"),
+    path("prefecture/<int:game_id>/invest/", views_prefecture.PrefectureInvestView.as_view(), name="prefecture-invest"),
+    path("prefecture/<int:game_id>/talent/", views_prefecture.PrefectureTalentView.as_view(), name="prefecture-talent"),
+    path("prefecture/<int:game_id>/judicial/", views_prefecture.PrefectureJudicialView.as_view(), name="prefecture-judicial"),
+    path("prefecture/<int:game_id>/judicial/decide/", views_prefecture.PrefectureJudicialDecideView.as_view(), name="prefecture-judicial-decide"),
 ]

@@ -22,10 +22,10 @@
     { action: "expand_school", name: "扩建县学", cost: null, desc: "提升县学等级(最高3级)，文教+10", needsVillage: false, infra: "school" },
     { action: "build_medical", name: "建设医疗", cost: null, desc: "提升医疗等级(最高3级)，降低疫病风险和人口损失", needsVillage: false, infra: "medical" },
     { action: "fund_village_school", name: "资助村塾", cost: 30, desc: "为目标村庄建立村塾，民心+5（4个月完成）", needsVillage: true },
-    { action: "hire_bailiffs", name: "增设衙役", cost: 40, desc: "治安+8，年行政开支+40两（立即生效）", needsVillage: false },
+    { action: "hire_bailiffs", name: "增设衙役", cost: 40, desc: "县治安+8、各村治安+5，年行政开支+40两（立即生效）", needsVillage: false },
     { action: "repair_roads", name: "修缮道路", cost: 60, desc: "商业提升（首次+8，逐次递减，2个月完成）", needsVillage: false },
-    { action: "build_granary", name: "开设义仓", cost: 70, desc: "秋季灾害人口损失×0.65（立即生效）", needsVillage: false },
-    { action: "relief", name: "赈灾救济", cost: 80, desc: "民心+8，秋季灾害人口损失×0.65（立即生效）", needsVillage: false },
+    { action: "build_granary", name: "开设义仓", cost: 70, desc: "秋季灾害人口损失×0.65（灾后耗尽，需重建）", needsVillage: false },
+    { action: "relief", name: "赈灾救济", cost: 80, desc: "民心+8，秋季灾害人口损失×0.65（成本随灾情与物价浮动）", needsVillage: false },
   ];
 
   function el(id) { return document.getElementById(id); }

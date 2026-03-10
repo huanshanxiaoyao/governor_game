@@ -12,6 +12,7 @@ from .ledger import (
     refresh_village_grain_ledgers,
     sync_county_gentry_land_ratio,
 )
+from .emergency import EmergencyService
 
 
 def _fluctuate(value, pct=0.20):
@@ -68,6 +69,9 @@ class CountyService:
             "remit_ratio": base["remit_ratio"],
             "gentry_land_ratio": gentry_land_ratio,
             "has_granary": False,
+            "granary_needs_rebuild": False,
+            "granary_rebuild_cost": None,
+            "granary_last_used_season": None,
             "bailiff_level": 0,
             "admin_cost_detail": dict(ADMIN_COST_DETAIL[county_type]),
             "admin_cost": sum(ADMIN_COST_DETAIL[county_type].values()),
@@ -87,6 +91,8 @@ class CountyService:
 
             # 灾害状态
             "disaster_this_year": None,
+            "relief_application": {},
+            "autumn_tax_assessment": {},
 
             # 投资追踪
             "active_investments": [],
@@ -101,7 +107,15 @@ class CountyService:
                 "commercial_retained": 0,
                 "corvee_tax": 0,
                 "corvee_retained": 0,
+                "agri_tax": 0,
+                "agri_remitted": 0,
             },
+
+            # 知府年度上缴配额（正月由知府下达，按在册土地+人口估算，不含灾害因素）
+            "annual_quota": {},
+
+            # 配额完成情况（秋季结算后更新）
+            "quota_completion": {},
         }
 
         # 生成村庄
@@ -209,6 +223,9 @@ class CountyService:
         county["admin_cost_detail"]["medical_maint"] = med_maint
         county["admin_cost"] = sum(county["admin_cost_detail"].values())
 
+        # 预计算知府年度配额（游戏开局正月即可见，与首次正月结算结果一致）
+        SettlementService._set_annual_quota(county, month=1, report={"events": []})
+
         # 初始化农民粮食储备（游戏开局正月，距上次九月收获约4个月）
         expected_annual = _compute_initial_peasant_production(county)
         total_pop = sum(
@@ -218,16 +235,15 @@ class CountyService:
         monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12
         county["peasant_grain_reserve"] = expected_annual - 4 * monthly_consumption
 
-        # 初始化前瞻盈余和集市GMV
-        # 使用固定12月视野的年化月均余粮（与 _update_commercial 一致）
-        months_to_harvest = 8  # 开局正月，距秋收8个月（仅用于展示）
-        annual_consumption = 12 * monthly_consumption
+        # 初始化前瞻盈余和集市GMV（与 _update_commercial 使用相同公式）
+        months_to_harvest = 8  # 开局正月，距秋收8个月
         per_capita_surplus = (
-            (county["peasant_grain_reserve"] - annual_consumption)
+            (county["peasant_grain_reserve"] - months_to_harvest * monthly_consumption)
             / max(total_pop, 1)
         )
-        monthly_pcs = per_capita_surplus / 12
-        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs / 20))
+        monthly_pcs = per_capita_surplus / months_to_harvest  # 展示用：月数视角
+        monthly_pcs_for_demand = per_capita_surplus / 12      # 需求系数：年化视角
+        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs_for_demand / 20))
 
         for market in county["markets"]:
             market["gmv"] = round(
@@ -246,6 +262,8 @@ class CountyService:
             monthly_consumption=monthly_consumption,
             current_season=1,
         )
+        EmergencyService.ensure_state(county)
+        EmergencyService.refresh_state(county)
 
         return county
 

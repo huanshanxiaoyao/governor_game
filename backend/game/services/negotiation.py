@@ -17,6 +17,7 @@ from llm.client import LLMClient
 from llm.prompts import PromptRegistry
 
 logger = logging.getLogger('game')
+NEGOTIATION_INACTIVE_SEASONS = 3
 
 # Round-pressure text by progress
 _PRESSURE_EARLY = '你可以坚持立场，从容应对。'
@@ -57,6 +58,7 @@ class NegotiationService:
 
         Returns (session, error_message).  error_message is None on success.
         """
+        cls.expire_stale_negotiations(game, current_season=game.current_season)
         context_data = context_data or {}
         village_name = context_data.get('village_name') or agent.attributes.get('village_name', '')
 
@@ -87,6 +89,7 @@ class NegotiationService:
     @classmethod
     def get_active_negotiation(cls, game):
         """Return the active NegotiationSession for a game, or None."""
+        cls.expire_stale_negotiations(game, current_season=game.current_season)
         return NegotiationSession.objects.filter(
             game=game, status='active',
         ).select_related('agent').order_by('created_at').first()
@@ -116,6 +119,8 @@ class NegotiationService:
 
         Returns a result dict with dialogue, round info, and status.
         """
+        cls.expire_stale_negotiations(game, current_season=game.current_season)
+        session.refresh_from_db()
         if session.status != 'active':
             return {'error': '该谈判已结束'}
 
@@ -241,6 +246,69 @@ class NegotiationService:
                 response['contribution_offer'] = result.get('contribution_offer', 0)
 
         return response
+
+    @classmethod
+    def expire_stale_negotiations(cls, game, current_season=None):
+        """Auto-close active negotiations that were inactive for >= 3 months."""
+        season = int(current_season if current_season is not None else game.current_season or 0)
+        sessions = list(
+            NegotiationSession.objects.filter(game=game, status='active')
+            .select_related('agent')
+            .order_by('id')
+        )
+        if not sessions:
+            return []
+
+        event_type_map = dict(NegotiationSession.EVENT_TYPES)
+        expired = []
+        for session in sessions:
+            last_activity = cls._last_activity_season(session)
+            inactive_for = season - last_activity
+            if inactive_for < NEGOTIATION_INACTIVE_SEASONS:
+                continue
+
+            session.status = 'resolved'
+            session.resolved_at = timezone.now()
+            session.outcome = {
+                'final_decision': 'auto_close',
+                'reason': 'inactive_timeout',
+                'inactive_for_seasons': inactive_for,
+                'timeout_seasons': NEGOTIATION_INACTIVE_SEASONS,
+                'closed_season': season,
+            }
+            session.save(update_fields=['status', 'resolved_at', 'outcome'])
+
+            event_type_name = event_type_map.get(session.event_type, session.event_type)
+            desc = (
+                f"{session.agent.name}的{event_type_name}谈判已连续"
+                f"{inactive_for}个月未推进，系统自动关闭"
+            )
+            EventLog.objects.create(
+                game=game,
+                season=season,
+                event_type='negotiation_auto_closed',
+                category='NEGOTIATION',
+                description=desc,
+                data={
+                    'negotiation_id': session.id,
+                    'agent_name': session.agent.name,
+                    'event_type': session.event_type,
+                    'event_type_display': event_type_name,
+                    'last_activity_season': last_activity,
+                    'inactive_for_seasons': inactive_for,
+                    'timeout_seasons': NEGOTIATION_INACTIVE_SEASONS,
+                },
+            )
+            expired.append(
+                {
+                    'negotiation_id': session.id,
+                    'agent_name': session.agent.name,
+                    'event_type': session.event_type,
+                    'event_type_display': event_type_name,
+                    'inactive_for_seasons': inactive_for,
+                }
+            )
+        return expired
 
     # ------------------------------------------------------------------
     # Annexation Negotiation
@@ -574,6 +642,22 @@ class NegotiationService:
 
         messages.append({'role': 'user', 'content': user_prompt})
         return messages
+
+    @classmethod
+    def _last_activity_season(cls, session):
+        latest_msg_season = (
+            DialogueMessage.objects.filter(
+                game=session.game,
+                agent=session.agent,
+                metadata__negotiation_id=session.id,
+            )
+            .order_by('-season', '-id')
+            .values_list('season', flat=True)
+            .first()
+        )
+        if latest_msg_season is None:
+            return int(session.season or 0)
+        return int(latest_msg_season)
 
     @classmethod
     def _fallback_resolution(cls, session, last_result):
