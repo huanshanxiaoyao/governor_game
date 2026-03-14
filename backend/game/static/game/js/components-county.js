@@ -15,6 +15,75 @@
     return ((season - 1) % 12) + 1;
   }
 
+  function renderAnnualReviewPanel() {
+    var g = Game.state.currentGame;
+    var section = el("annual-review-section");
+    if (!g || !section) return;
+
+    var review = g.annual_review || {};
+    var entry = review.entry || {};
+    if (!review.available) {
+      section.innerHTML = "";
+      return;
+    }
+
+    var snapshot = entry.objective_snapshot || {};
+    var html = '<div class="annual-review-card">';
+    html += '<h4 class="section-title">年度评议</h4>';
+
+    if (snapshot.objective_score !== undefined) {
+      html += '<div class="annual-review-metrics">';
+      html += '<span><strong>税赋完成</strong> ' + (snapshot.quota_completion_pct || 0) + '%</span>';
+      html += '<span><strong>民心</strong> ' + (snapshot.morale || 0) + '</span>';
+      html += '<span><strong>治安</strong> ' + (snapshot.security || 0) + '</span>';
+      html += '<span><strong>商业</strong> ' + (snapshot.commercial || 0) + '</span>';
+      html += '<span><strong>文教</strong> ' + (snapshot.education || 0) + '</span>';
+      html += '</div>';
+    }
+
+    if (review.phase === "self_statement") {
+      html += '<div class="hint annual-review-hint">冬月须先提交年度自陈，方可推进至腊月。</div>';
+      html += '<div class="annual-review-form-grid">';
+      html += '<label>政绩完成情况<textarea id="annual-review-achievements" rows="3" placeholder="概述本年主要完成事项...">' + escapeHtml((entry.self_statement || {}).achievements || "") + '</textarea></label>';
+      html += '<label>未完事项<textarea id="annual-review-unfinished" rows="3" placeholder="说明尚未完成或推进不足之处...">' + escapeHtml((entry.self_statement || {}).unfinished || "") + '</textarea></label>';
+      html += '<label>过失记录<textarea id="annual-review-faults" rows="3" placeholder="如实填写失误、疏漏或处置不当之处...">' + escapeHtml((entry.self_statement || {}).faults || "") + '</textarea></label>';
+      html += '<label>来年规划<textarea id="annual-review-plan" rows="3" placeholder="简述来年工作重点...">' + escapeHtml((entry.self_statement || {}).plan || "") + '</textarea></label>';
+      html += '</div>';
+      if (entry.self_statement_meta && entry.self_statement_meta.audit_flags && entry.self_statement_meta.audit_flags.length) {
+        html += '<div class="hint annual-review-risk">当前版本自陈可能被上级质疑：' + escapeHtml(entry.self_statement_meta.audit_flags.join("、")) + '</div>';
+      }
+      html += '<div class="annual-review-actions"><button id="btn-submit-annual-review" class="btn btn-primary btn-small">' + ((entry.self_statement ? "更新" : "提交") + '年度自陈') + '</button></div>';
+    } else {
+      if (entry.self_statement) {
+        html += '<div class="annual-review-block"><div class="annual-review-subtitle">已呈年度自陈</div>';
+        html += '<div><strong>政绩完成情况：</strong>' + escapeHtml(entry.self_statement.achievements || "") + '</div>';
+        html += '<div><strong>未完事项：</strong>' + escapeHtml(entry.self_statement.unfinished || "") + '</div>';
+        html += '<div><strong>过失记录：</strong>' + escapeHtml(entry.self_statement.faults || "") + '</div>';
+        html += '<div><strong>来年规划：</strong>' + escapeHtml(entry.self_statement.plan || "") + '</div>';
+        html += '</div>';
+      }
+      if (entry.prefect_review) {
+        html += '<div class="annual-review-block annual-review-prefect">';
+        html += '<div class="annual-review-subtitle">知府初评：<strong>' + escapeHtml(entry.prefect_review.grade || "") + '</strong></div>';
+        html += '<div><strong>做得好的地方：</strong>' + escapeHtml(entry.prefect_review.strengths || "") + '</div>';
+        html += '<div><strong>做得不好的地方：</strong>' + escapeHtml(entry.prefect_review.weaknesses || "") + '</div>';
+        html += '<div><strong>建议重点：</strong>' + escapeHtml(entry.prefect_review.focus || "") + '</div>';
+        html += '</div>';
+      }
+      if (entry.governor_recheck) {
+        html += '<div class="annual-review-block annual-review-governor">';
+        html += '<div class="annual-review-subtitle">巡抚复核：<strong>' + escapeHtml(entry.governor_recheck.final_grade || "") + '</strong></div>';
+        html += '<div>' + escapeHtml(entry.governor_recheck.comment || "") + '</div>';
+        html += '</div>';
+      } else if (review.phase === "prefect_review") {
+        html += '<div class="hint annual-review-hint">腊月已进入知府初评阶段，评语将在本月显示。</div>';
+      }
+    }
+
+    html += '</div>';
+    section.innerHTML = html;
+  }
+
   function renderReliefAction() {
     var g = Game.state.currentGame;
     var sectionEl = el("relief-action-section");
@@ -198,11 +267,69 @@
     renderEmergencyNeighbors(g.id);
   }
 
+  function renderRiotBanner() {
+    var g = Game.state.currentGame;
+    var bannerEl = el("riot-status-banner");
+    if (!bannerEl) return;
+
+    var emergency = g ? ((g.county_data || {}).emergency || {}) : {};
+    var riot = emergency.riot || {};
+    var takeover = emergency.prefect_takeover || {};
+    var playerStatus = emergency.player_status || "ACTIVE";
+
+    var riotActive = !!riot.active;
+    var takeoverActive = !!takeover.active;
+    var isSuspended = playerStatus === "SUSPENDED";
+    var isDismissed = playerStatus === "DISMISSED";
+    var showBanner = riotActive || takeoverActive || isSuspended || isDismissed;
+
+    bannerEl.classList.toggle("hidden", !showBanner);
+
+    var screenEl = el("screen-game");
+    if (screenEl) screenEl.classList.toggle("screen-riot-active", showBanner);
+
+    if (!showBanner) return;
+
+    var progress = Number(takeover.suppression_progress || 0);
+    var textEl = el("riot-banner-text");
+    var fillEl = el("riot-progress-fill");
+    var labelEl = el("riot-progress-label");
+
+    var msg = "";
+    if (riotActive) {
+      msg = "知府接管中 — 暴动镇压进行中，当前无法施政";
+    } else if (isDismissed) {
+      msg = "已被知府免职";
+    } else if (isSuspended) {
+      msg = "暂时免职，等待知府裁决";
+    }
+    if (textEl) textEl.textContent = msg;
+    if (fillEl) fillEl.style.width = Math.min(100, progress) + "%";
+    if (labelEl) labelEl.textContent = riotActive ? "镇压进度 " + Math.round(progress) + "/100" : "";
+
+    // Update advance button label
+    var advBtn = el("btn-advance");
+    if (advBtn && g && g.current_season <= Game.MAX_MONTH) {
+      if (riotActive || takeoverActive) {
+        advBtn.textContent = "推进月份（镇压中）";
+      } else if (isSuspended) {
+        advBtn.textContent = "推进月份（等待裁决）";
+      }
+    }
+  }
+
   function renderHeader() {
     var g = Game.state.currentGame;
     if (!g) return;
+    var countyNameEl = document.getElementById("county-name-display");
+    if (countyNameEl) {
+      var cname = (g.county_data || {}).county_name || "";
+      countyNameEl.textContent = cname ? cname : "";
+      countyNameEl.style.display = cname ? "" : "none";
+    }
     el("season-display").textContent = Game.seasonName(g.current_season);
     el("treasury-display").textContent = "县库: " + Math.round(g.county_data.treasury) + " 两";
+    renderRiotBanner();
 
     // Update tax slider to match current rate
     var slider = el("tax-slider");
@@ -420,10 +547,12 @@
         // If autumn settlement completed, append final result row
         var qc = c.quota_completion;
         if (qc && qc.year === quota.year) {
-          quotaItems.push({
-            label: "秋后结算",
-            value: "实缴 " + qc.actual_remitted + " 两，完成率 " + qc.completion_rate + "%",
-          });
+          var qcValue = "实缴 " + qc.actual_remitted + " 两，完成率 " + qc.completion_rate + "%";
+          if (qc.relief_deduction > 0) {
+            qcValue += "（原配额 " + (qc.original_quota || qc.quota_total + qc.relief_deduction) +
+              " 两，减免核扣 " + qc.relief_deduction + " 两，有效配额 " + qc.quota_total + " 两）";
+          }
+          quotaItems.push({ label: "秋后结算", value: qcValue });
         }
 
         quotaItems.forEach(function (it) {
@@ -431,6 +560,71 @@
           quotaRow.appendChild(span);
         });
         quotaDiv.appendChild(quotaRow);
+
+        // 上缴比例调整控件：仅在九月秋税已核定且有配额缺口时显示
+        if (paymentPending && agriGap > 0) {
+          var agriTax = autumnAssessment.agri_tax || 0;
+          var currentPct = Math.round(remitRatio * 100);
+          var retainPct = 100 - currentPct;
+
+          var remitWidget = document.createElement("div");
+          remitWidget.className = "remit-ratio-widget";
+          remitWidget.innerHTML =
+            '<div class="remit-ratio-header">' +
+              '<strong>调整上缴比例</strong>' +
+              '<span class="remit-ratio-note">当前上缴 ' + currentPct + '% · 留存 ' + retainPct + '%' +
+              '（上缴 ' + Math.round(autumnAssessment.agri_remit_due || 0) + ' 两 / 留存 ' + Math.round(autumnAssessment.agri_retained_due || 0) + ' 两）' +
+              '</span>' +
+            '</div>' +
+            '<div class="remit-ratio-controls">' +
+              '<label>上缴比例：<input id="remit-ratio-slider" type="range" min="40" max="90" step="1" value="' + currentPct + '">' +
+              ' <span id="remit-ratio-pct">' + currentPct + '%</span></label>' +
+              '<div id="remit-ratio-preview" class="remit-ratio-preview"></div>' +
+              '<button id="btn-adjust-remit-ratio" class="btn btn-sm btn-warning">确认调整</button>' +
+            '</div>';
+
+          quotaDiv.appendChild(remitWidget);
+
+          var slider = document.getElementById("remit-ratio-slider");
+          var pctDisplay = document.getElementById("remit-ratio-pct");
+          var preview = document.getElementById("remit-ratio-preview");
+          var adjustBtn = document.getElementById("btn-adjust-remit-ratio");
+
+          function updateRemitPreview() {
+            var nr = parseInt(slider.value) / 100;
+            var newRemit = Math.round(agriTax * nr);
+            var newRetain = agriTax > 0 ? Math.round(agriTax - agriTax * nr) : 0;
+            var newGap = Math.round(agriQuota - (newRemit + corveeRemitted));
+            pctDisplay.textContent = slider.value + "%";
+            preview.innerHTML =
+              "调整后：上缴 " + newRemit + " 两 / 留存 " + newRetain + " 两 | " +
+              (newGap <= 0
+                ? '<span class="delta-positive">配额满足</span>'
+                : '<span class="delta-negative">配额缺口 ' + newGap + ' 两</span>');
+          }
+          updateRemitPreview();
+          slider.addEventListener("input", updateRemitPreview);
+
+          adjustBtn.addEventListener("click", function () {
+            var gameObj = Game.state.currentGame;
+            if (!gameObj) return;
+            var newRatio = parseInt(slider.value) / 100;
+            adjustBtn.disabled = true;
+            Game.api.adjustRemitRatio(gameObj.id, newRatio)
+              .then(function () {
+                return Game.api.getGame(gameObj.id);
+              })
+              .then(function (data) {
+                Game.setGame(data);
+                Game.components.renderDashboard();
+                Game.components.showToast("上缴比例已调整为 " + Math.round(newRatio * 100) + "%", "success");
+              })
+              .catch(function (err) {
+                adjustBtn.disabled = false;
+                Game.components.showToast(err.message || "调整失败", "error");
+              });
+          });
+        }
       }
     }
 
@@ -528,6 +722,8 @@
         "</div>");
       plDiv.appendChild(card);
     }
+
+    renderAnnualReviewPanel();
 
     // Active promises
     loadActivePromises();
@@ -875,8 +1071,23 @@
       var eventsDiv = h("div", "report-events");
       report.events.forEach(function (evt) {
         var isAnnexation = evt.indexOf("【地主兼并】") !== -1;
-        var item = h("div", "report-event" + (isAnnexation ? " report-event-urgent" : ""), evt);
-        if (isAnnexation) {
+        var isHiddenLand = evt.indexOf("【隐匿土地】") !== -1;
+        var isRiot = evt.indexOf("【连锁暴动】") !== -1 || evt.indexOf("【农民暴动】") !== -1;
+        var isResolutionGood = evt.indexOf("复任本县") !== -1;
+        var isResolutionBad = evt.indexOf("正式罢免") !== -1;
+        var isTakeover = !isResolutionGood && !isResolutionBad && (
+          evt.indexOf("【知府接管】") !== -1 || evt.indexOf("【知府裁决】") !== -1
+        );
+
+        var cls = "report-event";
+        if (isRiot) cls += " report-event-riot";
+        else if (isResolutionGood) cls += " report-event-resolution-good";
+        else if (isResolutionBad) cls += " report-event-resolution-bad";
+        else if (isTakeover) cls += " report-event-takeover";
+        else if (isAnnexation || isHiddenLand) cls += " report-event-urgent";
+
+        var item = h("div", cls, evt);
+        if (isAnnexation || isHiddenLand) {
           var btn = h("button", "btn btn-primary btn-small report-nego-btn", "前往谈判");
           btn.id = "btn-report-negotiate";
           item.appendChild(btn);
@@ -1182,6 +1393,7 @@
     var meta = data.meta || {};
     var badges = head.badges || [];
     var tags = head.style_tags || [];
+    var isDismissed = meta.end_reason === "dismissed";
 
     function fmtMaybe(val, digits) {
       if (val === null || val === undefined || isNaN(val)) return "-";
@@ -1190,21 +1402,30 @@
       return n.toFixed(digits);
     }
 
-    var hero = h("section", "summary2-hero",
-      '<div class="summary2-title">任期述职报告</div>' +
+    var heroClass = "summary2-hero" + (isDismissed ? " summary2-hero-dismissed" : "");
+    var reportLabel = isDismissed ? "任期中止述职报告" : "任期述职报告";
+    var dismissedBanner = isDismissed
+      ? '<div class="summary2-dismissed-banner">⚠ 革退原任 — ' + escapeHtml(meta.dismissal_reason || "任期未满被革退") + '</div>'
+      : "";
+    var hero = h("section", heroClass,
+      dismissedBanner +
+      '<div class="summary2-title">' + reportLabel + '</div>' +
       '<h2>' + escapeHtml(head.title || "三年任期总结") + '</h2>' +
       '<div class="summary2-score-row">' +
-        '<span class="summary2-grade">评级：' + escapeHtml(head.grade || "-") + '</span>' +
-        '<span class="summary2-outcome">结论：' + escapeHtml(head.outcome || "-") + '</span>' +
+        '<span class="summary2-grade' + (isDismissed ? " summary2-grade-dismissed" : "") + '">评级：' + escapeHtml(head.grade || "-") + '</span>' +
+        '<span class="summary2-outcome' + (isDismissed ? " summary2-outcome-dismissed" : "") + '">结论：' + escapeHtml(head.outcome || "-") + '</span>' +
         '<span class="summary2-score">综合分：' + (head.overall_score !== undefined ? head.overall_score : "-") + '</span>' +
       '</div>' +
       '<p class="summary2-narrative">' + escapeHtml(head.narrative || "") + '</p>' +
-      '<div class="summary2-chip-row">' +
-        tags.map(function (t) { return '<span class="summary2-chip">' + escapeHtml(t) + '</span>'; }).join("") +
-      '</div>' +
-      '<div class="summary2-chip-row">' +
-        badges.map(function (b) { return '<span class="summary2-chip summary2-chip-badge">' + escapeHtml(b) + '</span>'; }).join("") +
-      '</div>' +
+      (isDismissed ? '' :
+        '<div class="summary2-chip-row">' +
+          tags.map(function (t) { return '<span class="summary2-chip">' + escapeHtml(t) + '</span>'; }).join("") +
+        '</div>' +
+        '<div class="summary2-chip-row">' +
+          badges.map(function (b) { return '<span class="summary2-chip summary2-chip-badge">' + escapeHtml(b) + '</span>'; }).join("") +
+        '</div>'
+      ) +
+      (meta.term_note ? '<div class="summary2-baseline">' + escapeHtml(meta.term_note) + '</div>' : '') +
       '<div class="summary2-baseline">' + escapeHtml(meta.baseline_note || "") + '</div>');
     root.appendChild(hero);
 
@@ -1350,14 +1571,14 @@
     yearSec.appendChild(h("h3", "section-title", "年度复盘"));
     var yearWrap = h("div", "summary2-year-wrap");
     (data.yearly_reports || []).forEach(function (yr) {
-      var w = yr.winter_snapshot || {};
+      var w = yr.period_end_snapshot || yr.winter_snapshot || {};
       var a = yr.autumn || {};
       var events = (yr.key_events || []).slice(0, 4);
       var eventHtml = events.map(function (e) {
         return '<li>第' + e.season + '月 [' + escapeHtml(e.category) + '] ' + escapeHtml(e.description) + '</li>';
       }).join("");
       var card = h("article", "summary2-year-card",
-        '<div class="summary2-year-header">第' + yr.year + '年</div>' +
+        '<div class="summary2-year-header">' + escapeHtml(yr.label || ('第' + yr.year + '年')) + '</div>' +
         '<div class="summary2-year-metrics">' +
           '<span>县库: ' + (w.treasury !== undefined ? w.treasury : "-") + '两</span>' +
           '<span>民心: ' + (w.morale !== undefined ? w.morale : "-") + '</span>' +
@@ -1489,6 +1710,7 @@
   }
 
   // Export
+  C.renderRiotBanner = renderRiotBanner;
   C.renderHeader = renderHeader;
   C.renderDashboard = renderDashboard;
   C.loadActivePromises = loadActivePromises;
@@ -1498,6 +1720,7 @@
   C.openVillageDetail = openVillageDetail;
   C.renderInvestTab = renderInvestTab;
   C.renderReport = renderReport;
+  C.renderAnnualReviewPanel = renderAnnualReviewPanel;
   C.renderGameList = renderGameList;
   C.renderSummary = renderSummary;
   C.renderSummaryV2 = renderSummaryV2;

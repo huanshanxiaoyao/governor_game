@@ -16,6 +16,18 @@
     HIDDEN_LAND: "隐匿土地",
   };
 
+  function formatMsgTime(isoString) {
+    try {
+      var d = new Date(isoString);
+      var hh = String(d.getHours()).padStart(2, '0');
+      var mm = String(d.getMinutes()).padStart(2, '0');
+      var ss = String(d.getSeconds()).padStart(2, '0');
+      return hh + ':' + mm + ':' + ss;
+    } catch (e) {
+      return '';
+    }
+  }
+
   function getNegotiationPlayerLabel(speakerRole, speakerName) {
     if (speakerRole === "ADVISOR") return (speakerName || "师爷") + "（代）";
     if (speakerRole === "DEPUTY") return (speakerName || "县丞") + "（代）";
@@ -175,9 +187,11 @@
       var label = msg.role === "player"
         ? getNegotiationPlayerLabel(msg.speaker_role, msg.speaker_name)
         : "";
+      var tsHtml = msg.created_at ? '<span class="nego-msg-ts">' + formatMsgTime(msg.created_at) + '</span>' : '';
       var div = h("div", cls,
         (label ? '<span class="nego-msg-label">' + label + '</span>' : '') +
-        '<div class="nego-msg-content">' + escapeHtml(msg.content) + '</div>');
+        '<div class="nego-msg-content">' + escapeHtml(msg.content) + '</div>' +
+        tsHtml);
       container.appendChild(div);
     });
 
@@ -196,9 +210,12 @@
     var label = role === "player"
       ? getNegotiationPlayerLabel(opts.speakerRole, opts.speakerName)
       : "";
+    var now = new Date();
+    var tsHtml = '<span class="nego-msg-ts">' + formatMsgTime(now.toISOString()) + '</span>';
     var div = h("div", cls,
       (label ? '<span class="nego-msg-label">' + label + '</span>' : '') +
-      '<div class="nego-msg-content">' + escapeHtml(content) + '</div>');
+      '<div class="nego-msg-content">' + escapeHtml(content) + '</div>' +
+      tsHtml);
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
   }

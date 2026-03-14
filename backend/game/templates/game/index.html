@@ -122,12 +122,22 @@
   <div class="game-header">
     <button id="btn-back-to-list" class="btn btn-small">返回列表</button>
     <div class="header-info">
+      <span id="county-name-display" class="county-name-display"></span>
       <span id="season-display"></span>
       <span id="treasury-display"></span>
     </div>
     <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
   </div>
   <div id="neighbor-precompute-status" class="precompute-status-inline header-precompute"></div>
+  <!-- Riot Status Banner -->
+  <div id="riot-status-banner" class="riot-status-banner hidden">
+    <span class="riot-banner-icon">⚠</span>
+    <span id="riot-banner-text" class="riot-banner-text"></span>
+    <div class="riot-progress-wrap">
+      <div id="riot-progress-fill" class="riot-progress-fill" style="width:0%"></div>
+    </div>
+    <span id="riot-progress-label" class="riot-progress-label"></span>
+  </div>
 
   <!-- Tab Navigation -->
   <nav class="tab-nav">
@@ -155,6 +165,7 @@
     <div id="irrigation-negotiate-section" class="hidden"></div>
     <div id="markets-info"></div>
     <div id="player-info"></div>
+    <div id="annual-review-section"></div>
     <div id="promises-info"></div>
   </div>
 
@@ -286,8 +297,19 @@
 
   <!-- Tab: Officialdom (官场) -->
   <div id="tab-officialdom" class="tab-content hidden">
-    <div id="officialdom-content">
-      <p class="hint">加载中...</p>
+    <div class="offdom-subtab-bar">
+      <button class="offdom-subtab-btn active" data-subtab="offdom-national">全国行政体系</button>
+      <button class="offdom-subtab-btn" data-subtab="offdom-career">仕途轨迹</button>
+    </div>
+    <div id="offdom-national">
+      <div id="officialdom-content">
+        <p class="hint">加载中...</p>
+      </div>
+    </div>
+    <div id="offdom-career" class="hidden">
+      <div id="career-content">
+        <p class="hint">加载中...</p>
+      </div>
     </div>
   </div>
 
@@ -333,6 +355,49 @@
     <div id="advance-result-body" class="advance-result-body"></div>
     <div class="advance-modal-footer">
       <button id="advance-result-view-log" class="btn btn-small">查看县志</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Term Complete Modal ==================== -->
+<div id="term-complete-modal" class="modal hidden">
+  <div class="modal-content term-complete-content">
+    <div class="term-complete-header">
+      <h3 class="term-complete-title">任期届满</h3>
+      <div id="term-complete-grade-badge" class="grade-badge"></div>
+    </div>
+    <div id="term-complete-body" class="term-complete-body"></div>
+    <div id="term-complete-transfer" class="term-complete-transfer hidden"></div>
+    <div id="term-complete-stats" class="term-complete-stats"></div>
+    <div class="term-complete-footer">
+      <div id="term-complete-flavor" class="term-complete-flavor"></div>
+      <button id="btn-start-new-term" class="btn btn-primary">开始新任期</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Riot Crisis Modal ==================== -->
+<div id="riot-crisis-modal" class="modal hidden">
+  <div class="modal-content riot-crisis-content">
+    <div class="riot-crisis-header">
+      <span class="riot-crisis-icon">⚠</span>
+      <h3 id="riot-crisis-title" class="riot-crisis-title">民变暴动</h3>
+    </div>
+    <p id="riot-crisis-body" class="riot-crisis-body"></p>
+    <p class="riot-crisis-note">知府已派兵接管，正在镇压，预计需 2～3 个月平息。</p>
+    <button id="btn-riot-crisis-close" class="btn-riot-close">知晓，继续</button>
+  </div>
+</div>
+
+<!-- ==================== Bribe Offer Modal ==================== -->
+<div id="bribe-modal" class="modal hidden">
+  <div class="modal-content modal-sm bribe-modal-content">
+    <h4 class="bribe-modal-title">地主行贿</h4>
+    <p id="bribe-prompt" class="bribe-prompt"></p>
+    <p id="bribe-amount" class="bribe-amount"></p>
+    <div class="bribe-actions">
+      <button id="btn-bribe-accept" class="btn btn-danger btn-small">收下（接受）</button>
+      <button id="btn-bribe-refuse" class="btn btn-primary btn-small">严词拒绝</button>
     </div>
   </div>
 </div>
@@ -390,7 +455,27 @@
   </div>
 </div>
 
-<!-- ==================== Neighbor Detail Modal ==================== -->
+<!-- ==================== Unified County Detail Modal (邻县 + 下辖县) ==================== -->
+<div id="county-detail-modal" class="modal hidden">
+  <div class="modal-content cdc-modal-content">
+    <div class="cdc-header">
+      <h4 id="cdc-title">县详情</h4>
+      <button id="cdc-close" class="btn btn-small">关闭</button>
+    </div>
+    <nav class="cdc-tab-nav">
+      <button class="cdc-tab-btn active" data-cdc-tab="cdc-tab-overview">县情总览</button>
+      <button class="cdc-tab-btn" data-cdc-tab="cdc-tab-gazette">县志</button>
+    </nav>
+    <div id="cdc-tab-overview" class="cdc-tab-content">
+      <div id="cdc-overview-body"></div>
+    </div>
+    <div id="cdc-tab-gazette" class="cdc-tab-content hidden">
+      <div id="cdc-gazette-body"><p class="hint">点击「县志」标签查看完整记录</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Neighbor Detail Modal (任期述职专用) ==================== -->
 <div id="neighbor-detail-modal" class="modal hidden">
   <div class="modal-content neighbor-detail-content">
     <div class="neighbor-detail-header">
@@ -420,6 +505,7 @@
     <button id="btn-pref-back" class="btn btn-small">返回列表</button>
     <div id="pref-header-info" class="header-info"></div>
   </div>
+  <div id="pref-precompute-status" class="precompute-status-inline header-precompute"></div>
 
   <!-- Calendar strip + advance controls -->
   <div class="pref-cal-row">
@@ -433,6 +519,7 @@
   <nav class="tab-nav" id="pref-tab-nav">
     <button class="tab-btn active" data-tab="pref-tab-overview">府情总览</button>
     <button class="tab-btn" data-tab="pref-tab-counties">下辖县州</button>
+    <button id="pref-personnel-tab-btn" class="tab-btn hidden" data-tab="pref-tab-personnel">人事</button>
     <button class="tab-btn" data-tab="pref-tab-infra">公共事业</button>
     <button class="tab-btn pref-judicial-tab-btn" data-tab="pref-tab-judicial">司法<span id="judicial-tab-badge" class="judicial-tab-badge hidden"></span></button>
     <button class="tab-btn" data-tab="pref-tab-log">府志</button>
@@ -445,7 +532,7 @@
       <button id="btn-pref-quota" class="btn btn-small hidden">分配年度定额（正月）</button>
     </div>
     <div id="pref-key-metrics"></div>
-    <div id="pref-county-mini-list"></div>
+    <div id="pref-todo-list"></div>
   </div>
 
   <!-- Tab: Counties -->
@@ -453,6 +540,11 @@
     <div id="pref-counties-table-wrap">
       <p class="hint">加载中...</p>
     </div>
+  </div>
+
+  <!-- Tab: Personnel -->
+  <div id="pref-tab-personnel" class="tab-content hidden">
+    <div id="pref-personnel-content"><p class="hint">当前不在年度评议窗口。</p></div>
   </div>
 
   <!-- Tab: Infra -->
@@ -472,17 +564,6 @@
 </section>
 
 <!-- ==================== Prefecture Modals ==================== -->
-
-<!-- County Detail Modal -->
-<div id="pref-county-modal" class="modal hidden">
-  <div class="modal-content pref-county-modal-content">
-    <div class="pref-modal-header">
-      <h4 id="pref-county-modal-title">县详情</h4>
-      <button id="pref-county-modal-close" class="btn btn-small">关闭</button>
-    </div>
-    <div id="pref-county-modal-body" class="pref-county-modal-body"></div>
-  </div>
-</div>
 
 <!-- Quota Distribution Modal -->
 <div id="pref-quota-modal" class="modal hidden">
@@ -556,6 +637,7 @@
 <script src="{% static 'game/js/components-core.js' %}"></script>
 <script src="{% static 'game/js/components-county.js' %}"></script>
 <script src="{% static 'game/js/components-social.js' %}"></script>
+<script src="{% static 'game/js/components-county-detail.js' %}"></script>
 <script src="{% static 'game/js/components-neighbors.js' %}"></script>
 <script src="{% static 'game/js/components-officialdom.js' %}"></script>
 <script src="{% static 'game/js/components-prefecture.js' %}"></script>

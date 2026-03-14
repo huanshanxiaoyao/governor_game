@@ -339,6 +339,50 @@ body {
 .env-item { color: #5c4a2a; }
 .quota-item { width: 100%; }
 
+/* === Remit Ratio Adjustment Widget === */
+.remit-ratio-widget {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fdf6e3;
+  border: 1px solid #d4a843;
+  border-radius: 4px;
+}
+.remit-ratio-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.remit-ratio-note {
+  font-size: 0.85em;
+  color: #7a6030;
+}
+.remit-ratio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.remit-ratio-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+}
+.remit-ratio-preview {
+  font-size: 0.85em;
+  color: #5c4a2a;
+  flex: 1;
+}
+.btn-warning {
+  background: #e67e22;
+  color: #fff;
+  border: none;
+}
+.btn-warning:hover:not(:disabled) {
+  background: #cf6d17;
+}
+
 /* === Disaster Alert === */
 .disaster-alert {
   border: 2px solid #c0392b;
@@ -787,6 +831,32 @@ body {
   margin-bottom: 16px;
   animation: summaryIn 0.4s ease-out;
 }
+.summary2-hero-dismissed {
+  background: linear-gradient(145deg, #2a0808 0%, #1e0505 100%);
+  border-color: #8b0000;
+  border-left-color: #cc0000;
+  color: #f0d0c0;
+}
+.summary2-hero-dismissed .summary2-title { color: #c09080; }
+.summary2-hero-dismissed h2 { color: #f5d0c0; }
+.summary2-hero-dismissed .summary2-narrative { color: #e8c8b8; }
+.summary2-hero-dismissed .summary2-baseline { color: #a08070; }
+.summary2-dismissed-banner {
+  background: #6b0000;
+  color: #ffe0d0;
+  font-weight: 700;
+  font-size: 0.92em;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 14px;
+}
+.summary2-grade-dismissed,
+.summary2-outcome-dismissed {
+  background: #4a0808;
+  border-color: #8b0000;
+  color: #ff9090;
+  font-weight: 700;
+}
 .summary2-title {
   display: inline-block;
   font-size: 0.8em;
@@ -1097,6 +1167,12 @@ body {
   border: 1px solid #d5ceb8;
   color: #3a3428;
   border-bottom-left-radius: 2px;
+}
+.nego-msg-ts {
+  display: block;
+  font-size: 0.72em;
+  color: #aaa;
+  margin-top: 3px;
 }
 .nego-input-area {
   display: flex;
@@ -1723,6 +1799,271 @@ body {
   margin-top: 2px;
 }
 
+/* === 统一县详情双标签卡片 (County Detail Card) === */
+.cdc-modal-content {
+  display: flex;
+  flex-direction: column;
+  width: 720px;
+  max-width: 95vw;
+  max-height: 90vh;
+  padding: 0;
+  overflow: hidden;
+}
+.cdc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid #d5ceb8;
+  flex-shrink: 0;
+}
+.cdc-header h4 {
+  margin: 0;
+  color: #5c4a2a;
+  font-size: 1.1em;
+}
+/* Tab nav */
+.cdc-tab-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #d5ceb8;
+  flex-shrink: 0;
+  background: #faf6ee;
+}
+.cdc-tab-btn {
+  padding: 8px 24px;
+  border: none;
+  background: transparent;
+  color: #8a7a5a;
+  font-size: 0.92em;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+}
+.cdc-tab-btn:hover { color: #5c4a2a; }
+.cdc-tab-btn.active {
+  color: #5c4a2a;
+  font-weight: bold;
+  border-bottom-color: #6b8f4a;
+}
+/* Tab content */
+.cdc-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.cdc-tab-content.hidden { display: none; }
+/* Sections */
+.cdc-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ede7d9;
+}
+.cdc-section:last-child { border-bottom: none; }
+.cdc-section-title {
+  font-size: 0.9em;
+  font-weight: bold;
+  color: #5c4a2a;
+  margin-bottom: 8px;
+  text-transform: none;
+}
+.cdc-report-month {
+  font-weight: normal;
+  font-size: 0.88em;
+  color: #8a7a5a;
+  margin-left: 6px;
+}
+/* Governor */
+.cdc-governor-section { background: #f5f0e6; border-radius: 6px; padding: 10px 14px; }
+.cdc-governor-section.cdc-section { margin-bottom: 14px; }
+.cdc-governor-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cdc-gov-name { font-weight: bold; color: #3a3428; font-size: 0.95em; }
+.cdc-arch-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  color: #fff;
+  font-weight: bold;
+}
+.cdc-style-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  color: #fff;
+}
+.cdc-gov-bio {
+  font-size: 0.85em;
+  color: #6b5d45;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+/* Indicators grid */
+.cdc-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 6px;
+}
+.cdc-stat {
+  background: #f0ece2;
+  border-radius: 4px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.cdc-stat-label {
+  display: block;
+  font-size: 0.75em;
+  color: #8a7a5a;
+  margin-bottom: 3px;
+}
+.cdc-stat-value {
+  display: block;
+  font-size: 0.9em;
+  font-weight: bold;
+  color: #5c4a2a;
+}
+.cdc-tier-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.8em;
+  color: #fff;
+  font-weight: bold;
+  vertical-align: middle;
+}
+/* Infra grid */
+.cdc-infra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cdc-infra-item {
+  background: #f5f0e6;
+  border-radius: 4px;
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.cdc-infra-label { font-size: 0.75em; color: #8a7a5a; }
+.cdc-infra-val { font-size: 0.88em; font-weight: bold; color: #4a3a2a; }
+.cdc-granary-yes { color: #2e7d32; }
+.cdc-granary-no  { color: #c62828; }
+.cdc-investments {
+  font-size: 0.85em;
+  color: #5c4a2a;
+  margin-top: 6px;
+}
+.cdc-investments-label { font-weight: bold; }
+/* Villages / data tables */
+.cdc-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.cdc-data-table th, .cdc-data-table td {
+  padding: 5px 8px;
+  border: 1px solid #e0d8c8;
+  text-align: left;
+}
+.cdc-data-table thead th { background: #f0ece2; color: #5c4a2a; font-weight: bold; }
+.cdc-data-table tbody tr:hover { background: #faf6ee; }
+/* Markets */
+.cdc-market-row {
+  font-size: 0.9em;
+  color: #5c4a2a;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e7ddc8;
+}
+.cdc-market-row:last-child { border-bottom: none; }
+/* Admin cost */
+.cdc-admin-details summary {
+  cursor: pointer;
+  font-size: 0.88em;
+  color: #5c4a2a;
+  user-select: none;
+}
+.cdc-admin-list {
+  margin-top: 8px;
+  border: 1px solid #e0d7c3;
+  border-radius: 4px;
+  background: #f8f4ec;
+  padding: 6px 10px;
+}
+.cdc-admin-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.86em;
+  color: #4a4031;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e7ddc8;
+}
+.cdc-admin-row:last-child { border-bottom: none; }
+.cdc-admin-total { margin-top: 2px; }
+/* Analysis */
+.cdc-analysis-text {
+  font-size: 0.88em;
+  color: #3a3428;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: #f8f4ec;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+/* Report history table */
+.cdc-report-table-wrap { overflow-x: auto; }
+.cdc-report-table { min-width: 500px; }
+.cdc-report-month-cell { white-space: nowrap; font-size: 0.82em; color: #6b5d45; }
+/* Quota */
+.cdc-quota-text { font-size: 0.9em; color: #4a3a2a; margin: 0; }
+/* Action buttons */
+.cdc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e0d7c3;
+}
+/* Gazette tab */
+.cdc-gazette-list { display: flex; flex-direction: column; gap: 10px; }
+.cdc-gazette-report-entry {
+  background: #f8f4ec;
+  border-radius: 6px;
+  padding: 10px 14px;
+  border: 1px solid #e8dfc8;
+}
+.cdc-gazette-inds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+.cdc-gazette-ind {
+  font-size: 0.82em;
+  color: #5c4a2a;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cdc-gazette-report-text {
+  font-size: 0.85em;
+  color: #4a3a2a;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.cdc-gazette-notes { color: #8a4a2a; font-style: italic; }
+
 /* === Officialdom (官场) === */
 .officialdom-section {
   margin-bottom: 24px;
@@ -1985,6 +2326,7 @@ body {
   .ministries-grid { grid-template-columns: repeat(2, 1fr); }
   .pref-metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .pref-mini-cards { grid-template-columns: 1fr; }
+  .pref-todo-item { flex-direction: column; align-items: flex-start; }
   .pref-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .pref-counties-table { font-size: 0.8em; }
 }
@@ -2131,7 +2473,7 @@ body {
 }
 .pref-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
   margin: 8px 0;
 }
@@ -2154,6 +2496,70 @@ body {
   font-size: 0.85em;
 }
 .pref-alert-info { background: #e3f2fd; border-color: #1565c0; }
+
+#pref-todo-list {
+  background: #fffdf7;
+  border: 1px solid #ddd5c3;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.pref-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pref-todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2d8c4;
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: #fcf8ef;
+}
+.pref-todo-item.severity-high { border-left-color: #c62828; }
+.pref-todo-item.severity-medium { border-left-color: #ef6c00; }
+.pref-todo-item.severity-low { border-left-color: #1565c0; }
+.pref-todo-main {
+  min-width: 0;
+  flex: 1;
+}
+.pref-todo-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.94em;
+  font-weight: 700;
+  color: #3f3422;
+}
+.pref-todo-icon {
+  font-size: 1.05em;
+  line-height: 1;
+}
+.pref-todo-detail {
+  margin-top: 4px;
+  font-size: 0.82em;
+  color: #6a5a3a;
+  line-height: 1.5;
+}
+.pref-todo-action {
+  flex-shrink: 0;
+}
+.pref-todo-status {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  color: #8a7a5a;
+}
+.pref-empty-state {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f7f1e4;
+  color: #7a6a50;
+  font-size: 0.86em;
+}
 
 /* Mini county cards */
 .pref-mini-cards {
@@ -2261,6 +2667,34 @@ body {
 .pref-gov-bio { font-size: 0.82em; color: #8a7a5a; line-height: 1.5; margin-bottom: 6px; }
 .pref-gov-quota { font-size: 0.85em; color: #4a3a2a; }
 .pref-modal-section { margin-bottom: 14px; }
+.pref-infra-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.pref-infra-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #fdf8f0;
+  border: 1px solid #d4c4a0;
+  border-radius: 5px;
+  padding: 5px 4px;
+  font-size: 0.82em;
+}
+.pref-infra-stat-label { color: #8a7a5a; margin-bottom: 2px; }
+.pref-infra-stat-val { font-weight: 600; color: #3a2a1a; }
+.pref-granary-yes { color: #2e7d32; }
+.pref-granary-no  { color: #b71c1c; }
+.pref-infra-building-label { font-size: 0.83em; color: #5a4a3a; margin-top: 8px; margin-bottom: 3px; }
+.pref-infra-building-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 0.82em;
+  color: #6b5d45;
+  line-height: 1.6;
+}
 .pref-detail-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2432,6 +2866,11 @@ body {
 .pref-infra-status { font-size: 0.82em; padding: 4px 0; }
 .pref-infra-status.building { color: #1565c0; }
 .pref-infra-status.maxed-label { color: #2e7d32; font-weight: 600; }
+.pref-judicial-meta {
+  margin: 6px 0 12px;
+  font-size: 0.84em;
+  color: #6a5a3a;
+}
 
 /* ── 科举人才 Tab ── */
 .pref-talent-summary {
@@ -2867,10 +3306,598 @@ body {
   background: #faf6ed;
 }
 
+/* ==================== Annual Review ==================== */
+.annual-review-card,
+.pref-personnel-card {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #d8ccb3;
+  border-radius: 10px;
+  background: #fbf7ef;
+}
+
+.annual-review-metrics,
+.pref-personnel-metrics,
+.pref-personnel-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 10px 0 12px;
+  color: #5c4a2a;
+  font-size: 0.92em;
+}
+
+.annual-review-form-grid,
+.pref-review-form {
+  display: grid;
+  gap: 10px;
+}
+
+.annual-review-form-grid textarea,
+.pref-review-form textarea,
+.pref-review-form select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #cdbb94;
+  border-radius: 6px;
+  background: #fffdf8;
+  font: inherit;
+}
+
+.annual-review-block,
+.pref-personnel-block {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.annual-review-subtitle,
+.pref-personnel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.annual-review-actions,
+.pref-review-actions {
+  margin-top: 10px;
+}
+
+.annual-review-risk {
+  color: #8c5b21;
+}
+
+.pref-personnel-replacement {
+  margin-top: 8px;
+  color: #7a2f21;
+  font-weight: 600;
+}
+
+/* === Bribery System === */
+.modal-sm { max-width: 420px; }
+
+.bribe-modal-content { border-color: #8b4513; }
+.bribe-modal-title { color: #8b4513; margin-bottom: 12px; }
+
+.bribe-prompt {
+  font-size: 0.95em;
+  line-height: 1.7;
+  color: #4a3a2a;
+  background: #fef9f0;
+  border-left: 3px solid #c8b98a;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border-radius: 0 4px 4px 0;
+}
+
+.bribe-amount {
+  font-weight: 600;
+  color: #8b4513;
+  margin-bottom: 16px;
+  font-size: 1.05em;
+}
+
+.bribe-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-danger {
+  background: #8b2500;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.btn-danger:hover { background: #a83000; }
+
+/* ===== 暴动状态横幅 ===== */
+.riot-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px;
+  background: #5a0808;
+  color: #f5d0c0;
+  font-size: 0.87em;
+  font-weight: 600;
+  border-bottom: 2px solid #880000;
+}
+.riot-status-banner.hidden { display: none; }
+.riot-banner-icon { font-size: 1.1em; flex-shrink: 0; }
+.riot-banner-text { flex: 1; }
+.riot-progress-wrap {
+  width: 110px;
+  height: 7px;
+  background: #380000;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.riot-progress-fill {
+  height: 100%;
+  background: #e06060;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.riot-progress-label {
+  font-size: 0.83em;
+  color: #f5b0a0;
+  flex-shrink: 0;
+  min-width: 72px;
+  text-align: right;
+}
+
+/* 知府接管时主屏轻微红色内投影 */
+.screen-riot-active {
+  box-shadow: inset 0 0 0 400px rgba(100, 0, 0, 0.04);
+}
+
+/* ===== 暴动危机弹窗 ===== */
+.riot-crisis-content {
+  max-width: 400px;
+  text-align: center;
+  background: #1e0808;
+  border: 2px solid #8b0000;
+  color: #f0d0c0;
+  padding: 0 0 24px;
+}
+.riot-crisis-header {
+  background: #6b0000;
+  padding: 20px 24px 14px;
+  margin-bottom: 20px;
+}
+.riot-crisis-icon {
+  font-size: 2em;
+  display: block;
+  margin-bottom: 4px;
+}
+.riot-crisis-title {
+  color: #ffe0d0;
+  font-size: 1.15em;
+  margin: 0;
+}
+.riot-crisis-body {
+  font-size: 0.92em;
+  line-height: 1.75;
+  color: #e8c8b8;
+  margin: 0 24px 12px;
+}
+.riot-crisis-note {
+  font-size: 0.83em;
+  color: #c09080;
+  margin: 0 24px 20px;
+}
+.btn-riot-close {
+  background: #8b2500;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 32px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+.btn-riot-close:hover { background: #a83000; }
+
+/* ===== 月报中的暴动/裁决事件高亮 ===== */
+.report-event-riot {
+  border-left-color: #c0392b;
+  background: #fff5f5;
+  font-weight: 700;
+  color: #7a0000;
+}
+.report-event-takeover {
+  border-left-color: #d4a017;
+  background: #fffbee;
+  font-weight: 600;
+  color: #7a5a00;
+}
+.report-event-resolution-good {
+  border-left-color: #5a8a3c;
+  background: #f5fff2;
+  font-weight: 700;
+  color: #2a5c1a;
+}
+.report-event-resolution-bad {
+  border-left-color: #c0392b;
+  background: #fff5f5;
+  font-weight: 700;
+  color: #7a0000;
+}
+
+.governor-silver {
+  color: #8b6914;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.governor-silver.hidden { display: none; }
+
 @media (max-width: 600px) {
   .pref-infra-grid { grid-template-columns: 1fr; }
   .pref-talent-summary { flex-wrap: wrap; }
   .advance-result-content { max-width: 100%; }
   .judicial-modal-content { padding: 14px 12px; }
   .judicial-modal-footer { flex-direction: column; }
+  .annual-review-subtitle,
+  .pref-personnel-header { align-items: flex-start; }
+}
+
+/* === 官场子 tab === */
+.offdom-subtab-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid #d4c5a0;
+  margin-bottom: 14px;
+}
+.offdom-subtab-btn {
+  padding: 5px 14px;
+  border: 1px solid #b8a070;
+  border-radius: 4px;
+  background: #f5ede0;
+  color: #5a3a10;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+.offdom-subtab-btn.active {
+  background: #8b5e1a;
+  color: #fff;
+  border-color: #8b5e1a;
+}
+
+/* === 仕途轨迹 === */
+.career-wrap { padding: 4px 0; }
+
+.career-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: #fdf6e8;
+  border: 1px solid #d4c5a0;
+  border-radius: 6px;
+}
+.career-stat { display: flex; align-items: center; gap: 6px; }
+.career-stat-label { color: #7a5c20; font-size: 0.85em; }
+.career-stat-value { font-weight: 600; color: #3a200a; }
+
+/* 候选池 badge */
+.pool-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.82em;
+  font-weight: 600;
+}
+.pool-none    { background: #eee; color: #777; }
+.pool-level1  { background: #d4edda; color: #155724; }
+.pool-level2  { background: #cce5ff; color: #004085; }
+.pool-level3  { background: #fff3cd; color: #856404; }
+
+/* 任期进度条 */
+.career-progress-bar {
+  height: 6px;
+  background: #e8dcc8;
+  border-radius: 3px;
+  margin-bottom: 14px;
+}
+.career-progress-fill {
+  height: 100%;
+  background: #8b5e1a;
+  border-radius: 3px;
+  transition: width 0.4s;
+}
+
+/* 升迁条件 */
+.career-requirements {
+  padding: 10px 14px;
+  background: #f9f3e6;
+  border-left: 3px solid #c8a04a;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 16px;
+}
+.career-req-title { font-weight: 700; color: #5a3a10; margin-right: 6px; }
+.career-req-remain { font-size: 0.85em; color: #8a6030; }
+.career-req-desc { margin-top: 4px; font-size: 0.88em; color: #5a4020; line-height: 1.55; }
+
+/* 候选池日志 & 各小节 */
+.career-section { margin-bottom: 18px; }
+.career-section-title {
+  font-size: 0.9em;
+  font-weight: 700;
+  color: #5a3a10;
+  border-bottom: 1px solid #d4c5a0;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+.career-log-list { list-style: none; padding: 0; }
+.career-log-item {
+  padding: 5px 0;
+  font-size: 0.87em;
+  color: #3a280e;
+  border-bottom: 1px dashed #e0d0b0;
+}
+.career-log-item:last-child { border-bottom: none; }
+
+/* 历年考评表 */
+.career-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+.career-review-table th {
+  background: #f0e6cc;
+  color: #5a3a10;
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 2px solid #c8a04a;
+}
+.career-review-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8dcc8;
+  color: #3a280e;
+}
+.career-review-table tr:hover td { background: #fdf6e8; }
+.career-incident-row td {
+  font-size: 0.82em;
+  color: #8b3a00;
+  background: #fff8f0;
+  padding: 2px 8px 6px;
+}
+
+/* 考评等级 badge */
+.grade-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.grade-you   { background: #d4edda; color: #155724; }
+.grade-liang { background: #cce5ff; color: #004085; }
+.grade-zhong { background: #f5f5f5; color: #444; }
+.grade-cha   { background: #f8d7da; color: #721c24; }
+.grade-empty { color: #aaa; }
+
+/* === 升迁事件面板 === */
+.promo-event-box {
+  border: 2px solid #c8a04a;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: #fffdf4;
+}
+.promo-event-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.promo-event-title {
+  font-weight: 700;
+  font-size: 1em;
+  color: #5a3a10;
+}
+.promo-state-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: #f0e0b0;
+  color: #7a4a00;
+  font-size: 0.82em;
+}
+.promo-vacancy {
+  font-size: 0.9em;
+  color: #3a280e;
+  margin-bottom: 8px;
+}
+.promo-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 0.87em;
+}
+.promo-candidates-label { color: #7a5c20; }
+.promo-candidate {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.85em;
+}
+.promo-candidate.self  { background: #d4edda; color: #155724; font-weight: 600; }
+.promo-candidate.npc   { background: #e8dcc8; color: #5a3a10; }
+
+/* 行动区 */
+.promo-actions { margin-top: 10px; }
+.promo-btn-advisor {
+  padding: 5px 14px;
+  border: 1px solid #8b5e1a;
+  border-radius: 4px;
+  background: #f5ede0;
+  color: #5a3a10;
+  cursor: pointer;
+  font-size: 0.88em;
+  margin-bottom: 10px;
+}
+.promo-btn-advisor:hover { background: #e8d8b8; }
+.promo-advisor-tip {
+  padding: 8px 12px;
+  background: #fdf9ec;
+  border-left: 3px solid #c8a04a;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.88em;
+  color: #3a280e;
+  line-height: 1.6;
+  margin: 8px 0 12px;
+}
+.promo-gift-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.promo-gift-card {
+  border: 1px solid #d4c5a0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fdf6e8;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.promo-gift-card:hover { background: #f0e0c0; border-color: #c8a04a; }
+.promo-gift-card-title { font-weight: 600; color: #5a3a10; font-size: 0.9em; }
+.promo-gift-card-desc  { font-size: 0.82em; color: #7a5c30; margin-top: 3px; }
+
+/* 已行动 */
+.promo-action-done {
+  font-size: 0.88em;
+  color: #3a5a20;
+  padding: 6px 10px;
+  background: #f0fff0;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+/* 等待吏部 */
+.promo-ministry-msg { font-size: 0.9em; padding: 8px 0; color: #3a280e; }
+.promo-ministry-nominated     { color: #155724; font-weight: 600; }
+.promo-ministry-not-nominated { color: #856404; }
+
+/* 结果 */
+.promo-result {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 6px;
+}
+.promo-result-success { background: #d4edda; border: 1px solid #5a8a3c; }
+.promo-result-fail    { background: #f8d7da; border: 1px solid #c0392b; }
+.promo-result-reason  { font-size: 0.9em; font-weight: 600; margin-bottom: 10px; }
+.promo-new-game-btn   { margin-top: 6px; }
+
+@media (max-width: 600px) {
+  .promo-gift-grid { grid-template-columns: 1fr; }
+}
+
+/* ==================== Term Complete Modal ==================== */
+.term-complete-content {
+  max-width: 480px;
+  padding: 24px 28px;
+}
+.term-complete-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e8d5a0;
+  padding-bottom: 12px;
+}
+.term-complete-title {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: #3a280e;
+  margin: 0;
+}
+.term-complete-body {
+  font-size: 0.95em;
+  color: #3a280e;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.term-complete-transfer {
+  background: #fffbe6;
+  border: 1px solid #e8c84a;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.88em;
+  color: #5a3a10;
+  margin-bottom: 14px;
+}
+.term-complete-transfer-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.term-complete-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.term-complete-stat {
+  background: #faf4e4;
+  border: 1px solid #e8d5a0;
+  border-radius: 5px;
+  padding: 6px 10px;
+  text-align: center;
+}
+.term-complete-stat-label {
+  font-size: 0.75em;
+  color: #7a5c30;
+}
+.term-complete-stat-val {
+  font-size: 1em;
+  font-weight: 600;
+  color: #3a280e;
+}
+.term-complete-footer {
+  border-top: 1px solid #e8d5a0;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.term-complete-flavor {
+  font-size: 0.88em;
+  color: #5a3a10;
+  font-style: italic;
+  flex: 1;
+}
+
+/* Career review — term grouping */
+.career-term-group { margin-bottom: 14px; }
+.career-term-label {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: #7a5c30;
+  background: #f5edda;
+  padding: 3px 8px;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid #e8d5a0;
+  border-bottom: none;
+}
+
+/* County name in game header */
+.county-name-display {
+  font-weight: 700;
+  font-size: 1em;
+  color: #3a280e;
+  margin-right: 6px;
 }

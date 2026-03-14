@@ -221,17 +221,26 @@
 
     api.getGame(gameId)
       .then(function (data) {
-        if (data.current_season > Game.MAX_MONTH) {
-          // Game is over — show summary
+        var countyData = data.county_data || {};
+        var termEndReason = countyData.term_end_reason;
+        var isTerminal = termEndReason === "ANNUAL_REVIEW_DISMISSED" || termEndReason === "PROMOTED_TO_PREFECT";
+        var termComplete = data.current_season > Game.MAX_MONTH && !isTerminal;
+        if (data.current_season > Game.MAX_MONTH && isTerminal) {
+          // Terminal game-over — show summary
           return loadSummaryPayload(data.id).then(function (payload) {
             renderSummaryPayload(payload);
           });
         }
         Game.setGame(data);
-        api.precomputeNeighbors(data.id).catch(function () {});
-        startPrecomputePolling(data.id);
         screens.show("screen-game");
         screens.showTab("tab-dashboard");
+        if (termComplete) {
+          // Term complete but not terminal — show new-term modal immediately
+          showTermCompleteFromSaved(data);
+        } else {
+          api.precomputeNeighbors(data.id).catch(function () {});
+          startPrecomputePolling(data.id);
+        }
       })
       .catch(function (err) {
         components.showToast(err.message, "error");
@@ -243,10 +252,15 @@
   function loadPrefectureScreen(data) {
     if (!data) return;
     Game.state.prefectureGame = data;
+    refreshPrefectureTabVisibility(data);
     Game.prefecture.renderOverview(data);
     _updateJudicialBadge(data.pending_judicial_count || 0);
     showPrefTab("pref-tab-overview");
     screens.show("screen-prefecture");
+    if (data.current_season <= 36) {
+      api.precomputePrefecture(data.game_id).catch(function () {});
+      startPrefecturePrecomputePolling(data.game_id);
+    }
   }
 
   function showPrefTab(tabId) {
@@ -277,6 +291,18 @@
         });
       }
     }
+    if (tabId === "pref-tab-personnel") {
+      var pgPersonnel = Game.state.prefectureGame;
+      if (pgPersonnel) {
+        api.getPrefecturePersonnel(pgPersonnel.game_id)
+          .then(function (data) {
+            Game.prefecture.renderPersonnelTab(data);
+          })
+          .catch(function (err) {
+            components.showToast(err.message || "加载人事评议失败", "error");
+          });
+      }
+    }
     if (tabId === "pref-tab-judicial") {
       var pg3 = Game.state.prefectureGame;
       if (pg3) {
@@ -291,6 +317,16 @@
     }
   }
 
+  function refreshPrefectureTabVisibility(data) {
+    var btn = el("pref-personnel-tab-btn");
+    if (!btn) return;
+    var available = !!(data && data.personnel_available);
+    btn.classList.toggle("hidden", !available);
+    if (!available && btn.classList.contains("active")) {
+      showPrefTab("pref-tab-overview");
+    }
+  }
+
   // Pref tab nav
   var prefTabBtns = document.querySelectorAll("#pref-tab-nav .tab-btn");
   for (var pt = 0; pt < prefTabBtns.length; pt++) {
@@ -300,6 +336,7 @@
   }
 
   el("btn-pref-back").addEventListener("click", function () {
+    stopPrefecturePrecomputePolling();
     loadGameList();
   });
 
@@ -353,6 +390,8 @@
       })
       .then(function (data) {
         Game.state.prefectureGame = data;
+        refreshPrefectureTabVisibility(data);
+        Game.prefecture.renderOverview(data);
         _updateJudicialBadge(data.pending_judicial_count || 0);
       })
       .catch(function (err) {
@@ -404,6 +443,7 @@
     var btn = el("btn-pref-advance");
     btn.disabled = true;
     btn.textContent = "推进中...";
+    stopPrefecturePrecomputePolling();
     api.advancePrefectureMonth(pg.game_id)
       .then(function (result) {
         Game.prefecture.renderReport(result);
@@ -415,10 +455,14 @@
       })
       .then(function (data) {
         Game.state.prefectureGame = data;
+        refreshPrefectureTabVisibility(data);
         Game.prefecture.renderOverview(data);
         _updateJudicialBadge(data.pending_judicial_count || 0);
         if (data.current_season > 36) {
           components.showToast("三年任期已满！", "info");
+        } else {
+          api.precomputePrefecture(data.game_id).catch(function () {});
+          startPrefecturePrecomputePolling(data.game_id);
         }
       })
       .catch(function (err) {
@@ -485,27 +529,22 @@
       })
       .then(function (data) {
         Game.state.prefectureGame = data;
+        refreshPrefectureTabVisibility(data);
         Game.prefecture.renderOverview(data);
+        api.precomputePrefecture(data.game_id).catch(function () {});
+        startPrefecturePrecomputePolling(data.game_id);
       })
       .catch(function (err) {
         components.showToast(err.message || "分配失败", "error");
       });
   });
 
-  // County mini-card click (overview tab)
   document.addEventListener("click", function (e) {
-    var card = e.target.closest(".pref-mini-card");
-    if (!card) return;
-    var unitId = parseInt(card.dataset.unitId);
-    var pg = Game.state.prefectureGame;
-    if (!pg || !unitId) return;
-    api.getPrefectureCountyDetail(pg.game_id, unitId)
-      .then(function (detail) {
-        Game.prefecture.openCountyDetail(detail);
-      })
-      .catch(function (err) {
-        components.showToast(err.message || "加载县详情失败", "error");
-      });
+    var btn = e.target.closest(".pref-todo-action");
+    if (!btn) return;
+    var targetTab = btn.dataset.targetTab;
+    if (!targetTab) return;
+    showPrefTab(targetTab);
   });
 
   // County table detail button click
@@ -524,9 +563,9 @@
       });
   });
 
-  // County modal close
-  el("pref-county-modal-close").addEventListener("click", function () {
-    el("pref-county-modal").classList.add("hidden");
+  // Unified county detail modal close
+  el("cdc-close").addEventListener("click", function () {
+    el("county-detail-modal").classList.add("hidden");
   });
 
   // Inspect buttons (tongpan / tuiguan)
@@ -578,7 +617,10 @@
       })
       .then(function (data) {
         Game.state.prefectureGame = data;
+        refreshPrefectureTabVisibility(data);
         Game.prefecture.renderOverview(data);
+        api.precomputePrefecture(data.game_id).catch(function () {});
+        startPrefecturePrecomputePolling(data.game_id);
       })
       .catch(function (err) {
         components.showToast(err.message || "投资失败", "error");
@@ -608,6 +650,48 @@
     Game.prefecture.openDirectiveModal(unitId, countyName);
   });
 
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".btn-pref-personnel-save");
+    if (!btn) return;
+    var pg = Game.state.prefectureGame;
+    if (!pg) return;
+    var unitId = parseInt(btn.dataset.unitId, 10);
+    if (!unitId) return;
+    var gradeEl = document.querySelector('.pref-review-grade[data-unit-id="' + unitId + '"]');
+    var strengthsEl = document.querySelector('.pref-review-strengths[data-unit-id="' + unitId + '"]');
+    var weaknessesEl = document.querySelector('.pref-review-weaknesses[data-unit-id="' + unitId + '"]');
+    var focusEl = document.querySelector('.pref-review-focus[data-unit-id="' + unitId + '"]');
+    if (!gradeEl || !strengthsEl || !weaknessesEl || !focusEl) return;
+
+    btn.disabled = true;
+    api.submitPrefecturePersonnelReview(pg.game_id, {
+      unit_id: unitId,
+      grade: gradeEl.value,
+      strengths: strengthsEl.value.trim(),
+      weaknesses: weaknessesEl.value.trim(),
+      focus: focusEl.value.trim()
+    })
+      .then(function () {
+        components.showToast("年度评议已保存", "success");
+        return Promise.all([
+          api.getPrefecturePersonnel(pg.game_id),
+          api.getPrefectureOverview(pg.game_id)
+        ]);
+      })
+      .then(function (results) {
+        Game.prefecture.renderPersonnelTab(results[0]);
+        Game.state.prefectureGame = results[1];
+        refreshPrefectureTabVisibility(results[1]);
+        Game.prefecture.renderOverview(results[1]);
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "保存评议失败", "error");
+      })
+      .finally(function () {
+        btn.disabled = false;
+      });
+  });
+
   // Directive modal close / cancel
   el("btn-pref-directive-cancel").addEventListener("click", function () {
     el("pref-directive-modal").classList.add("hidden");
@@ -633,6 +717,10 @@
       .then(function (result) {
         components.showToast(result.response || "指令已下达", "success");
         el("pref-directive-modal").classList.add("hidden");
+        return api.precomputePrefecture(pg.game_id).catch(function () {});
+      })
+      .then(function () {
+        startPrefecturePrecomputePolling(pg.game_id);
       })
       .catch(function (err) {
         components.showToast(err.message || "下达失败", "error");
@@ -739,6 +827,28 @@
       })
       .catch(function (err) {
         components.showToast(err.message || "减免申请失败", "error");
+      });
+  });
+
+  document.addEventListener("click", function (e) {
+    if (e.target.id !== "btn-submit-annual-review") return;
+    var g = Game.state.currentGame;
+    if (!g) return;
+    api.submitAnnualReview(g.id, {
+      achievements: el("annual-review-achievements") ? el("annual-review-achievements").value.trim() : "",
+      unfinished: el("annual-review-unfinished") ? el("annual-review-unfinished").value.trim() : "",
+      faults: el("annual-review-faults") ? el("annual-review-faults").value.trim() : "",
+      plan: el("annual-review-plan") ? el("annual-review-plan").value.trim() : ""
+    })
+      .then(function () {
+        components.showToast("年度自陈已提交", "success");
+        return api.getGame(g.id);
+      })
+      .then(function (data) {
+        Game.setGame(data);
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "提交年度自陈失败", "error");
       });
   });
 
@@ -1010,11 +1120,107 @@
     }
   }
 
-  el("btn-advance").addEventListener("click", function () {
-    var g = Game.state.currentGame;
-    if (!g || g.current_season > Game.MAX_MONTH) return;
+  var _prefPrecomputeTimer = null;
+  function startPrefecturePrecomputePolling(gameId) {
+    stopPrefecturePrecomputePolling();
+    var statusEl = el("pref-precompute-status");
+    if (statusEl) statusEl.textContent = "下辖州县施政预推演中...";
 
-    var btn = el("btn-advance");
+    _prefPrecomputeTimer = setInterval(function () {
+      api.getPrefecturePrecomputeStatus(gameId)
+        .then(function (data) {
+          if (data.status === "done") {
+            stopPrefecturePrecomputePolling();
+            if (statusEl) statusEl.textContent = "下辖州县施政决策已就绪";
+          } else if (data.status === "idle") {
+            stopPrefecturePrecomputePolling();
+            if (statusEl) statusEl.textContent = "";
+          }
+        })
+        .catch(function () {
+          stopPrefecturePrecomputePolling();
+          if (statusEl) statusEl.textContent = "";
+        });
+    }, 3000);
+  }
+
+  function stopPrefecturePrecomputePolling() {
+    if (_prefPrecomputeTimer) {
+      clearInterval(_prefPrecomputeTimer);
+      _prefPrecomputeTimer = null;
+    }
+  }
+
+  // ==================== 暴动危机弹窗处理 ====================
+
+  function _checkShowRiotModal() {
+    var report = Game.state.lastReport;
+    if (!report || !report.events) return;
+    var riotEvt = null;
+    for (var i = 0; i < report.events.length; i++) {
+      var e = report.events[i];
+      if (e.indexOf("【连锁暴动】") !== -1 || e.indexOf("【农民暴动】") !== -1) {
+        riotEvt = e;
+        break;
+      }
+    }
+    if (!riotEvt) return;
+
+    var isChain = riotEvt.indexOf("【连锁暴动】") !== -1;
+    var body = riotEvt.replace(/^【[^】]+】/, "").trim();
+    el("riot-crisis-title").textContent = isChain ? "连锁暴动" : "农民暴动";
+    el("riot-crisis-body").textContent = body ||
+      (isChain ? "周边县骚乱蔓延，本县民众冲击粮仓，治安归零。" : "连续两月余粮为负，农民强占地主粮仓，治安归零。");
+    el("riot-crisis-modal").classList.remove("hidden");
+  }
+
+  el("btn-riot-crisis-close").addEventListener("click", function () {
+    el("riot-crisis-modal").classList.add("hidden");
+  });
+  el("riot-crisis-modal").addEventListener("click", function (e) {
+    if (e.target === this) this.classList.add("hidden");
+  });
+
+  // ==================== 贿赂弹窗处理 ====================
+
+  var _pendingBribes = [];
+  var _bribeAdvanceCallback = null;
+
+  function showNextBribe() {
+    if (_pendingBribes.length === 0) {
+      if (_bribeAdvanceCallback) {
+        var cb = _bribeAdvanceCallback;
+        _bribeAdvanceCallback = null;
+        cb();
+      }
+      return;
+    }
+    var bribe = _pendingBribes.shift();
+    el("bribe-prompt").textContent = bribe.prompt;
+    el("bribe-amount").textContent = "金额：" + bribe.amount + " 两";
+    el("bribe-modal").classList.remove("hidden");
+
+    el("btn-bribe-accept").onclick = function () {
+      el("bribe-modal").classList.add("hidden");
+      api.respondBribe(Game.state.currentGame.id, bribe.village_name, bribe.event_type, true)
+        .then(function (res) {
+          if (res.personal_wealth !== undefined && Game.state.currentGame && Game.state.currentGame.player) {
+            Game.state.currentGame.player.personal_wealth = res.personal_wealth;
+            Game.components.renderDashboard();
+          }
+          showNextBribe();
+        })
+        .catch(function () { showNextBribe(); });
+    };
+    el("btn-bribe-refuse").onclick = function () {
+      el("bribe-modal").classList.add("hidden");
+      api.respondBribe(Game.state.currentGame.id, bribe.village_name, bribe.event_type, false)
+        .catch(function () {})
+        .finally(function () { showNextBribe(); });
+    };
+  }
+
+  function doAdvance(g, btn) {
     btn.disabled = true;
     btn.textContent = "推进中...";
     stopPrecomputePolling();
@@ -1023,10 +1229,8 @@
       .then(function (report) {
         Game.state.lastReport = report;
         components.renderReport(report);
-        // 显示月报弹窗
         el("advance-result-title").textContent = Game.seasonName(report.season) + " 施政月报";
         el("advance-result-modal").classList.remove("hidden");
-        // 归档到县志
         prependCountyLogEntry(report);
 
         if (report.game_over) {
@@ -1039,6 +1243,13 @@
               renderSummaryPayload(payload);
               btn.onclick = null;
             };
+          });
+        } else if (report.term_complete) {
+          return api.getGame(g.id).then(function (data) {
+            Game.setGame(data);
+            btn.disabled = false;
+            btn.textContent = "推进月份";
+            showTermCompleteModal(report.term_summary || {});
           });
         } else {
           return api.getGame(g.id).then(function (data) {
@@ -1055,14 +1266,51 @@
         btn.disabled = false;
         btn.textContent = "推进月份";
       });
+  }
+
+  el("btn-advance").addEventListener("click", function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    if (g.current_season > Game.MAX_MONTH) {
+      // 任期届满但尚未续任 — 弹出续任弹窗
+      showTermCompleteFromSaved(g);
+      return;
+    }
+
+    var btn = el("btn-advance");
+    btn.disabled = true;
+    btn.textContent = "检查中...";
+    stopPrecomputePolling();
+
+    api.checkBribes(g.id)
+      .then(function (res) {
+        _pendingBribes = res.offers || [];
+        if (_pendingBribes.length > 0) {
+          btn.disabled = false;
+          btn.textContent = "推进月份";
+          _bribeAdvanceCallback = function () { doAdvance(g, btn); };
+          showNextBribe();
+        } else {
+          doAdvance(g, btn);
+        }
+      })
+      .catch(function () {
+        // checkBribes failed — proceed without bribe check
+        doAdvance(g, btn);
+      });
+
   });
 
   // 月报弹窗关闭
   el("advance-result-close").addEventListener("click", function () {
     el("advance-result-modal").classList.add("hidden");
+    _checkShowRiotModal();
   });
   el("advance-result-modal").addEventListener("click", function (e) {
-    if (e.target === this) this.classList.add("hidden");
+    if (e.target === this) {
+      this.classList.add("hidden");
+      _checkShowRiotModal();
+    }
   });
   el("advance-result-view-log").addEventListener("click", function () {
     el("advance-result-modal").classList.add("hidden");
@@ -1420,8 +1668,199 @@
   function loadOfficialdom() {
     var g = Game.state.currentGame;
     if (!g) return;
+    // 绑定子 tab 按钮（只绑定一次）
+    var subtabBtns = document.querySelectorAll(".offdom-subtab-btn");
+    if (subtabBtns.length && !subtabBtns[0]._offdomBound) {
+      subtabBtns.forEach(function (btn) {
+        btn._offdomBound = true;
+        btn.addEventListener("click", function () {
+          showOffdomSubtab(this.dataset.subtab);
+        });
+      });
+    }
+    // 默认加载全国行政体系
     if (Game.officialdom && !Game.officialdom.loaded) {
       Game.officialdom.load(g.id);
+    }
+  }
+
+  // ── 升迁事件交互 ────────────────────────────────────────────────────────
+  window.handlePromotionAdvisor = function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    Game.api.promotionAction(g.id, {sub_action: "reveal_advisor"}).then(function (data) {
+      if (data.error) { components.showToast(data.error, "error"); return; }
+      Game.officialdom.refreshCareer(g.id);
+    }).catch(function (err) {
+      components.showToast(err.message || "操作失败", "error");
+    });
+  };
+
+  window.handlePromotionAction = function (actionType) {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var label = {gift_governor:"送礼巡抚", gift_ministry:"送礼吏部", gift_both:"两路疏通", none:"不送礼"}[actionType] || actionType;
+    if (!confirm("确认行动：" + label + "？")) return;
+    Game.api.promotionAction(g.id, {action_type: actionType}).then(function (data) {
+      if (data.error) { components.showToast(data.error, "error"); return; }
+      if (data.gift_cost_paid > 0) {
+        components.showToast("已花费" + data.gift_cost_paid + "两，当前家产" + (data.personal_wealth || 0) + "两", "success");
+      }
+      Game.officialdom.refreshCareer(g.id);
+    }).catch(function (err) {
+      components.showToast(err.message || "操作失败", "error");
+    });
+  };
+
+  window.handleStartPrefectGame = function () {
+    // 升迁成功后引导玩家开启知府新局
+    var g = Game.state.currentGame;
+    if (!g) return;
+    if (confirm("即将开启知府新局，你将以升迁后的品级出任知府。确认就任？")) {
+      // 跳转到创建知府游戏流程（复用现有 startPrefectureGame 入口）
+      if (typeof startPrefectureGame === "function") {
+        startPrefectureGame();
+      } else {
+        components.showToast("请返回主界面选择「开始新局 — 知府」", "info");
+      }
+    }
+  };
+
+  // ── 任期届满弹窗 ─────────────────────────────────────────────────────────
+  function showTermCompleteModal(summary) {
+    var modal = el("term-complete-modal");
+
+    // 评级徽章
+    var gradeBadge = el("term-complete-grade-badge");
+    var gradeText = summary.final_grade || "";
+    gradeBadge.textContent = gradeText || "—";
+    gradeBadge.className = "grade-badge grade-" + ({"优":"A","良":"B","中":"C","差":"D"}[gradeText] || "D");
+
+    // 正文
+    var body = el("term-complete-body");
+    var poolLabel = summary.pool_label || "";
+    body.innerHTML = "第 <strong>" + (summary.term_index || 1) + "</strong> 任任期届满。" +
+      (poolLabel ? "候选池状态：<strong>" + poolLabel + "</strong>。" : "");
+
+    // 调任预览
+    var transferEl = el("term-complete-transfer");
+    var tp = summary.transfer_preview;
+    if (tp) {
+      transferEl.classList.remove("hidden");
+      transferEl.innerHTML = "<div class='term-complete-transfer-title'>预计调任</div>" +
+        "<span>" + tp.county_name + "（现任：" + tp.governor_name + "，人口约 " + tp.pop + "）</span>";
+    } else {
+      transferEl.classList.add("hidden");
+    }
+
+    // 统计
+    var statsEl = el("term-complete-stats");
+    var stats = [
+      {label: "民心", val: summary.morale},
+      {label: "治安", val: summary.security},
+      {label: "商业", val: summary.commercial},
+      {label: "文教", val: summary.education},
+      {label: "县库", val: summary.treasury},
+    ];
+    statsEl.innerHTML = stats.map(function (s) {
+      return "<div class='term-complete-stat'>" +
+        "<div class='term-complete-stat-label'>" + s.label + "</div>" +
+        "<div class='term-complete-stat-val'>" + (s.val != null ? s.val : "—") + "</div>" +
+        "</div>";
+    }).join("");
+
+    // 口号
+    el("term-complete-flavor").textContent = summary.flavor || "";
+
+    modal.classList.remove("hidden");
+  }
+
+  function showTermCompleteFromSaved(data) {
+    // 从已保存的游戏状态构建简版 summary 供弹窗显示
+    var county = data.county_data || {};
+    var track = county.career_track || {};
+    var reviews = county.annual_reviews || [];
+    var lastReview = reviews[reviews.length - 1] || {};
+    var poolLevel = track.candidate_pool_level || 0;
+    var poolLabels = {0:"未入候选池", 1:"初步候选池", 2:"二阶候选池", 3:"三阶候选池"};
+    var flavorMap = {
+      0: "考评欠佳，仍需历练，留任原职第{n}任。",
+      1: "初露锋芒，仍须磨砺，留任原职第{n}任。",
+      2: "政绩卓著，调任本府他县，续任第{n}任知县。",
+      3: "已具知府候选资格，留任候缺，续任第{n}任。",
+    };
+    var termIndex = track.term_index || 1;
+    var flavor = (flavorMap[poolLevel] || "任期届满，续任第{n}任。").replace("{n}", termIndex + 1);
+    showTermCompleteModal({
+      term_index: termIndex,
+      final_grade: lastReview.final_grade || "",
+      pool_level: poolLevel,
+      pool_label: poolLabels[poolLevel] || "",
+      rank: track.rank || "七品",
+      flavor: flavor,
+      transfer_preview: null,
+      morale: county.morale != null ? Math.round(county.morale * 10) / 10 : null,
+      security: county.security != null ? Math.round(county.security * 10) / 10 : null,
+      commercial: county.commercial != null ? Math.round(county.commercial * 10) / 10 : null,
+      education: county.education != null ? Math.round(county.education * 10) / 10 : null,
+      treasury: county.treasury != null ? Math.round(county.treasury * 10) / 10 : null,
+    });
+  }
+
+  el("btn-start-new-term").addEventListener("click", function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "处理中...";
+    api.startNewTerm(g.id)
+      .then(function (res) {
+        el("term-complete-modal").classList.add("hidden");
+        if (res.error) {
+          components.showToast(res.error, "error");
+          btn.disabled = false;
+          btn.textContent = "开始新任期";
+          return;
+        }
+        Game.setGame(res.game);
+        btn.disabled = false;
+        btn.textContent = "开始新任期";
+        var msg = "已开始第 " + res.term_index + " 任";
+        if (res.transfer_info && res.transfer_info.new_county_name) {
+          msg += "，调任 " + res.transfer_info.new_county_name;
+        }
+        components.showToast(msg, "success");
+        screens.showTab("tab-dashboard");
+        api.precomputeNeighbors(g.id).catch(function () {});
+        startPrecomputePolling(g.id);
+        // Refresh career panel if it was loaded
+        if (Game.officialdom) Game.officialdom.careerLoaded = false;
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "续任失败", "error");
+        btn.disabled = false;
+        btn.textContent = "开始新任期";
+      });
+  });
+
+  el("term-complete-modal").addEventListener("click", function (e) {
+    // Do not close on backdrop click — player must press the button
+  });
+
+  function showOffdomSubtab(subtabId) {
+    var panels = ["offdom-national", "offdom-career"];
+    panels.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.toggle("hidden", id !== subtabId);
+    });
+    document.querySelectorAll(".offdom-subtab-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.subtab === subtabId);
+    });
+    if (subtabId === "offdom-career") {
+      var g = Game.state.currentGame;
+      if (g && Game.officialdom && !Game.officialdom.careerLoaded) {
+        Game.officialdom.loadCareer(g.id);
+      }
     }
   }
 

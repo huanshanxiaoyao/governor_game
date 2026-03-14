@@ -54,6 +54,9 @@
     getGame: function (id) {
       return request("GET", "/api/games/" + id + "/");
     },
+    submitAnnualReview: function (id, payload) {
+      return request("POST", "/api/games/" + id + "/annual-review/", payload);
+    },
     invest: function (id, action, targetVillage) {
       var body = { action: action };
       if (targetVillage) body.target_village = targetVillage;
@@ -61,6 +64,16 @@
     },
     requestLandSurvey: function (id, villageName) {
       return request("POST", "/api/games/" + id + "/land-survey/", { village_name: villageName });
+    },
+    checkBribes: function (id) {
+      return request("GET", "/api/games/" + id + "/check-bribes/");
+    },
+    respondBribe: function (id, villageName, eventType, accept) {
+      return request("POST", "/api/games/" + id + "/respond-bribe/", {
+        village_name: villageName,
+        event_type: eventType,
+        accept: accept,
+      });
     },
     advance: function (id) {
       return request("POST", "/api/games/" + id + "/advance/", {});
@@ -79,6 +92,9 @@
     },
     applyDisasterRelief: function (id, claimedLoss) {
       return request("POST", "/api/games/" + id + "/disaster-relief/", { claimed_loss: claimedLoss });
+    },
+    adjustRemitRatio: function (id, remitRatio) {
+      return request("POST", "/api/games/" + id + "/remit-ratio/", { remit_ratio: remitRatio });
     },
     emergencyPrefectureRelief: function (id) {
       return request("POST", "/api/games/" + id + "/emergency/prefecture-relief/", {});
@@ -159,6 +175,15 @@
     getOfficialdom: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/officialdom/");
     },
+    getCareer: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/career/");
+    },
+    promotionAction: function (gameId, payload) {
+      return request("POST", "/api/games/" + gameId + "/promotion-action/", payload);
+    },
+    startNewTerm: function (gameId) {
+      return request("POST", "/api/games/" + gameId + "/new-term/", {});
+    },
     // Prefecture (知府)
     createPrefecture: function (background, prefectureType) {
       var body = { background: background };
@@ -168,11 +193,23 @@
     getPrefectureOverview: function (gameId) {
       return request("GET", "/api/prefecture/" + gameId + "/");
     },
+    precomputePrefecture: function (gameId) {
+      return request("POST", "/api/prefecture/" + gameId + "/precompute/", {});
+    },
+    getPrefecturePrecomputeStatus: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/precompute/");
+    },
     advancePrefectureMonth: function (gameId) {
       return request("POST", "/api/prefecture/" + gameId + "/advance/", {});
     },
     getPrefectureCountyDetail: function (gameId, unitId) {
       return request("GET", "/api/prefecture/" + gameId + "/counties/" + unitId + "/");
+    },
+    getPrefecturePersonnel: function (gameId) {
+      return request("GET", "/api/prefecture/" + gameId + "/personnel/");
+    },
+    submitPrefecturePersonnelReview: function (gameId, payload) {
+      return request("POST", "/api/prefecture/" + gameId + "/personnel/", payload);
     },
     setPrefectureQuota: function (gameId, assignments) {
       return request("POST", "/api/prefecture/" + gameId + "/quota/", { assignments: assignments });
