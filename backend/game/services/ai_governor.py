@@ -29,37 +29,38 @@ class AIGovernorService:
         '\n'
         '一、财政收支\n'
         '- 县库收入来自三大税源：田赋（农业税）、徭役折银、商税\n'
-        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好，秋季一次征收\n'
-        '- 徭役只征自耕农和佃户，绅衿地主依制免役，正月和五月各征半年\n'
-        '- 商税按月征收，= 全县月GMV × 商税税率（可调1%~5%），地方留存60%\n'
-        '- 田赋和徭役按上缴比例上缴\n'
-        '- 行政开支（含基建维护）在秋季一次性扣除\n'
+        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好；九月核定，十月入账\n'
+        '- 徭役只征自耕农和佃户，绅衿地主依制免役，五月一次性全年征收\n'
+        '- 商税按月征收，= 全县月GMV × 商税税率（可调1%~5%），地方固定留存60%\n'
+        '- 田赋和徭役按上缴比例上缴，留存部分入县库；上缴比例见县情概览\n'
+        '- 行政开支（含基建维护）在九月一次性扣除\n'
         '\n'
         '二、民心与治安\n'
         '- 民心和治安每月都会自然衰减\n'
         '- 文教兴盛有助于民心回升；衙役充足有助于治安维持\n'
-        '- 治安低迷则百姓流离失所\n'
+        '- 高税率（15%）会持续侵蚀民心；治安低迷则百姓流离失所\n'
         '\n'
         '三、投资施政\n'
-        '- 开垦荒地可增加耕地、降低地主占地比\n'
-        '- 修建水利可减轻水患、提高产量（每级+15%产出，灾害减损15%/30%/60%）\n'
-        '- 扩建县学提升文教+10，间接促进民心恢复\n'
-        '- 建设医疗可降低疫病风险和人口损失\n'
-        '- 基建（水利/县学/医疗）最高3级，升级费用翻倍，同类不可同时建设\n'
-        '- 增设衙役立竿见影提升治安，但会永久增加行政开支\n'
-        '- 修缮道路可提升商业值，但收益逐次递减（首次+8，之后逐次-1）\n'
-        '- 义仓和赈灾可减轻灾害人口损失；赈灾还可在灾后安抚民心\n'
+        '- 开垦荒地：增加耕地800亩、降低地主占地比，约2个月完工\n'
+        '- 资助村塾：指定村庄建立村塾，完工后民心+5，永久增加年度行政开支\n'
+        '- 修建水利：每级产出+15%，仅对洪灾和旱灾有减损效果（减损15%/30%/60%）\n'
+        '- 扩建县学：完工后文教+10，间接促进民心恢复\n'
+        '- 建设医疗：降低疫病风险和疫病人口损失，可升至3级\n'
+        '- 基建（水利/县学/医疗）最高3级，升级费用成倍增加，同类不可同时建设\n'
+        '- 增设衙役：立竿见影提升治安，但会永久增加行政开支\n'
+        '- 修缮道路：提升商业值，收益逐次递减（首次+8，之后逐次-1）\n'
+        '- 开设义仓：民心+5，秋季灾害人口损失×0.65；义仓用后耗尽，需重建\n'
+        '- 赈灾救济：民心+8，秋季灾害人口损失×0.65；仅灾年可用，仅限一次\n'
         '\n'
         '四、灾害与风险\n'
-        '- 水灾、旱灾、蝗灾、疫病可能在夏季发生\n'
-        '- 灾害会立即打击商业值，并通过粮食预期恶化压低GMV\n'
-        '- 水利设施可减轻洪灾概率和秋收损失；义仓和赈灾不影响秋收减产，仅影响人口损失\n'
-        '- 医疗设施可降低疫病风险和严重度\n'
+        '- 水灾、旱灾、蝗灾、疫病可能在六月发生\n'
+        '- 水灾/旱灾/蝗灾：影响秋收产量；疫病：不影响产量，只造成人口损失\n'
+        '- 水利减损：仅对洪灾和旱灾有减产保护，对蝗灾和疫病无效\n'
+        '- 义仓和赈灾不影响秋收减产，仅减少人口损失；医疗设施可降低疫病风险\n'
         '\n'
         '五、商业动态\n'
-        '- 商业值(commercial)代表商业发展水平（道路修缮+、灾害-），在GMV计算中作为单商户基础贸易额\n'
-        '- 集市月GMV = 商户数 × commercial × 需求系数，即时计算\n'
-        '- 需求系数 = clamp(1 + 月均余粮/20, 0.1, 2.0)：余粮充裕时需求旺盛，短缺时萎缩\n'
+        '- 商业值(commercial)代表商业发展水平（道路修缮+、灾害-），是集市GMV的基础\n'
+        '- 集市月GMV = 商户数 × commercial × 需求系数；余粮充裕时需求旺盛，短缺时萎缩\n'
         '- 商税 = 全县月GMV × 商税税率（默认3%，可调1%~5%），地方留存60%\n'
     )
 
@@ -93,11 +94,13 @@ class AIGovernorService:
                     neighbor, county, season, profile)
                 events.extend(fb_events)
             if not executed.get('tax_done'):
-                fb_events = cls._fallback_tax(neighbor, county, profile)
+                fb_events = cls._fallback_tax(neighbor, county, season, profile)
                 events.extend(fb_events)
             if not executed.get('commercial_tax_done'):
                 fb_events = cls._fallback_commercial_tax(neighbor, county, profile)
                 events.extend(fb_events)
+            if not executed.get('quota_stance_done'):
+                cls._ensure_quota_stance(county, profile, season)
 
             # 保存 analysis 到 last_reasoning（前端展示用）
             analysis = llm_result.get('analysis', '')
@@ -122,12 +125,21 @@ class AIGovernorService:
 
     @classmethod
     def _ensure_profile(cls, neighbor):
-        """获取或懒初始化 governor_profile"""
+        """获取或懒初始化 governor_profile，并缓存 governor_meta 供结算代码使用"""
         county = neighbor.county_data
         profile = county.get("governor_profile")
         if not profile:
             profile = generate_governor_profile(neighbor.governor_style)
             county["governor_profile"] = profile
+        # Cache governor identity so settlement code (which has no model reference) can read it
+        if "governor_meta" not in county:
+            county["governor_meta"] = {
+                "name": getattr(neighbor, "governor_name", ""),
+                "bio": getattr(neighbor, "governor_bio", ""),
+                "style": getattr(neighbor, "governor_style", "zhengji"),
+                "archetype": getattr(neighbor, "governor_archetype", "MIDDLING"),
+                "county_name": getattr(neighbor, "county_name", ""),
+            }
         return profile
 
     # ==================== LLM 决策 ====================
@@ -183,13 +195,14 @@ class AIGovernorService:
         total_pop = sum(v["population"] for v in county.get("villages", []))
 
         # 县情摘要
+        remit_ratio = county.get('remit_ratio', 0.65)
         county_summary = (
             f"人口: {total_pop}, 县库: {round(county.get('treasury', 0))}两, "
             f"民心: {round(county.get('morale', 50))}, "
             f"治安: {round(county.get('security', 50))}, "
             f"商业: {round(county.get('commercial', 30))}, "
             f"文教: {round(county.get('education', 30))}, "
-            f"税率: {county.get('tax_rate', 0.12):.0%}, "
+            f"税率: {county.get('tax_rate', 0.12):.0%}, 上缴比例: {remit_ratio:.0%}, "
             f"县学等级: {county.get('school_level', 1)}/3, "
             f"水利等级: {county.get('irrigation_level', 0)}/3, "
             f"医疗等级: {county.get('medical_level', 0)}/3, "
@@ -252,11 +265,39 @@ class AIGovernorService:
         else:
             directives_desc = ""
 
+        # game_knowledge: 游戏规则 + 县域特色（同一知县36个月不变，可命中前缀缓存）
+        # 知府指令（逐月变化）移至 user prompt，不混入此处
         game_knowledge = cls.GAME_KNOWLEDGE_TEMPLATE
         if county_type_desc:
             game_knowledge += f"\n六、县域特色\n- {county_type_desc}\n"
-        if directives_desc:
-            game_knowledge += f"\n七、上级指令\n{directives_desc}\n"
+
+        # 知府指令单独构造，供 user prompt 使用
+        directives_section = (
+            f"\n【知府指令】\n{directives_desc}\n" if directives_desc else ""
+        )
+
+        # 年度配额与上缴进度
+        annual_quota = county.get('annual_quota', {})
+        fy = county.get('fiscal_year', {})
+        if annual_quota:
+            quota_total = annual_quota.get('total', 0)
+            corvee_remitted = fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
+            commercial_remitted = fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0)
+            ytd_remitted = corvee_remitted + commercial_remitted
+            prev_completion = county.get('quota_completion', {})
+            quota_lines = [
+                f"年度配额：{quota_total}两（农业{annual_quota.get('agricultural', 0)}两 + "
+                f"徭役{annual_quota.get('corvee', 0)}两）",
+            ]
+            if ytd_remitted > 0:
+                quota_lines.append(f"本年已缴（徭役+商税合计）：{round(ytd_remitted)}两")
+            if prev_completion:
+                quota_lines.append(f"上年配额完成率：{prev_completion.get('completion_rate', 0)}%")
+            current_stance = county.get('governor_stance', {}).get('quota', 'balance')
+            quota_lines.append(f"当前上缴倾向：{current_stance}")
+            quota_summary = "\n".join(f"- {line}" for line in quota_lines)
+        else:
+            quota_summary = "- 配额尚未下达（正月后生效）"
 
         # 医疗等级及各级年费描述
         current_medical = county.get('medical_level', 0)
@@ -276,6 +317,8 @@ class AIGovernorService:
             'goals_desc': goals_desc,
             'memory_desc': memory_desc,
             'game_knowledge': game_knowledge,
+            'directives_section': directives_section,
+            'quota_summary': quota_summary,
             'available_investments': available_text,
             'tax_rate': f"{county.get('tax_rate', 0.12):.0%}",
             'commercial_tax_rate': f"{county.get('commercial_tax_rate', 0.03):.0%}",
@@ -405,7 +448,11 @@ class AIGovernorService:
     def _execute_decisions(cls, neighbor, county, season, result):
         """验证并执行LLM返回的决策，返回 (events, executed_flags)"""
         events = []
-        executed = {'investment_done': False, 'tax_done': False, 'commercial_tax_done': False}
+        executed = {
+            'investment_done': False, 'tax_done': False,
+            'commercial_tax_done': False, 'medical_done': False,
+            'quota_stance_done': False,
+        }
         decisions = result.get('decisions', {})
         if not isinstance(decisions, dict):
             return events, executed
@@ -477,6 +524,33 @@ class AIGovernorService:
             except (ValueError, TypeError):
                 pass
 
+        # 4. 医疗等级调整（AI指定目标等级 → 若高于当前，触发一次 build_medical）
+        new_medical = decisions.get('medical_level')
+        if new_medical is not None:
+            try:
+                new_medical = int(new_medical)
+                current_medical = county.get('medical_level', 0)
+                if new_medical > current_medical:
+                    already_building = any(
+                        inv['action'] == 'build_medical'
+                        for inv in county.get('active_investments', [])
+                    )
+                    if not already_building:
+                        med_events = cls._apply_investment(
+                            neighbor, county, season, 'build_medical')
+                        if med_events:
+                            events.extend(med_events)
+                            executed['investment_done'] = True
+                executed['medical_done'] = True
+            except (ValueError, TypeError):
+                pass
+
+        # 5. 上缴倾向（年度策略）
+        quota_stance = decisions.get('quota_stance')
+        if quota_stance in ('fulfill_quota', 'balance', 'protect_peasants'):
+            county.setdefault('governor_stance', {})['quota'] = quota_stance
+            executed['quota_stance_done'] = True
+
         return events, executed
 
     @classmethod
@@ -520,10 +594,33 @@ class AIGovernorService:
     def _rule_based_decisions(cls, neighbor, county, season, profile):
         """全规则引擎决策，在 LLM 完全失败时使用"""
         events = []
+        cls._ensure_quota_stance(county, profile, season)
         events.extend(cls._fallback_investment(neighbor, county, season, profile))
-        events.extend(cls._fallback_tax(neighbor, county, profile))
+        events.extend(cls._fallback_tax(neighbor, county, season, profile))
         events.extend(cls._fallback_commercial_tax(neighbor, county, profile))
         return events
+
+    @classmethod
+    def _ensure_quota_stance(cls, county, profile, season):
+        """规则引擎推断年度上缴倾向，正月重置或首次设置。"""
+        from .constants import month_of_year
+        moy = month_of_year(season)
+        stance_data = county.setdefault('governor_stance', {})
+        # 每年正月重新校准，或从未设置时初始化
+        if 'quota' not in stance_data or moy == 1:
+            goals = profile.get("goals", {})
+            ideology = profile.get("ideology", {})
+            welfare_w = goals.get("welfare", 0.2)
+            power_w = goals.get("power", 0.2)
+            central_w = ideology.get("central_vs_local", 0.5)
+            # 分数越高 → 越倾向完成配额
+            score = power_w * 0.4 + central_w * 0.3 - welfare_w * 0.3
+            if score > 0.20:
+                stance_data['quota'] = 'fulfill_quota'
+            elif score < -0.05:
+                stance_data['quota'] = 'protect_peasants'
+            else:
+                stance_data['quota'] = 'balance'
 
     @classmethod
     def _fallback_investment(cls, neighbor, county, season, profile):
@@ -639,16 +736,24 @@ class AIGovernorService:
         return None
 
     @classmethod
-    def _fallback_tax(cls, neighbor, county, profile):
-        """规则引擎决定税率"""
+    def _fallback_tax(cls, neighbor, county, season, profile):
+        """规则引擎决定税率，受上缴倾向影响"""
+        from .constants import month_of_year
         goals = profile.get("goals", {})
         welfare_w = goals.get("welfare", 0.2)
         treasury = county.get("treasury", 0)
         morale = county.get("morale", 50)
         old_tax = county.get("tax_rate", 0.12)
+        quota_stance = county.get('governor_stance', {}).get('quota', 'balance')
 
         # 基准税率：welfare导向倾向低税
         target = 0.12 - welfare_w * 0.04  # 0.08~0.12
+
+        # 上缴倾向偏置
+        if quota_stance == 'fulfill_quota':
+            target += 0.01
+        elif quota_stance == 'protect_peasants':
+            target -= 0.01
 
         # 财政吃紧 → 加税
         if treasury < 100:
@@ -656,11 +761,28 @@ class AIGovernorService:
         elif treasury < 200:
             target += 0.01
 
-        # 民心低 → 减税
-        if morale < 30:
-            target -= 0.02
-        elif morale < 40:
-            target -= 0.01
+        # 民心低 → 减税（protect_peasants 倾向时阈值更宽松）
+        if quota_stance == 'protect_peasants':
+            if morale < 40:
+                target -= 0.02
+            elif morale < 55:
+                target -= 0.01
+        else:
+            if morale < 30:
+                target -= 0.02
+            elif morale < 40:
+                target -= 0.01
+
+        # fulfill_quota：下半年配额不足时额外加税
+        if quota_stance == 'fulfill_quota':
+            moy = month_of_year(season)
+            annual_quota = county.get('annual_quota', {})
+            if moy >= 6 and annual_quota:
+                fy = county.get('fiscal_year', {})
+                ytd = (fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
+                       + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+                if ytd < annual_quota.get('total', 0) * 0.45:
+                    target += 0.01
 
         new_tax = round(max(0.09, min(0.15, target)), 2)
         events = []

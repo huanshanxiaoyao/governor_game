@@ -1,6 +1,19 @@
-"""MVP NPC 蓝图定义"""
+"""县衙 NPC 蓝图定义。"""
 
-from .agents import MVP_AGENTS
+from .agents import (
+    GENTRY_GIVEN_NAMES,
+    GENTRY_PERSONAS,
+    MVP_AGENTS,
+    VILLAGER_GIVEN_NAMES,
+    VILLAGER_PERSONAS,
+)
 from .relationships import MVP_RELATIONSHIPS
 
-__all__ = ["MVP_AGENTS", "MVP_RELATIONSHIPS"]
+__all__ = [
+    "MVP_AGENTS",
+    "MVP_RELATIONSHIPS",
+    "GENTRY_PERSONAS",
+    "VILLAGER_PERSONAS",
+    "GENTRY_GIVEN_NAMES",
+    "VILLAGER_GIVEN_NAMES",
+]

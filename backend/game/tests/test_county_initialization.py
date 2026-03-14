@@ -131,3 +131,17 @@ class CountyInitializationTests(SimpleTestCase):
         low_ceiling = SettlementService._calculate_village_ceiling(village, low_env)
         high_ceiling = SettlementService._calculate_village_ceiling(village, high_env)
         self.assertEqual(low_ceiling, high_ceiling)
+
+    def test_village_local_cast_is_seeded_for_every_village(self):
+        county = CountyService.create_initial_county("coastal")
+
+        self.assertEqual(len(county["villages"]), 4)
+        for village in county["villages"]:
+            self.assertTrue(village.get("gentry_persona_id"))
+            self.assertTrue(village.get("villager_persona_id"))
+            self.assertTrue(village.get("gentry_name"))
+            self.assertTrue(village.get("villager_name"))
+            self.assertEqual(village["gentry_gender"], "male")
+            self.assertEqual(village["villager_gender"], "male")
+            self.assertEqual(village["gentry_name"][0], village["name"][0])
+            self.assertEqual(village["villager_name"][0], village["name"][0])
