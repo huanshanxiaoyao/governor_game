@@ -12,6 +12,7 @@ from llm.providers import get_provider
 
 from ..models import Agent, EventLog
 from .constants import MAX_MONTH
+from .state import save_player_state
 
 logger = logging.getLogger("game")
 
@@ -710,7 +711,6 @@ class LLMRoleReviewService:
 
         county[cls.CACHE_KEY] = payload
         try:
-            game.county_data = county
-            game.save(update_fields=["county_data"])
+            save_player_state(game, county)
         except Exception as exc:
             logger.warning("Failed to cache peer reviews: %s", exc)

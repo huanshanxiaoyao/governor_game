@@ -13,6 +13,7 @@ from .ledger import (
     sync_county_gentry_land_ratio,
 )
 from .emergency import EmergencyService
+from .local_npc import ensure_county_local_cast
 
 
 def _fluctuate(value, pct=0.20):
@@ -262,6 +263,7 @@ class CountyService:
             monthly_consumption=monthly_consumption,
             current_season=1,
         )
+        ensure_county_local_cast(county, force=True)
         EmergencyService.ensure_state(county)
         EmergencyService.refresh_state(county)
 

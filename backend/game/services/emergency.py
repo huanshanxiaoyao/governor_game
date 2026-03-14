@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from ..models import Agent, EventLog, NeighborCounty
 from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG
 from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
+from .state import load_county_state, save_player_state
 
 
 class EmergencyService:
@@ -147,12 +148,11 @@ class EmergencyService:
 
     @classmethod
     def set_debug_reveal(cls, game, enabled: bool) -> Dict:
-        county = game.county_data
+        county = load_county_state(game)
         cls.ensure_state(county)
         county["emergency"]["debug_reveal_hidden_events"] = bool(enabled)
         cls.refresh_state(county)
-        game.county_data = county
-        game.save(update_fields=["county_data"])
+        save_player_state(game, county)
         return {
             "success": True,
             "debug_reveal_hidden_events": bool(enabled),
@@ -161,7 +161,7 @@ class EmergencyService:
 
     @classmethod
     def request_prefecture_relief(cls, game) -> Dict:
-        county = game.county_data
+        county = load_county_state(game)
         cls.ensure_state(county)
         block_reason = cls.governance_block_reason(county)
         if block_reason:
@@ -221,8 +221,7 @@ class EmergencyService:
         refresh_village_grain_ledgers(county, current_season=game.current_season)
         cls.refresh_state(county)
 
-        game.county_data = county
-        game.save(update_fields=["county_data"])
+        save_player_state(game, county)
 
         EventLog.objects.create(
             game=game,
@@ -250,7 +249,7 @@ class EmergencyService:
 
     @classmethod
     def borrow_from_neighbor(cls, game, neighbor_id: int, amount: float) -> Dict:
-        county = game.county_data
+        county = load_county_state(game)
         cls.ensure_state(county)
         block_reason = cls.governance_block_reason(county)
         if block_reason:
@@ -290,8 +289,7 @@ class EmergencyService:
         if random.random() > success_prob:
             relations[str(neighbor.id)] = max(-99.0, relation - 4.0)
             emergency["neighbor_relations"] = relations
-            game.county_data = county
-            game.save(update_fields=["county_data"])
+            save_player_state(game, county)
             return {
                 "success": False,
                 "error": f"{neighbor.governor_name}婉拒借粮请求",
@@ -327,8 +325,7 @@ class EmergencyService:
         cls.refresh_state(county)
         cls.refresh_state(n_county)
 
-        game.county_data = county
-        game.save(update_fields=["county_data"])
+        save_player_state(game, county)
         neighbor.county_data = n_county
         neighbor.save(update_fields=["county_data"])
 
@@ -362,7 +359,7 @@ class EmergencyService:
 
     @classmethod
     def negotiate_gentry_relief(cls, game, requested_amount: float) -> Dict:
-        county = game.county_data
+        county = load_county_state(game)
         cls.ensure_state(county)
         block_reason = cls.governance_block_reason(county)
         if block_reason:
@@ -468,8 +465,7 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
-        game.county_data = county
-        game.save(update_fields=["county_data"])
+        save_player_state(game, county)
 
         msg = f"经与地主议定，开仓放粮{round(released)}斤入民仓"
         EventLog.objects.create(
@@ -495,7 +491,7 @@ class EmergencyService:
 
     @classmethod
     def force_levy_gentry(cls, game, amount: float) -> Dict:
-        county = game.county_data
+        county = load_county_state(game)
         cls.ensure_state(county)
         block_reason = cls.governance_block_reason(county)
         if block_reason:
@@ -650,8 +646,7 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
-        game.county_data = county
-        game.save(update_fields=["county_data"])
+        save_player_state(game, county)
 
         debug_on = bool(emergency.get("debug_reveal_hidden_events"))
         hidden_note = (

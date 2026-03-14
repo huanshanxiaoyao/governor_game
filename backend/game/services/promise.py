@@ -4,6 +4,7 @@ import logging
 from django.utils import timezone
 
 from ..models import EventLog, Promise
+from .state import load_county_state
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -104,7 +105,7 @@ class PromiseService:
     @staticmethod
     def _snapshot_current_values(game, promise_type, target_village):
         """Capture current values needed for validation later."""
-        county = game.county_data
+        county = load_county_state(game)
         snapshot = {}
 
         if promise_type == 'LOWER_TAX':
@@ -160,7 +161,7 @@ class PromiseService:
     @classmethod
     def _is_in_construction(cls, promise, game):
         """检查承诺对应的项目是否仍在建设中（active_investments）。"""
-        county = game.county_data
+        county = load_county_state(game)
         active = county.get('active_investments', [])
 
         action = cls._TYPE_TO_ACTION.get(promise.promise_type)
@@ -180,7 +181,7 @@ class PromiseService:
     @classmethod
     def _validate_promise(cls, promise, game):
         """Check if a promise has been fulfilled. Returns True/False."""
-        county = game.county_data
+        county = load_county_state(game)
         ctx = promise.context
 
         if promise.promise_type == 'LOWER_TAX':

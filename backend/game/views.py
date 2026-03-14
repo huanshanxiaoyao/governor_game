@@ -9,6 +9,7 @@ from .models import (
     NegotiationSession, PlayerProfile, Promise,
 )
 from .serializers import (
+    AnnualReviewSubmitSerializer,
     ChatMessageSerializer,
     CommercialTaxRateSerializer,
     CreateGameSerializer,
@@ -32,17 +33,39 @@ from .serializers import (
 )
 from .services import (
     AgentService, CountyService, InvestmentService,
-    NegotiationService, NeighborService, OfficialdomService, SettlementService,
-    EmergencyService,
+    NegotiationService, NeighborService, OfficialdomService,
+    SettlementService, EmergencyService,
 )
+from .services.annual_review import AnnualReviewService
+from .services.bribery import BriberyService
+from .services.career_track import CareerTrackService
 from .services.constants import MAX_MONTH
+from .services.new_term import NewTermService, TERMINAL_REASONS
+from .services.promotion_event import PromotionEventService
+from .services.state import load_county_state, save_player_state
 
 
 def _blocked_by_takeover(game):
-    reason = EmergencyService.governance_block_reason(game.county_data)
+    reason = EmergencyService.governance_block_reason(load_county_state(game))
     if not reason:
         return None
     return Response({"error": reason}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _check_game_playable(game):
+    """
+    返回 Response(error) 若游戏不可继续操作，否则返回 None。
+    替换各视图中重复的 current_season > MAX_MONTH 检查。
+    """
+    end_reason = load_county_state(game).get("term_end_reason")
+    if end_reason in TERMINAL_REASONS:
+        return Response({"error": "游戏已结束，请查看总结"}, status=status.HTTP_400_BAD_REQUEST)
+    if game.current_season > MAX_MONTH:
+        return Response(
+            {"error": "任期已届满，请先续任", "term_complete": True},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
 
 
 class LoginView(APIView):
@@ -107,6 +130,10 @@ class GameListCreateView(APIView):
             'peasant_grain_reserve': county_data.get('peasant_grain_reserve', 0),
         }
 
+        # Generate player ideology flavor before persistence so county_data/unit_data start consistent.
+        flavor = MagistrateService.generate_player_flavor(background)
+        county_data['player_profile_flavor'] = flavor
+
         game = GameState.objects.create(
             user=request.user,
             current_season=1,
@@ -130,16 +157,11 @@ class GameListCreateView(APIView):
             personal_wealth=round(WEALTH_START.get(background, 20), 1),
         )
 
-        # Generate player ideology flavor and store in county_data
-        flavor = MagistrateService.generate_player_flavor(background)
-        game.county_data['player_profile_flavor'] = flavor
-        game.save(update_fields=['county_data'])
-
         # 创建玩家控制的行政单位（县级）
         _player_unit = AdminUnit.objects.create(
             game=game,
             unit_type='COUNTY',
-            unit_data=game.county_data,
+            unit_data=county_data,
             is_player_controlled=True,
         )
         game.player_unit = _player_unit
@@ -176,6 +198,29 @@ class GameDetailView(APIView):
         return Response(serializer.data)
 
 
+class AnnualReviewSubmitView(APIView):
+    """
+    POST /api/games/{id}/annual-review/  — 提交知县年度自陈
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = AnnualReviewSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = AnnualReviewService.submit_county_self_statement(
+            game,
+            serializer.validated_data,
+        )
+        if "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
 class InvestView(APIView):
     """
     POST /api/games/{id}/invest/  — execute investment action
@@ -201,10 +246,11 @@ class InvestView(APIView):
         success, message = InvestmentService.execute(game, action, target_village)
 
         if success:
+            county = load_county_state(game, refresh=True)
             return Response({
                 "success": True,
                 "message": message,
-                "treasury": round(game.county_data["treasury"], 1),
+                "treasury": round(county["treasury"], 1),
             })
         return Response(
             {"success": False, "message": message},
@@ -232,7 +278,7 @@ class RequestLandSurveyView(APIView):
         if not village_name:
             return Response({"error": "请指定村庄"}, status=status.HTTP_400_BAD_REQUEST)
 
-        county = game.county_data
+        county = load_county_state(game)
         village_names = [v["name"] for v in county.get("villages", [])]
         if village_name not in village_names:
             return Response({"error": f"村庄 '{village_name}' 不存在"}, status=status.HTTP_400_BAD_REQUEST)
@@ -240,10 +286,96 @@ class RequestLandSurveyView(APIView):
         surveys = county.setdefault("pending_land_surveys", [])
         if village_name not in surveys:
             surveys.append(village_name)
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         return Response({"success": True, "message": f"已安排{village_name}土地勘查，结果将在下月报告中呈报"})
+
+
+class CheckBribesView(APIView):
+    """
+    GET /api/games/{id}/check-bribes/
+    结算前调用：扫描本月潜在贿赂事件，返回 pending_bribes 列表。
+    同时重置 accepted_bribes，确保结算前状态干净。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        county = load_county_state(game)
+        monthly_surplus = SettlementService._estimate_monthly_surplus_per_capita(
+            county, game.current_season
+        )
+        offers = BriberyService.check_county_bribes(county, monthly_surplus)
+        save_player_state(game, county)
+
+        return Response({"offers": offers})
+
+
+class RespondBribeView(APIView):
+    """
+    POST /api/games/{id}/respond-bribe/
+    玩家对单笔贿赂做出决定：accept=true/false。
+    Body: {village_name, event_type, accept}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        village_name = request.data.get("village_name")
+        event_type = request.data.get("event_type")
+        accept = request.data.get("accept", False)
+
+        if not village_name or event_type not in ("annexation", "hidden_land"):
+            return Response({"error": "参数错误"}, status=status.HTTP_400_BAD_REQUEST)
+
+        county = load_county_state(game)
+
+        # Find the bribe in pending list and get its amount
+        pending = county.get("pending_bribes", [])
+        matched = next(
+            (b for b in pending if b["village_name"] == village_name and b["event_type"] == event_type),
+            None,
+        )
+        if not matched:
+            return Response({"error": "未找到对应的行贿记录"}, status=status.HTTP_400_BAD_REQUEST)
+
+        player_profile = PlayerProfile.objects.filter(game=game).first()
+
+        if accept:
+            BriberyService.accept_bribe(county, village_name, event_type, matched["amount"], player=player_profile)
+            msg = f"收受{matched['gentry_name']}银两{matched['amount']}两，此事不予追究。"
+        else:
+            # 记录拒绝，确保结算时绕过随机概率门直接触发交涉
+            from game.services.bribery import bribe_key as _bk
+            key = _bk(village_name, event_type)
+            if 'rejected_bribes' not in county:
+                county['rejected_bribes'] = {}
+            county['rejected_bribes'][key] = True
+            msg = f"拒绝{matched['gentry_name']}的行贿，将依法处置。"
+
+        # Remove from pending list
+        county["pending_bribes"] = [
+            b for b in pending
+            if not (b["village_name"] == village_name and b["event_type"] == event_type)
+        ]
+
+        save_player_state(game, county)
+
+        personal_wealth = player_profile.personal_wealth if player_profile else None
+        return Response({
+            "success": True,
+            "accepted": accept,
+            "message": msg,
+            "personal_wealth": personal_wealth,
+        })
 
 
 class AdvanceSeasonView(APIView):
@@ -258,11 +390,13 @@ class AdvanceSeasonView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > MAX_MONTH:
-            return Response(
-                {"error": "游戏已结束，请查看总结"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        blocked = _check_game_playable(game)
+        if blocked is not None:
+            return blocked
+
+        blocker = AnnualReviewService.get_county_advance_blocker(game)
+        if blocker:
+            return Response({"error": blocker}, status=status.HTTP_400_BAD_REQUEST)
 
         season = game.current_season
         report = SettlementService.advance_season(game)
@@ -327,11 +461,9 @@ class TaxRateView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > MAX_MONTH:
-            return Response(
-                {"error": "游戏已结束"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        blocked = _check_game_playable(game)
+        if blocked is not None:
+            return blocked
         blocked = _blocked_by_takeover(game)
         if blocked is not None:
             return blocked
@@ -340,7 +472,7 @@ class TaxRateView(APIView):
         serializer.is_valid(raise_exception=True)
 
         new_rate = serializer.validated_data["tax_rate"]
-        county = game.county_data
+        county = load_county_state(game)
         old_rate = county["tax_rate"]
         county["tax_rate"] = new_rate
 
@@ -356,8 +488,7 @@ class TaxRateView(APIView):
             for v in county["villages"]:
                 v["morale"] = max(0, min(100, v["morale"] + actual_morale_change * 0.5))
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         message = f"税率由{old_rate:.0%}调整为{new_rate:.0%}"
         if actual_morale_change != 0:
@@ -397,11 +528,9 @@ class CommercialTaxRateView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        if game.current_season > MAX_MONTH:
-            return Response(
-                {"error": "游戏已结束"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        blocked = _check_game_playable(game)
+        if blocked is not None:
+            return blocked
         blocked = _blocked_by_takeover(game)
         if blocked is not None:
             return blocked
@@ -410,7 +539,7 @@ class CommercialTaxRateView(APIView):
         serializer.is_valid(raise_exception=True)
 
         new_rate = serializer.validated_data["commercial_tax_rate"]
-        county = game.county_data
+        county = load_county_state(game)
         old_rate = county.get("commercial_tax_rate", 0.03)
         county["commercial_tax_rate"] = new_rate
 
@@ -425,8 +554,7 @@ class CommercialTaxRateView(APIView):
             for v in county["villages"]:
                 v["morale"] = max(0, min(100, v["morale"] + actual_morale_change * 0.5))
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         message = f"商税税率由{old_rate:.1%}调整为{new_rate:.1%}"
         if actual_morale_change != 0:
@@ -535,7 +663,7 @@ class StaffInfoView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        county = game.county_data
+        county = load_county_state(game)
         advisor_level = county.get("advisor_level", 1)
 
         # Advisor (师爷)
@@ -830,7 +958,7 @@ class StartIrrigationNegotiationView(APIView):
         serializer.is_valid(raise_exception=True)
 
         village_name = serializer.validated_data["village_name"]
-        county = game.county_data
+        county = load_county_state(game)
 
         # Validate active irrigation investment exists
         has_irrigation = any(
@@ -1079,6 +1207,35 @@ class DisasterReliefView(APIView):
         return Response(result)
 
 
+class AdjustRemitRatioView(APIView):
+    """POST /api/games/{id}/remit-ratio/ — 调整本县上缴比例（九月核定后专用）"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        new_ratio = request.data.get("remit_ratio")
+        if new_ratio is None:
+            return Response({"error": "缺少 remit_ratio 参数"}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = SettlementService.adjust_remit_ratio(game, new_ratio)
+        if not result.get("success"):
+            return Response({"error": result.get("error")}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            **result,
+            "autumn_tax_assessment": load_county_state(game).get("autumn_tax_assessment", {}),
+        })
+
+
 class EmergencyPrefectureReliefView(APIView):
     """POST /api/games/{id}/emergency/prefecture-relief/"""
 
@@ -1197,3 +1354,86 @@ class EmergencyDebugToggleView(APIView):
             enabled=serializer.validated_data["enabled"],
         )
         return Response(result)
+
+
+class CareerView(APIView):
+    """
+    GET /api/games/{id}/career/  — 知县仕途轨迹数据
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        if game.player_role != "COUNTY_MAGISTRATE":
+            return Response({"error": "仅知县模式支持仕途轨迹"}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = CareerTrackService.get_career_payload(game)
+        return Response(data)
+
+
+class PromotionActionView(APIView):
+    """
+    POST /api/games/{id}/promotion-action/
+    sub_action: 'reveal_advisor'
+    action_type: 'gift_governor' | 'gift_ministry' | 'gift_both' | 'none'
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        if game.player_role != "COUNTY_MAGISTRATE":
+            return Response({"error": "仅知县模式支持升迁操作"}, status=status.HTTP_400_BAD_REQUEST)
+
+        county = load_county_state(game)
+        sub_action = request.data.get("sub_action")
+        action_type = request.data.get("action_type")
+
+        if sub_action == "reveal_advisor":
+            result = PromotionEventService.reveal_advisor_tip(game, county)
+            if result.get("error"):
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result)
+
+        if action_type in ("gift_governor", "gift_ministry", "gift_both", "none"):
+            result = PromotionEventService.apply_player_action(game, county, action_type)
+            if result.get("error"):
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result)
+
+        return Response({"error": "无效操作"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class NewTermView(APIView):
+    """
+    POST /api/games/{id}/new-term/  — 任期届满后续任（留任 or 调任）
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        result = NewTermService.start_new_term(game)
+        if result.get("error"):
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+        # 刷新 game 数据返回前端
+        game.refresh_from_db()
+        from .serializers import GameDetailSerializer
+        return Response({
+            "ok": True,
+            "term_index": result["term_index"],
+            "pool_level": result["pool_level"],
+            "transfer_info": result.get("transfer_info"),
+            "game": GameDetailSerializer(game).data,
+        })

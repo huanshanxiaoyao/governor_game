@@ -7,6 +7,7 @@ from .constants import (
     calculate_infra_cost, calculate_infra_months,
 )
 from .ledger import ensure_county_ledgers, ensure_village_ledgers
+from .state import load_county_state, save_player_state
 
 
 class InvestmentService:
@@ -281,7 +282,7 @@ class InvestmentService:
         Execute an investment action (player path).
         Returns (success: bool, message: str).
         """
-        county = game.county_data
+        county = load_county_state(game)
 
         if game.current_season > MAX_MONTH:
             return False, "游戏已结束，无法投资"
@@ -297,8 +298,7 @@ class InvestmentService:
         if action == 'build_irrigation':
             msg += '。您可以与各村地主协商，请其出资分担费用。'
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
         cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
         return True, msg
 

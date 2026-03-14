@@ -1,7 +1,10 @@
 """月度结算引擎"""
 
 import copy
+import logging
 import random
+
+logger = logging.getLogger('game')
 
 from ..models import Agent, EventLog, Promise
 from .constants import (
@@ -24,6 +27,7 @@ from .settlement_metrics import MetricsMixin
 from .settlement_seasonal import SeasonalMixin
 from .settlement_summary import SummaryMixin
 from .emergency import EmergencyService
+from .annual_review import AnnualReviewService
 from .ledger import (
     advance_gentry_grain_ledgers,
     ensure_county_ledgers,
@@ -31,6 +35,7 @@ from .ledger import (
     sync_county_gentry_land_ratio,
     sync_legacy_from_ledgers,
 )
+from .state import load_county_state, save_player_state
 
 
 class SettlementService(
@@ -122,7 +127,7 @@ class SettlementService(
         if game.current_season > MAX_MONTH:
             return {"error": "游戏已结束"}
 
-        county = game.county_data
+        county = load_county_state(game)
         month = game.current_season
         report = {"season": month, "events": []}
         ensure_county_ledgers(county)
@@ -165,19 +170,39 @@ class SettlementService(
             import logging
             logging.getLogger('game').warning("Promise check failed (non-fatal): %s", e)
 
+        # Annual review month-boundary hooks
+        next_season = month + 1
+        transition = AnnualReviewService.handle_county_transition(
+            game=game,
+            county=county,
+            processed_season=month,
+            next_season=next_season,
+            report=report,
+        )
+
         # Advance month counter
-        game.current_season = month + 1
+        game.current_season = int(transition.get("next_season_override", next_season))
         report["next_season"] = game.current_season
 
         # Game end check
         if game.current_season > MAX_MONTH:
-            report["game_over"] = True
-            report["summary"] = cls._generate_summary(game, county)
+            reason = county.get("term_end_reason")
+            if reason in ("ANNUAL_REVIEW_DISMISSED", "PROMOTED_TO_PREFECT"):
+                # 真正结束：革退 or 升迁成功
+                report["game_over"] = True
+                report["summary"] = cls._generate_summary(game, county)
+            else:
+                # 正常任期届满：允许续任
+                county["awaiting_new_term"] = True
+                report["game_over"] = False
+                report["term_complete"] = True
+                from .new_term import NewTermService
+                report["term_summary"] = NewTermService.build_term_summary(game, county)
         else:
             report["game_over"] = False
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
+        game.save(update_fields=["current_season", "updated_at"])
 
         # Log settlement summary
         # Keep legacy keys for existing summary analyzers, and store full month payload
@@ -275,14 +300,32 @@ class SettlementService(
             if hidden <= 0:
                 continue
 
-            morale = v.get('morale', 50)
-            prob = 0.05 + max(0, (morale - 30)) / 2 * 0.01
-            if random.random() >= prob:
-                continue
-
             village_name = v['name']
 
+            # 若玩家本轮已拒绝该村行贿，跳过随机概率门直接触发交涉
+            from .bribery import bribe_key as _bk
+            _hbk = _bk(village_name, 'hidden_land')
+            bribe_rejected = game is not None and county.get('rejected_bribes', {}).get(_hbk)
+
+            if not bribe_rejected:
+                morale = v.get('morale', 50)
+                prob = 0.05 + max(0, (morale - 30)) / 2 * 0.01
+                if random.random() >= prob:
+                    continue
+
             if game is not None:
+                # Player path: check if bribe was pre-accepted this turn
+                if bribe_rejected:
+                    county.get('rejected_bribes', {}).pop(_hbk, None)
+                if county.get('accepted_bribes', {}).get(_hbk):
+                    county['accepted_bribes'].pop(_hbk, None)
+                    # 标记为已处理，避免下月重复触发
+                    v['hidden_land_discovered'] = True
+                    report['events'].append(
+                        f"【贿赂免查】{village_name}地主贿赂得逞，隐田未被追究"
+                    )
+                    break
+
                 # Player path: create negotiation session
                 gentry = Agent.objects.filter(
                     game=game, role='GENTRY',
@@ -327,13 +370,53 @@ class SettlementService(
                     data={'village_name': village_name, 'hidden_land': hidden},
                 )
             else:
-                # Neighbor path: auto-resolve via forced survey ratio
-                bailiff_score = min(1.0, county.get('bailiff_level', 0) / 3)
-                morale_score = min(1.0, morale / 100)
-                ratio = 0.60 + 0.15 * (0.5 * bailiff_score + 0.5 * morale_score)
-                ratio = max(0.50, min(0.85, ratio + random.uniform(-0.03, 0.03)))
-                discovered = int(hidden * ratio)
+                # Neighbor path: inline hidden-land bribe check for AI governor
+                from .bribery import BriberyService as _BS2
+                _hl_profile = county.get('governor_profile', {})
+                _hl_bribe = _BS2.generate_hidden_land_bribe(v, hidden)
+                if _hl_bribe:
+                    _hl_accepted = _BS2.ai_accept_bribe(
+                        county, _hl_profile, _hl_bribe['amount'], 'hidden_land'
+                    )
+                    if _hl_accepted:
+                        _BS2.accept_bribe(county, village_name, 'hidden_land', _hl_bribe['amount'])
+                        report['events'].append(
+                            f"【受贿免查】{_hl_bribe['gentry_name']}行贿{_hl_bribe['amount']}两，"
+                            f"知县收受，隐田未被追究"
+                        )
+                        sync_county_gentry_land_ratio(county)
+                        break
+                    else:
+                        report['events'].append(
+                            f"【拒绝行贿】{_hl_bribe['gentry_name']}行贿{_hl_bribe['amount']}两被知县拒绝"
+                        )
 
+                # Neighbor path: AI negotiation or auto-resolve via forced survey ratio
+                from .ai_negotiation import (
+                    is_ai_negotiation_enabled, AIGovernorNegotiationService,
+                )
+                ratio = None
+                neg_events = []
+                if is_ai_negotiation_enabled():
+                    try:
+                        ratio, neg_events = AIGovernorNegotiationService.run_hidden_land_negotiation(
+                            county, v, hidden,
+                        )
+                    except Exception as exc:
+                        logger.warning('AI hidden-land negotiation error: %s', exc)
+                        ratio = None
+
+                if ratio is None:
+                    # Deterministic fallback
+                    bailiff_score = min(1.0, county.get('bailiff_level', 0) / 3)
+                    morale_score = min(1.0, morale / 100)
+                    ratio = 0.60 + 0.15 * (0.5 * bailiff_score + 0.5 * morale_score)
+                    ratio = max(0.50, min(0.85, ratio + random.uniform(-0.03, 0.03)))
+
+                for evt in neg_events:
+                    report['events'].append(f"【隐田交涉】{evt}")
+
+                discovered = int(hidden * ratio)
                 gentry_ledger['registered_farmland'] = max(
                     0, int(gentry_ledger.get('registered_farmland', 0)) + discovered)
                 gentry_ledger['hidden_farmland'] = max(0, hidden - discovered)
@@ -390,29 +473,46 @@ class SettlementService(
 
         for v in county['villages']:
             ensure_village_ledgers(v)
-            # Same probability formula for both paths
-            prob = 0.08
-            if v['morale'] < 40:
-                prob += 0.10
-            if v['morale'] < 25:
-                prob += 0.15
-            if v.get('gentry_land_pct', 0) > 0.35:
-                prob += 0.05
-            if has_disaster:
-                prob += 0.10
-            if v['morale'] > 60:
-                prob -= 0.05
-            # 余粮为负时提高概率：负值绝对值越大，加成越高
-            if monthly_surplus < 0:
-                prob += min(0.25, abs(monthly_surplus) * 0.02)
-            prob = max(0.0, min(0.5, prob))
-
-            if random.random() >= prob:
-                continue
 
             village_name = v['name']
 
+            # 若玩家本轮已拒绝该村行贿，跳过随机概率门直接触发交涉
+            from .bribery import bribe_key as _bk
+            _abk = _bk(village_name, 'annexation')
+            bribe_rejected = game is not None and county.get('rejected_bribes', {}).get(_abk)
+
+            if not bribe_rejected:
+                # Same probability formula for both paths
+                prob = 0.08
+                if v['morale'] < 40:
+                    prob += 0.10
+                if v['morale'] < 25:
+                    prob += 0.15
+                if v.get('gentry_land_pct', 0) > 0.35:
+                    prob += 0.05
+                if has_disaster:
+                    prob += 0.10
+                if v['morale'] > 60:
+                    prob -= 0.05
+                # 余粮为负时提高概率：负值绝对值越大，加成越高
+                if monthly_surplus < 0:
+                    prob += min(0.25, abs(monthly_surplus) * 0.02)
+                prob = max(0.0, min(0.5, prob))
+
+                if random.random() >= prob:
+                    continue
+
             if game is not None:
+                # Player path: check if bribe was pre-accepted this turn
+                if bribe_rejected:
+                    county.get('rejected_bribes', {}).pop(_abk, None)
+                if county.get('accepted_bribes', {}).get(_abk):
+                    county['accepted_bribes'].pop(_abk, None)
+                    report['events'].append(
+                        f"【贿赂免查】{village_name}地主贿赂得逞，兼并行为未受干预"
+                    )
+                    break
+
                 # Player path: create negotiation session
                 gentry = Agent.objects.filter(
                     game=game,
@@ -474,15 +574,54 @@ class SettlementService(
                     },
                 )
             else:
-                # Neighbor path: auto-resolve based on governor profile
-                stop_prob = 0.35 + welfare_w * 0.5  # minben=0.525, zhengji=0.4, etc.
-                if v.get('morale', 50) > 50:
-                    stop_prob += 0.1
-                if bailiff_level >= 2:
-                    stop_prob += 0.1
-                stop_prob = min(0.85, stop_prob)
+                # Neighbor path: inline annexation bribe check for AI governor
+                from .bribery import BriberyService as _BS
+                _ann_bribe = _BS.generate_annexation_bribe(v, monthly_surplus)
+                if _ann_bribe:
+                    _ann_accepted = _BS.ai_accept_bribe(
+                        county, profile, _ann_bribe['amount'], 'annexation'
+                    )
+                    if _ann_accepted:
+                        _BS.accept_bribe(county, village_name, 'annexation', _ann_bribe['amount'])
+                        report['events'].append(
+                            f"【受贿免查】{_ann_bribe['gentry_name']}行贿{_ann_bribe['amount']}两，"
+                            f"知县收受，兼并行为未受干预"
+                        )
+                        sync_county_gentry_land_ratio(county)
+                        break
+                    else:
+                        report['events'].append(
+                            f"【拒绝行贿】{_ann_bribe['gentry_name']}行贿{_ann_bribe['amount']}两被知县拒绝"
+                        )
 
-                if random.random() < stop_prob:
+                # Neighbor path: AI negotiation or auto-resolve
+                from .ai_negotiation import (
+                    is_ai_negotiation_enabled, AIGovernorNegotiationService,
+                )
+                stopped = False
+                neg_events = []
+                if is_ai_negotiation_enabled():
+                    try:
+                        stopped, neg_events = AIGovernorNegotiationService.run_annexation_negotiation(
+                            county, v,
+                        )
+                    except Exception as exc:
+                        logger.warning('AI annexation negotiation error: %s', exc)
+
+                if not is_ai_negotiation_enabled() or (not stopped and not neg_events):
+                    # Deterministic fallback
+                    stop_prob = 0.35 + welfare_w * 0.5
+                    if v.get('morale', 50) > 50:
+                        stop_prob += 0.1
+                    if bailiff_level >= 2:
+                        stop_prob += 0.1
+                    stop_prob = min(0.85, stop_prob)
+                    stopped = random.random() < stop_prob
+
+                for evt in neg_events:
+                    report['events'].append(f"【兼并交涉】{evt}")
+
+                if stopped:
                     report['events'].append(
                         f"【兼并阻止】{v['name']}地主欲趁机收购田地，"
                         f"知县及时干预，兼并未成")
@@ -619,6 +758,49 @@ class SettlementService(
             "advisor_note": note,
         }
 
+    # ── 上缴比例调整 ──────────────────────────────────────────────────────────
+
+    @classmethod
+    def adjust_remit_ratio(cls, game, new_ratio):
+        """
+        调整本县上缴比例（remit_ratio）。
+        仅允许在九月秋税核定后（autumn_tax_assessment.status == PENDING_PAYMENT）调整。
+        取值范围：40%～90%（含边界）。
+        调整后重新计算 agri_remit_due / agri_retained_due。
+        """
+        county = load_county_state(game)
+        assessment = county.get("autumn_tax_assessment") or {}
+
+        if assessment.get("status") != "PENDING_PAYMENT":
+            return {"success": False, "error": "仅可在九月秋税核定后（十月上缴前）调整上缴比例"}
+
+        try:
+            new_ratio = round(float(new_ratio), 3)
+        except (TypeError, ValueError):
+            return {"success": False, "error": "remit_ratio 须为数值"}
+
+        if not (0.40 <= new_ratio <= 0.90):
+            return {"success": False, "error": "上缴比例须在 40%～90% 之间"}
+
+        old_ratio = county.get("remit_ratio", 0.65)
+        agri_tax = float(assessment.get("agri_tax", 0.0))
+        new_remit_due = round(agri_tax * new_ratio, 1)
+        new_retained_due = round(agri_tax - new_remit_due, 1)
+
+        county["remit_ratio"] = new_ratio
+        assessment["agri_remit_due"] = new_remit_due
+        assessment["agri_retained_due"] = new_retained_due
+        county["autumn_tax_assessment"] = assessment
+        save_player_state(game, county)
+
+        return {
+            "success": True,
+            "old_ratio": old_ratio,
+            "new_ratio": new_ratio,
+            "agri_remit_due": new_remit_due,
+            "agri_retained_due": new_retained_due,
+        }
+
     @classmethod
     def process_disaster_relief(cls, game, claimed_loss):
         """
@@ -630,7 +812,7 @@ class SettlementService(
         返回结果 dict，含 success/pending_review/message 等字段。
         """
         from .ledger import ensure_county_ledgers
-        county = game.county_data
+        county = load_county_state(game)
         ensure_county_ledgers(county)
 
         if month_of_year(game.current_season) != 9:
@@ -678,8 +860,7 @@ class SettlementService(
             },
         )
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
         return {
             "success": True,
             "pending_review": True,
@@ -920,14 +1101,14 @@ class SettlementService(
         """Get end-game summary for a completed game."""
         if game.current_season <= MAX_MONTH:
             return None
-        return cls._generate_summary(game, game.county_data)
+        return cls._generate_summary(game, load_county_state(game))
 
     @classmethod
     def get_summary_v2(cls, game):
         """Get richer end-game summary for a completed game."""
         if game.current_season <= MAX_MONTH:
             return None
-        return cls._generate_summary_v2(game, game.county_data)
+        return cls._generate_summary_v2(game, load_county_state(game))
 
     @classmethod
     def get_neighbor_summary_v2(cls, game, neighbor):

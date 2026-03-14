@@ -28,3 +28,10 @@ CACHES = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+
+# Disable real LLM calls in tests, even if local env provides API keys.
+LLM_PROVIDERS = {
+    name: {**cfg, "api_key": ""}
+    for name, cfg in LLM_PROVIDERS.items()
+}

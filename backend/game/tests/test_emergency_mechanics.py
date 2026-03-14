@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 from game.models import Agent, GameState, NeighborCounty
 from game.services import AgentService, CountyService
+from game.services.state import load_county_state, save_player_state
 from game.services.constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG
 from game.services.emergency import EmergencyService
 from game.services.settlement import SettlementService
@@ -73,10 +74,11 @@ def test_borrow_from_neighbor_creates_36_installments():
     county = CountyService.create_initial_county("fiscal_core")
     game = GameState.objects.create(user=user, current_season=6, county_data=county)
 
-    EmergencyService.ensure_state(game.county_data)
-    baseline = _baseline(game.county_data)
-    game.county_data["peasant_grain_reserve"] = baseline * 0.3
-    game.save(update_fields=["county_data"])
+    game_state = load_county_state(game)
+    EmergencyService.ensure_state(game_state)
+    baseline = _baseline(game_state)
+    game_state["peasant_grain_reserve"] = baseline * 0.3
+    save_player_state(game, game_state)
 
     neighbor_county = CountyService.create_initial_county("coastal")
     EmergencyService.ensure_state(neighbor_county)
@@ -110,10 +112,11 @@ def test_force_levy_reduces_gentry_affinity_and_creates_complaint():
     game = GameState.objects.create(user=user, current_season=10, county_data=county)
     AgentService.initialize_agents(game)
 
-    EmergencyService.ensure_state(game.county_data)
-    baseline = _baseline(game.county_data)
-    game.county_data["peasant_grain_reserve"] = baseline * 0.4
-    game.save(update_fields=["county_data"])
+    game_state = load_county_state(game)
+    EmergencyService.ensure_state(game_state)
+    baseline = _baseline(game_state)
+    game_state["peasant_grain_reserve"] = baseline * 0.4
+    save_player_state(game, game_state)
 
     gentry = Agent.objects.filter(game=game, role="GENTRY", role_title="地主").first()
     assert gentry is not None

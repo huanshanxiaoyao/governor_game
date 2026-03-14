@@ -1,8 +1,11 @@
 """Agent 服务层 — 初始化、上下文构建、对话处理"""
 import logging
+import random
 
 from ..agent_defs import MVP_AGENTS, MVP_RELATIONSHIPS
 from ..models import Agent, DialogueMessage, Relationship
+from .local_npc import build_county_local_agent_definitions, ensure_county_local_cast
+from .state import load_county_state, save_player_state
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -13,17 +16,56 @@ logger = logging.getLogger('game')
 class AgentService:
     """管理NPC Agent的核心服务"""
 
+    CENTRAL_OFFICIAL_ROLES = (
+        'CABINET_CHIEF', 'CABINET_MEMBER',
+        'MINISTER', 'VICE_MINISTER',
+        'CHIEF_CENSOR', 'VICE_CENSOR', 'CENSOR',
+    )
+    LOCAL_RELATION_PROFILES = {
+        'villager_to_gentry': {
+            'seasoned_old_farmer': 5,
+            'marketwise_householder': -5,
+            'fiery_tenant_leader': -20,
+            'educated_youth': 6,
+            'cautious_smallholder': -12,
+            'security_burdened_father': 4,
+        },
+        'gentry_to_elder': {
+            'wealthy_power_broker': (-20, 'rivalry', '大户作风强横，耆老看不惯其恃财压人'),
+            'reformist_scholar_gentry': (35, 'respect', '同为读书人，彼此谈得来，也愿互相给面子'),
+            'well_connected_opportunist': (-8, 'unease', '耆老对其攀附权势颇有微词'),
+        },
+        'gentry_to_headman': {
+            'clan_elder_landlord': (20, 'cooperation', '同在乡里主事，遇事仍需彼此照应'),
+            'smallholder_pragmatist': (15, 'friendly', '都盼着小村子安稳过日子，平日尚算说得拢'),
+            'wealthy_power_broker': (-10, 'tension', '地主扩张心切，里长对其兼并手段颇有怨言'),
+            'well_connected_opportunist': (-6, 'pressure', '里长顾忌其外头门路，往来时多有防备'),
+        },
+        'peer_pairs': {
+            frozenset({'wealthy_power_broker', 'well_connected_opportunist'}):
+                (30, 'alliance', '两家都善于经营关系，私下常有利益往来'),
+            frozenset({'reformist_scholar_gentry', 'well_connected_opportunist'}):
+                (-15, 'tension', '一方讲名声教化，一方讲门路算计，彼此多有掣肘'),
+        },
+    }
+
     # ------------------------------------------------------------------
     # 1. Initialization
     # ------------------------------------------------------------------
 
     @classmethod
     def initialize_agents(cls, game):
-        """为新游戏创建16个NPC (4固定 + 6村庄地主 + 6村民代表) 及其关系网络"""
+        """为新游戏创建县衙核心 NPC 与按村生成的地主/村民代表。"""
         import copy
-        name_to_agent = {}
 
-        for defn in MVP_AGENTS:
+        county = load_county_state(game)
+        if ensure_county_local_cast(county):
+            save_player_state(game, county)
+
+        name_to_agent = {}
+        all_defs = list(MVP_AGENTS) + build_county_local_agent_definitions(county)
+
+        for defn in all_defs:
             agent = Agent.objects.create(
                 game=game,
                 name=defn['name'],
@@ -34,31 +76,199 @@ class AgentService:
             )
             name_to_agent[defn['name']] = agent
 
-        # 将地主和村民代表的 village_name 重新映射到实际生成的村庄
-        actual_villages = [v["name"] for v in game.county_data.get("villages", [])]
-        all_agents = list(name_to_agent.values())
-        gentry_agents = [a for a in all_agents
-                         if a.role == 'GENTRY' and a.role_title == '地主']
-        villager_agents = [a for a in all_agents
-                          if a.role == 'VILLAGER' and a.role_title == '村民代表']
-
-        for i, vname in enumerate(actual_villages):
-            if i < len(gentry_agents):
-                gentry_agents[i].attributes['village_name'] = vname
-                gentry_agents[i].save(update_fields=['attributes'])
-            if i < len(villager_agents):
-                villager_agents[i].attributes['village_name'] = vname
-                villager_agents[i].save(update_fields=['attributes'])
-
         for a_name, b_name, affinity, data in MVP_RELATIONSHIPS:
+            agent_a = name_to_agent.get(a_name)
+            agent_b = name_to_agent.get(b_name)
+            if agent_a is None or agent_b is None:
+                continue
+            Relationship.objects.create(agent_a=agent_a, agent_b=agent_b, affinity=affinity, data=data)
+
+        cls._create_dynamic_local_relationships(name_to_agent)
+        return list(name_to_agent.values())
+
+    @classmethod
+    def _create_dynamic_local_relationships(cls, name_to_agent):
+        """按 village/persona 生成本地关系，而非依赖固定姓名。"""
+        villages = {}
+        gentry_by_persona = {}
+        elder = name_to_agent.get('李秀才')
+        headman = name_to_agent.get('张铁根')
+        created_pairs = set()
+
+        def _create(agent_a, agent_b, affinity, data):
+            if agent_a is None or agent_b is None:
+                return
+            pair = (agent_a.id, agent_b.id)
+            if pair in created_pairs:
+                return
             Relationship.objects.create(
-                agent_a=name_to_agent[a_name],
-                agent_b=name_to_agent[b_name],
+                agent_a=agent_a,
+                agent_b=agent_b,
                 affinity=affinity,
                 data=data,
             )
+            created_pairs.add(pair)
 
-        return all_agents
+        for agent in name_to_agent.values():
+            attrs = agent.attributes or {}
+            village_name = attrs.get('village_name')
+            persona_id = attrs.get('persona_id')
+            if village_name:
+                villages.setdefault(village_name, {})[agent.role] = agent
+            if agent.role == 'GENTRY' and agent.role_title == '地主' and persona_id:
+                gentry_by_persona[persona_id] = agent
+
+        for village_name, members in villages.items():
+            gentry = members.get('GENTRY')
+            villager = members.get('VILLAGER')
+            if gentry and gentry.role_title == '地主' and villager and villager.role_title == '村民代表':
+                affinity, rel_type, desc = cls._derive_villager_gentry_relation(villager, gentry)
+                _create(villager, gentry, affinity, {'type': rel_type, 'desc': desc, 'generated': 'local'})
+
+        for persona_id, (affinity, rel_type, desc) in cls.LOCAL_RELATION_PROFILES['gentry_to_elder'].items():
+            _create(
+                gentry_by_persona.get(persona_id), elder, affinity,
+                {'type': rel_type, 'desc': desc, 'generated': 'local'},
+            )
+
+        for persona_id, (affinity, rel_type, desc) in cls.LOCAL_RELATION_PROFILES['gentry_to_headman'].items():
+            _create(
+                gentry_by_persona.get(persona_id), headman, affinity,
+                {'type': rel_type, 'desc': desc, 'generated': 'local'},
+            )
+
+        for personas, (affinity, rel_type, desc) in cls.LOCAL_RELATION_PROFILES['peer_pairs'].items():
+            first, second = list(personas)
+            _create(
+                gentry_by_persona.get(first), gentry_by_persona.get(second), affinity,
+                {'type': rel_type, 'desc': desc, 'generated': 'local'},
+            )
+
+    @classmethod
+    def _derive_villager_gentry_relation(cls, villager, gentry):
+        villager_attrs = villager.attributes or {}
+        gentry_attrs = gentry.attributes or {}
+        villager_persona = villager_attrs.get('persona_id', '')
+        gentry_persona = gentry_attrs.get('persona_id', '')
+
+        affinity = cls.LOCAL_RELATION_PROFILES['villager_to_gentry'].get(villager_persona, 0)
+        affinity += int((float(gentry_attrs.get('personality', {}).get('agreeableness', 0.5)) - 0.5) * 20)
+        affinity += int((float(gentry_attrs.get('ideology', {}).get('people_vs_authority', 0.5)) - 0.5) * 20)
+
+        if villager_persona == 'fiery_tenant_leader':
+            affinity -= 10
+        if villager_persona == 'educated_youth' and gentry_persona == 'reformist_scholar_gentry':
+            affinity += 15
+        if gentry_persona == 'wealthy_power_broker':
+            affinity -= 8
+        if gentry_persona == 'smallholder_pragmatist':
+            affinity += 6
+
+        if affinity >= 20:
+            return 25, 'gratitude', '本村代表认为此地主尚知顾念乡里，往来间颇有敬重'
+        if affinity >= 5:
+            return 10, 'cooperation', '同在一村，虽各有立场，平日仍需彼此周旋合作'
+        if affinity > -10:
+            return -5, 'tension', '田租与赋役牵动生计，本村代表与地主时有争执'
+        if affinity > -20:
+            return -15, 'fear', '代表对地主心存怨气，却顾忌其势力，不敢轻易翻脸'
+        return -30, 'hostility', '代表长期不满地主盘剥，彼此积怨颇深'
+
+    @classmethod
+    def initialize_official_ties(cls, game):
+        """在官场体系完成后，为地主生成与上层官员的强联系。"""
+        county = load_county_state(game)
+        county_type = county.get('county_type', '')
+        province = (county.get('admin_location') or {}).get('province', '')
+        if not province:
+            return []
+
+        gentry_agents = list(
+            Agent.objects.filter(game=game, role='GENTRY', role_title='地主').order_by('id')
+        )
+        if not gentry_agents:
+            return []
+
+        province_officials = list(
+            Agent.objects.filter(
+                game=game,
+                role__in=('PROVINCIAL_GOVERNOR', 'PROVINCIAL_COMMISSIONER'),
+                attributes__province=province,
+            ).order_by('id')
+        )
+        prefect = Agent.objects.filter(game=game, role='PREFECT').first()
+        central_officials = list(
+            Agent.objects.filter(game=game, role__in=cls.CENTRAL_OFFICIAL_ROLES).order_by('id')
+        )
+        candidate_pool = province_officials + central_officials
+        existing_pairs = set(
+            Relationship.objects.filter(
+                agent_a__game=game,
+                agent_a__role='GENTRY',
+                agent_a__role_title='地主',
+            ).values_list('agent_a_id', 'agent_b_id')
+        )
+        created = []
+
+        def _create_strong_tie(gentry, official, *, tie_type, desc):
+            if gentry is None or official is None:
+                return
+            pair = (gentry.id, official.id)
+            if pair in existing_pairs:
+                return
+            affinity = random.randint(52, 70)
+            Relationship.objects.create(
+                agent_a=gentry,
+                agent_b=official,
+                affinity=affinity,
+                data={
+                    'type': tie_type,
+                    'desc': desc,
+                    'generated': 'official_tie',
+                    'strength': 'strong',
+                },
+            )
+            existing_pairs.add(pair)
+            created.append((gentry.name, official.name, tie_type))
+
+        if county_type == 'fiscal_core' and candidate_pool:
+            min_required = min(2, len(gentry_agents))
+            max_allowed = min(3, len(gentry_agents))
+            gentry_count = max_allowed if min_required == max_allowed else random.randint(min_required, max_allowed)
+            selected_gentries = random.sample(gentry_agents, gentry_count)
+            selected_officials = random.sample(candidate_pool, min(len(candidate_pool), gentry_count))
+            for idx, gentry in enumerate(selected_gentries):
+                official = selected_officials[idx % len(selected_officials)]
+                _create_strong_tie(
+                    gentry, official, tie_type='patronage',
+                    desc='财赋重地豪强根基深厚，与上层官员往来频仍，彼此多有照应',
+                )
+            return created
+
+        if county_type == 'clan_governance':
+            clan_candidates = [official for official in [prefect] + province_officials + central_officials if official]
+            for gentry in gentry_agents:
+                surname = (gentry.name or '')[:1]
+                if not surname:
+                    continue
+                for official in clan_candidates:
+                    if (official.name or '')[:1] != surname:
+                        continue
+                    _create_strong_tie(
+                        gentry, official, tie_type='kinship',
+                        desc=f'同为{surname}姓，在地方舆论中被视作一门一谱，往来尤为密切',
+                    )
+            return created
+
+        if candidate_pool:
+            gentry = random.choice(gentry_agents)
+            official = random.choice(candidate_pool)
+            _create_strong_tie(
+                gentry, official, tie_type='patronage',
+                desc='此地并非财赋重镇，但该地主另有门路，可借上层声势自保',
+            )
+
+        return created
 
     # ------------------------------------------------------------------
     # 2. Context Building
@@ -112,7 +322,7 @@ class AgentService:
     @classmethod
     def _build_game_knowledge(cls, game):
         """构建治县要略文本（仅供师爷/县丞使用）"""
-        county_type = game.county_data.get('county_type', '')
+        county_type = load_county_state(game).get('county_type', '')
         county_type_desc = cls.COUNTY_TYPE_DESCS.get(county_type, '')
         return cls.GAME_KNOWLEDGE_TEMPLATE.format(county_type_desc=county_type_desc)
 
@@ -216,7 +426,7 @@ class AgentService:
 
     @staticmethod
     def _summarize_county(game):
-        c = game.county_data
+        c = load_county_state(game)
         total_pop = sum(v['population'] for v in c.get('villages', []))
         total_farmland = sum(v['farmland'] for v in c.get('villages', []))
         disaster = c.get('disaster_this_year')
@@ -241,7 +451,7 @@ class AgentService:
     @staticmethod
     def _get_village_data(game, village_name):
         """Find village dict by name from county_data."""
-        for v in game.county_data.get('villages', []):
+        for v in load_county_state(game).get('villages', []):
             if v['name'] == village_name:
                 return v
         return None
@@ -266,7 +476,7 @@ class AgentService:
         """与NPC对话的完整流程"""
         # 0. 师爷问策次数限制
         if agent.role == 'ADVISOR':
-            county = game.county_data
+            county = load_county_state(game)
             level = county.get('advisor_level', 1)
             used = county.get('advisor_questions_used', 0)
             if used >= level:
@@ -297,10 +507,9 @@ class AgentService:
 
         # 4. 师爷问策次数计数
         if agent.role == 'ADVISOR' and 'error' not in result:
-            county = game.county_data
+            county = load_county_state(game)
             county['advisor_questions_used'] = county.get('advisor_questions_used', 0) + 1
-            game.county_data = county
-            game.save(update_fields=['county_data'])
+            save_player_state(game, county)
 
         return result
 

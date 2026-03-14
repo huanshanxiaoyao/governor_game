@@ -24,6 +24,8 @@ from .ledger import (
     sync_county_gentry_land_ratio,
     sync_legacy_from_ledgers,
 )
+from .career_track import CareerTrackService
+from .state import load_county_state
 
 
 class SeasonalMixin:
@@ -185,6 +187,9 @@ class SeasonalMixin:
         except Exception:
             return
         stipend = STIPEND_BY_BACKGROUND.get(player.background, 15)
+        multiplier = CareerTrackService.get_stipend_multiplier(load_county_state(game))
+        if multiplier != 1.0:
+            stipend = round(stipend * multiplier, 1)
         player.personal_wealth = round((player.personal_wealth or 0) + stipend, 1)
         player.save(update_fields=['personal_wealth'])
         report['events'].append(
@@ -192,32 +197,48 @@ class SeasonalMixin:
         )
 
     @classmethod
-    def _update_quota_completion(cls, county, agri_remitted, report):
-        """Update quota completion once agri remittance is finalized."""
+    def _update_quota_completion(cls, county, agri_remitted, report, relief_deduction=0.0):
+        """Update quota completion once agri remittance is finalized.
+
+        relief_deduction: 本年度已获批的灾害减免额度（两）。
+        批准后知府核减配额，有效配额 = 原配额 - 减免额，用于计算完成率。
+        """
         fy = county.get("fiscal_year", {})
         annual_quota = county.get("annual_quota", {})
         if not annual_quota:
             return
 
-        quota_total = annual_quota.get("total", 0)
+        original_quota = annual_quota.get("total", 0)
+        # 核减获批减免额度后的有效配额（知府已认可的豁免不计入缺口）
+        effective_quota = max(0.0, original_quota - float(relief_deduction))
         ytd_corvee = fy.get("corvee_tax", 0)
         ytd_corvee_retained = fy.get("corvee_retained", 0)
         corvee_remitted = ytd_corvee - ytd_corvee_retained
         total_remitted_to_prefecture = agri_remitted + corvee_remitted
         completion_rate = round(
-            total_remitted_to_prefecture / max(quota_total, 1) * 100, 1)
+            total_remitted_to_prefecture / max(effective_quota, 1) * 100, 1)
 
         county["quota_completion"] = {
-            "quota_total": quota_total,
+            "quota_total": effective_quota,
+            "original_quota": original_quota,
+            "relief_deduction": round(float(relief_deduction), 1),
             "actual_remitted": round(total_remitted_to_prefecture, 1),
             "completion_rate": completion_rate,
             "year": annual_quota.get("year"),
         }
-        report["events"].append(
-            f"年度配额完成：配额{quota_total}两，"
-            f"实缴{round(total_remitted_to_prefecture)}两，"
-            f"完成率{completion_rate}%"
-        )
+        if relief_deduction > 0:
+            report["events"].append(
+                f"年度配额完成：原配额{original_quota}两，"
+                f"减免核扣{round(relief_deduction)}两，有效配额{round(effective_quota)}两，"
+                f"实缴{round(total_remitted_to_prefecture)}两，"
+                f"完成率{completion_rate}%"
+            )
+        else:
+            report["events"].append(
+                f"年度配额完成：配额{original_quota}两，"
+                f"实缴{round(total_remitted_to_prefecture)}两，"
+                f"完成率{completion_rate}%"
+            )
 
     @classmethod
     def _process_october_agri_payment(cls, county, month, report, game=None):
@@ -267,7 +288,8 @@ class SeasonalMixin:
         total_remit = agri_remit_final + (ytd_corvee - ytd_corvee_retained) + (
             ytd_commercial - ytd_commercial_retained)
 
-        cls._update_quota_completion(county, agri_remit_final, report)
+        cls._update_quota_completion(county, agri_remit_final, report,
+                                     relief_deduction=relief_deduction)
 
         assessment.update({
             "status": "PAID",

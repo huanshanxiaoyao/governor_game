@@ -54,10 +54,10 @@ class DualLedgerRuleTests(SimpleTestCase):
         SettlementService._collect_corvee(county, report)
 
         liable_pop = 1600  # peasants only
-        expected_half = liable_pop * 0.3 / 2
-        expected_retained = expected_half * (1 - county["remit_ratio"])
+        expected_total = liable_pop * 0.3
+        expected_retained = expected_total * (1 - county["remit_ratio"])
 
-        self.assertAlmostEqual(county["fiscal_year"]["corvee_tax"], expected_half, places=6)
+        self.assertAlmostEqual(county["fiscal_year"]["corvee_tax"], expected_total, places=6)
         self.assertAlmostEqual(
             county["fiscal_year"]["corvee_retained"], expected_retained, places=6
         )

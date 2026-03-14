@@ -88,6 +88,21 @@ class CommercialTaxRateSerializer(serializers.Serializer):
     )
 
 
+class AnnualReviewSubmitSerializer(serializers.Serializer):
+    achievements = serializers.CharField(trim_whitespace=True)
+    unfinished = serializers.CharField(trim_whitespace=True)
+    faults = serializers.CharField(trim_whitespace=True)
+    plan = serializers.CharField(trim_whitespace=True)
+
+
+class PrefectureAnnualReviewSerializer(serializers.Serializer):
+    unit_id = serializers.IntegerField(min_value=1)
+    grade = serializers.ChoiceField(choices=["优", "良", "中", "差"])
+    strengths = serializers.CharField(trim_whitespace=True)
+    weaknesses = serializers.CharField(trim_whitespace=True)
+    focus = serializers.CharField(trim_whitespace=True)
+
+
 class PlayerProfileSerializer(serializers.ModelSerializer):
     background_display = serializers.CharField(
         source="get_background_display", read_only=True,
@@ -117,28 +132,42 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
 
 
 class GameDetailSerializer(serializers.ModelSerializer):
+    county_data = serializers.SerializerMethodField()
     player = PlayerProfileSerializer(read_only=True)
     available_investments = serializers.SerializerMethodField()
     disaster_relief_advice = serializers.SerializerMethodField()
+    annual_review = serializers.SerializerMethodField()
 
     class Meta:
         model = GameState
         fields = [
             "id", "current_season", "player_role", "county_data",
-            "player", "available_investments", "disaster_relief_advice",
+            "player", "available_investments", "disaster_relief_advice", "annual_review",
             "created_at", "updated_at",
         ]
 
+    def get_county_data(self, obj):
+        from .services.state import load_county_state
+        return load_county_state(obj)
+
     def get_available_investments(self, obj):
         from .services import InvestmentService
-        return InvestmentService.get_available_actions(obj.county_data, season=obj.current_season)
+        from .services.state import load_county_state
+        return InvestmentService.get_available_actions(
+            load_county_state(obj), season=obj.current_season,
+        )
 
     def get_disaster_relief_advice(self, obj):
         from .services import SettlementService
+        from .services.state import load_county_state
         return SettlementService.compute_relief_advice(
-            obj.county_data,
+            load_county_state(obj),
             season=obj.current_season,
         )
+
+    def get_annual_review(self, obj):
+        from .services.annual_review import AnnualReviewService
+        return AnnualReviewService.get_county_review_payload(obj)
 
 
 class GameListSerializer(serializers.ModelSerializer):

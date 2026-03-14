@@ -22,6 +22,7 @@ from .county import CountyService
 from .settlement import SettlementService
 from .ai_governor import AIGovernorService
 from .emergency import EmergencyService
+from .state import load_county_state
 
 logger = logging.getLogger('game')
 
@@ -102,7 +103,7 @@ class NeighborService:
     @classmethod
     def create_neighbors(cls, game):
         """创建5个邻县，类型+知县风格+施政类型各异，LLM生成人物简介"""
-        player_county_type = game.county_data.get('county_type', 'fiscal_core')
+        player_county_type = load_county_state(game).get('county_type', 'fiscal_core')
 
         all_types = list(COUNTY_TYPES.keys())
         other_types = [t for t in all_types if t != player_county_type]
@@ -229,7 +230,7 @@ class NeighborService:
             neighbors,
             season,
             decision_results,
-            player_county_data=game.county_data,
+            player_county_data=load_county_state(game),
         )
 
     @classmethod
@@ -374,17 +375,15 @@ class NeighborService:
                 return
             # 确保状态为 computing（对于已有 done 记录但 season 不同的情况）
             if not created:
-                precompute.season = season
-                precompute.status = 'computing'
-                precompute.results = {}
-                precompute.save(update_fields=['season', 'status', 'results', 'updated_at'])
+                NeighborPrecompute.objects.filter(pk=precompute.pk).update(
+                    season=season, status='computing', results={},
+                )
 
             from ..models import GameState
             game = GameState.objects.get(id=game_id)
             neighbors = list(game.neighbors.all())
             if not neighbors:
-                precompute.status = 'done'
-                precompute.save(update_fields=['status', 'updated_at'])
+                NeighborPrecompute.objects.filter(pk=precompute.pk).update(status='done')
                 return
 
             # 深拷贝避免线程间数据冲突
@@ -429,15 +428,14 @@ class NeighborService:
                     if result is not None:
                         results[str(nid)] = result
                     # 每完成一个就更新DB（供前端轮询状态）
-                    precompute.results = results
-                    precompute.save(update_fields=['results', 'updated_at'])
+                    # 用 queryset update 避免游戏被删除后 CASCADE 导致行消失时抛异常
+                    NeighborPrecompute.objects.filter(pk=precompute.pk).update(results=results)
                     logger.info("Precomputed neighbor %s for game %s season %s [%d/%d]",
                                 nid, game_id, season,
                                 len(results), len(neighbor_copies))
 
             # 标记完成
-            precompute.status = 'done'
-            precompute.save(update_fields=['status', 'updated_at'])
+            NeighborPrecompute.objects.filter(pk=precompute.pk).update(status='done')
             logger.info("Precompute done for game %s season %s: %d/%d succeeded",
                         game_id, season, len(results), len(neighbor_copies))
 

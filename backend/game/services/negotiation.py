@@ -1,6 +1,7 @@
 """谈判服务 — 地主兼并 / 兴建水利 / 隐匿土地 多轮谈判状态机"""
 import logging
 import random
+import threading
 
 from django.utils import timezone
 
@@ -12,6 +13,7 @@ from .ledger import (
     sync_county_gentry_land_ratio,
     sync_legacy_from_ledgers,
 )
+from .state import load_county_state, save_player_state
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -148,13 +150,17 @@ class NegotiationService:
             metadata=message_meta,
         )
 
-        # 2b. Extract promises from player message
+        # 2b. Extract promises from player message (run in background thread — non-blocking)
         if speaker_role == 'PLAYER':
             from .promise import PromiseService
-            try:
-                PromiseService.extract_and_save(game, session.agent, session, player_message)
-            except Exception as e:
-                logger.warning("Promise extraction failed (non-fatal): %s", e)
+
+            def _extract_promises():
+                try:
+                    PromiseService.extract_and_save(game, session.agent, session, player_message)
+                except Exception as e:
+                    logger.warning("Promise extraction failed (non-fatal): %s", e)
+
+            threading.Thread(target=_extract_promises, daemon=True).start()
 
         # 3. Build LLM context
         agent = session.agent
@@ -241,7 +247,7 @@ class NegotiationService:
         if resolved:
             # Refresh game to get updated treasury (save may have used different ref)
             game.refresh_from_db()
-            response['treasury'] = round(game.county_data.get('treasury', 0), 1)
+            response['treasury'] = round(load_county_state(game, refresh=True).get('treasury', 0), 1)
             if session.event_type == 'IRRIGATION':
                 response['contribution_offer'] = result.get('contribution_offer', 0)
 
@@ -334,9 +340,11 @@ class NegotiationService:
             client = LLMClient()
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
-            logger.error("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            raw = getattr(e, 'raw_content', '') or ''
+            dialogue = raw.strip()[:200] if raw and not raw.strip().startswith('{') else f'{session.agent.name}面色不善，沉默不语。'
             result = {
-                'dialogue': f'{session.agent.name}面色不善，沉默不语。',
+                'dialogue': dialogue,
                 'reasoning': f'LLM调用失败: {e}',
                 'attitude_change': 0,
                 'willingness_to_stop': 0.3,
@@ -399,9 +407,11 @@ class NegotiationService:
             client = LLMClient()
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
-            logger.error("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            raw = getattr(e, 'raw_content', '') or ''
+            dialogue = raw.strip()[:200] if raw and not raw.strip().startswith('{') else f'{session.agent.name}捻须不语，似在盘算。'
             result = {
-                'dialogue': f'{session.agent.name}捻须不语，似在盘算。',
+                'dialogue': dialogue,
                 'reasoning': f'LLM调用失败: {e}',
                 'attitude_change': 0,
                 'contribution_offer': 0,
@@ -465,9 +475,11 @@ class NegotiationService:
             client = LLMClient()
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
-            logger.error("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
+            raw = getattr(e, 'raw_content', '') or ''
+            dialogue = raw.strip()[:200] if raw and not raw.strip().startswith('{') else f'{session.agent.name}面色不善，沉默不语。'
             result = {
-                'dialogue': f'{session.agent.name}面色不善，沉默不语。',
+                'dialogue': dialogue,
                 'reasoning': f'LLM调用失败: {e}',
                 'attitude_change': 0,
                 'willingness_to_declare': 0.3,
@@ -625,12 +637,12 @@ class NegotiationService:
         """Build message list with negotiation history."""
         messages = [{'role': 'system', 'content': system_prompt}]
 
-        # Fetch recent negotiation dialogue
+        # Fetch recent negotiation dialogue (last 6 messages = 3 rounds of context)
         recent = DialogueMessage.objects.filter(
             game=game,
             agent=session.agent,
             metadata__negotiation_id=session.id,
-        ).order_by('-created_at')[:20]
+        ).order_by('-created_at')[:6]
 
         # Exclude the player message we just saved (the latest one)
         history_msgs = list(reversed(recent))[:-1]
@@ -702,7 +714,7 @@ class NegotiationService:
     def _apply_annexation_outcome(cls, session, outcome):
         """Apply annexation outcome to game state."""
         game = session.game
-        county = game.county_data
+        county = load_county_state(game)
         ensure_county_ledgers(county)
         agent = session.agent
         village_name = agent.attributes.get('village_name', '')
@@ -752,8 +764,7 @@ class NegotiationService:
                 break
 
         sync_county_gentry_land_ratio(county)
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         desc = (f'{village_name}地主{agent.name}兼并谈判结束：'
                 f'{"继续兼并" if decision == "proceed_annexation" else "停止兼并"}'
@@ -778,7 +789,7 @@ class NegotiationService:
     def _apply_hidden_land_outcome(cls, session, outcome):
         """Apply hidden land negotiation outcome to game state (doc 06a §2.4)."""
         game = session.game
-        county = game.county_data
+        county = load_county_state(game)
         ensure_county_ledgers(county)
         agent = session.agent
         village_name = agent.attributes.get('village_name', '')
@@ -824,8 +835,7 @@ class NegotiationService:
                 break
 
         sync_county_gentry_land_ratio(county)
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         method = '主动申报' if decision == 'declare_all' else '强制清丈'
         desc = (f'{village_name}地主{agent.name}隐匿土地交涉结束：'
@@ -848,7 +858,7 @@ class NegotiationService:
     def _apply_irrigation_outcome(cls, session, outcome):
         """Apply irrigation outcome to game state."""
         game = session.game
-        county = game.county_data
+        county = load_county_state(game)
         agent = session.agent
         decision = outcome.get('final_decision', 'refuse')
         contribution = outcome.get('contribution_offer', 0)
@@ -887,8 +897,7 @@ class NegotiationService:
                 agent.attributes = attrs
                 agent.save(update_fields=['attributes'])
 
-        game.county_data = county
-        game.save()
+        save_player_state(game, county)
 
         desc = (f'{agent.attributes.get("village_name", "")}地主{agent.name}'
                 f'水利协商结束：{"同意出资" + str(contribution) + "两" if decision == "accept" else "拒绝出资"}')

@@ -7,6 +7,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from game.models import GameState, PlayerProfile
+from game.services.state import load_county_state
 from game.services.agent import AgentService
 from game.services.constants import MAX_MONTH
 from game.services.county import CountyService
@@ -139,7 +140,7 @@ def test_representative_sampling_prefers_high_impact_village():
 @pytest.mark.django_db
 def test_generate_reviews_fallback_keeps_role_comment_shape(monkeypatch):
     game = _create_completed_game_with_agents()
-    county = game.county_data
+    county = load_county_state(game)
     context = _build_review_context(game)
     fallback = [
         {"role": "知府", "comment": "账目清楚，执行稳定，可托大任。"},

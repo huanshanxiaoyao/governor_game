@@ -7,9 +7,12 @@ from .constants import (
     COUNTY_TYPES,
     CORVEE_PER_CAPITA,
     MAX_MONTH,
+    month_name,
+    month_of_year,
     year_of,
 )
 from .llm_role_reviews import LLMRoleReviewService
+from .state import load_county_state
 
 
 class SummaryMixin:
@@ -20,8 +23,20 @@ class SummaryMixin:
         """Generate end-game summary stats."""
         total_pop = sum(v["population"] for v in county["villages"])
         total_farmland = sum(v["farmland"] for v in county["villages"])
+        term_end_reason = county.get("term_end_reason", "TERM_COMPLETE")
+        # 升迁专属结局信息
+        promotion_info = None
+        if term_end_reason == "PROMOTED_TO_PREFECT":
+            track = county.get("career_track", {})
+            event = track.get("promotion_event", {})
+            promotion_info = {
+                "vacancy_prefecture": event.get("vacancy_prefecture", "某府"),
+                "result_reason": event.get("result_reason", ""),
+            }
         return {
             "final_month": MAX_MONTH,
+            "term_end_reason": term_end_reason,
+            "promotion_info": promotion_info,
             "total_population": total_pop,
             "total_farmland": total_farmland,
             "treasury": round(county["treasury"], 1),
@@ -201,6 +216,32 @@ class SummaryMixin:
         return agri_tax + corvee_tax + annual_commercial_tax
 
     @classmethod
+    def _build_term_window(cls, settlement_rows, fallback_final_season=None):
+        snapshot_seasons = []
+        for row in settlement_rows or []:
+            data = row.get("data") or {}
+            if not data.get("monthly_snapshot"):
+                continue
+            try:
+                season = int(row.get("season") or 0)
+            except (TypeError, ValueError):
+                season = 0
+            if season > 0:
+                snapshot_seasons.append(season)
+
+        final_season = max(snapshot_seasons) if snapshot_seasons else int(
+            fallback_final_season if fallback_final_season is not None else MAX_MONTH
+        )
+        final_season = max(1, min(MAX_MONTH, final_season))
+        return {
+            "final_season": final_season,
+            "final_year": year_of(final_season),
+            "final_label": month_name(final_season),
+            "ended_early": final_season < MAX_MONTH,
+            "partial_final_year": month_of_year(final_season) != 12,
+        }
+
+    @classmethod
     def _build_neighbor_governor_score_benchmark(
         cls, player_term, neighbor_term_metrics, player_exposure,
     ):
@@ -349,23 +390,33 @@ class SummaryMixin:
             v.get("name"): v for v in initial_villages if v.get("name")
         }
 
+        settlement_logs = list(EventLog.objects.filter(
+            game=game, category="SETTLEMENT", season__lte=MAX_MONTH,
+        ).order_by("season").values("season", "data"))
+        term_window = cls._build_term_window(
+            settlement_logs,
+            fallback_final_season=game.current_season - 1,
+        )
+        actual_final_season = term_window["final_season"]
+        legacy["final_month"] = actual_final_season
+
         # Yearly snapshots/autumn reports + monthly trends from settlement logs
-        yearly = {1: {}, 2: {}, 3: {}}
+        yearly = {year: {} for year in range(1, term_window["final_year"] + 1)}
         monthly_trends = []
         first_month_snapshot = None
         last_month_snapshot = None
-        settlement_logs = EventLog.objects.filter(
-            game=game, category="SETTLEMENT", season__lte=MAX_MONTH,
-        ).order_by("season").values("season", "data")
         for row in settlement_logs:
-            data = row.get("data") or {}
             season = row["season"]
+            if season > actual_final_season:
+                continue
+            data = row.get("data") or {}
             if data.get("monthly_snapshot"):
                 snap = data["monthly_snapshot"]
                 monthly_trends.append(snap)
+                yearly.setdefault(year_of(season), {})["period_end_snapshot"] = snap
                 if season == 1:
                     first_month_snapshot = snap
-                if season == MAX_MONTH:
+                if season == actual_final_season:
                     last_month_snapshot = snap
             if data.get("autumn"):
                 y = year_of(season)
@@ -381,6 +432,7 @@ class SummaryMixin:
 
         initial_snap = county.get("initial_snapshot") or {}
         first_winter = yearly.get(1, {}).get("winter_snapshot") or {}
+        final_snapshot = last_month_snapshot or {}
 
         initial_population = (
             sum(v.get("population", 0) for v in initial_villages)
@@ -390,12 +442,19 @@ class SummaryMixin:
             sum(v.get("farmland", 0) for v in initial_villages)
             if initial_villages else first_winter.get("total_farmland", final_farmland)
         )
+        final_pop = int(cls._safe_float(final_snapshot.get("total_population"), final_pop))
+        final_farmland = int(cls._safe_float(final_snapshot.get("total_farmland"), final_farmland))
+        final_treasury = cls._safe_float(final_snapshot.get("treasury"), legacy["treasury"])
+        final_morale = cls._safe_float(final_snapshot.get("morale"), legacy["morale"])
+        final_security = cls._safe_float(final_snapshot.get("security"), legacy["security"])
+        final_commercial = cls._safe_float(final_snapshot.get("commercial"), legacy["commercial"])
+        final_education = cls._safe_float(final_snapshot.get("education"), legacy["education"])
         # Use initial_snapshot for county-level baselines, fall back to winter-1
-        initial_treasury = initial_snap.get("treasury", first_winter.get("treasury", legacy["treasury"]))
-        baseline_morale = initial_snap.get("morale", first_winter.get("morale", legacy["morale"]))
-        baseline_security = initial_snap.get("security", first_winter.get("security", legacy["security"]))
-        baseline_commercial = initial_snap.get("commercial", first_winter.get("commercial", legacy["commercial"]))
-        baseline_education = initial_snap.get("education", first_winter.get("education", legacy["education"]))
+        initial_treasury = initial_snap.get("treasury", first_winter.get("treasury", final_treasury))
+        baseline_morale = initial_snap.get("morale", first_winter.get("morale", final_morale))
+        baseline_security = initial_snap.get("security", first_winter.get("security", final_security))
+        baseline_commercial = initial_snap.get("commercial", first_winter.get("commercial", final_commercial))
+        baseline_education = initial_snap.get("education", first_winter.get("education", final_education))
 
         y1_tax = cls._expected_tax_total_from_snapshot(first_month_snapshot, county)
         y3_tax = cls._expected_tax_total_from_snapshot(last_month_snapshot, county)
@@ -404,11 +463,11 @@ class SummaryMixin:
             tax_growth_ratio = y3_tax / y1_tax
 
         pop_change_pct = cls._pct_change(initial_population, final_pop) or 0
-        treasury_delta = round(legacy["treasury"] - initial_treasury, 1)
-        morale_delta = round(legacy["morale"] - baseline_morale, 1)
-        security_delta = round(legacy["security"] - baseline_security, 1)
-        commercial_delta = round(legacy["commercial"] - baseline_commercial, 1)
-        education_delta = round(legacy["education"] - baseline_education, 1)
+        treasury_delta = round(final_treasury - initial_treasury, 1)
+        morale_delta = round(final_morale - baseline_morale, 1)
+        security_delta = round(final_security - baseline_security, 1)
+        commercial_delta = round(final_commercial - baseline_commercial, 1)
+        education_delta = round(final_education - baseline_education, 1)
         tax_growth_pct = None
         if tax_growth_ratio is not None:
             tax_growth_pct = round((tax_growth_ratio - 1) * 100, 1)
@@ -423,7 +482,7 @@ class SummaryMixin:
             nlogs = NeighborEventLog.objects.filter(
                 neighbor_county_id__in=neighbor_ids,
                 event_type="season_snapshot",
-                season__lte=MAX_MONTH,
+                season__lte=actual_final_season,
             ).order_by("neighbor_county_id", "season").values(
                 "neighbor_county_id", "season", "data",
             )
@@ -443,27 +502,38 @@ class SummaryMixin:
             n_init_snap = n_county.get("initial_snapshot") or {}
             n_init_villages = n_county.get("initial_villages") or []
             n_final_villages = n_county.get("villages") or []
+            n_last_snapshot = None
 
             n_initial_pop = (
                 sum(v.get("population", 0) for v in n_init_villages)
                 if n_init_villages else sum(v.get("population", 0) for v in n_final_villages)
             )
-            n_final_pop = sum(v.get("population", 0) for v in n_final_villages)
-            n_pop_change_pct = cls._pct_change(n_initial_pop, n_final_pop)
+            n_final_pop_fallback = sum(v.get("population", 0) for v in n_final_villages)
 
-            n_morale_delta = cls._safe_float(n_county.get("morale")) - cls._safe_float(
+            n_morale_delta = None
+            n_security_delta = None
+            n_commercial_delta = None
+            n_education_delta = None
+            n_treasury_delta = None
+            n_final_morale = None
+            n_final_security = None
+            n_final_commercial = None
+            n_final_education = None
+            n_final_treasury = None
+
+            n_morale_base = cls._safe_float(
                 n_init_snap.get("morale", n_county.get("morale")),
             )
-            n_security_delta = cls._safe_float(n_county.get("security")) - cls._safe_float(
+            n_security_base = cls._safe_float(
                 n_init_snap.get("security", n_county.get("security")),
             )
-            n_commercial_delta = cls._safe_float(n_county.get("commercial")) - cls._safe_float(
+            n_commercial_base = cls._safe_float(
                 n_init_snap.get("commercial", n_county.get("commercial")),
             )
-            n_education_delta = cls._safe_float(n_county.get("education")) - cls._safe_float(
+            n_education_base = cls._safe_float(
                 n_init_snap.get("education", n_county.get("education")),
             )
-            n_treasury_delta = cls._safe_float(n_county.get("treasury")) - cls._safe_float(
+            n_treasury_base = cls._safe_float(
                 n_init_snap.get("treasury", n_county.get("treasury")),
             )
 
@@ -474,9 +544,11 @@ class SummaryMixin:
             for row in neighbor_logs_by_id.get(n["id"], []):
                 data = row.get("data") or {}
                 snap = data.get("monthly_snapshot") or {}
+                if snap:
+                    n_last_snapshot = snap
                 if row["season"] == 1:
                     n_y1_tax = cls._expected_tax_total_from_snapshot(snap, n_county)
-                elif row["season"] == MAX_MONTH:
+                elif row["season"] == actual_final_season:
                     n_y3_tax = cls._expected_tax_total_from_snapshot(snap, n_county)
                 dis = data.get("disaster_before_settlement") or {}
                 if dis:
@@ -488,6 +560,37 @@ class SummaryMixin:
             n_tax_growth_pct = None
             if n_y1_tax not in (None, 0) and n_y3_tax is not None:
                 n_tax_growth_pct = (n_y3_tax / n_y1_tax - 1) * 100
+
+            n_final_pop = cls._safe_float(
+                (n_last_snapshot or {}).get("total_population"),
+                n_final_pop_fallback,
+            )
+            n_final_treasury = cls._safe_float(
+                (n_last_snapshot or {}).get("treasury"),
+                n_county.get("treasury"),
+            )
+            n_final_morale = cls._safe_float(
+                (n_last_snapshot or {}).get("morale"),
+                n_county.get("morale"),
+            )
+            n_final_security = cls._safe_float(
+                (n_last_snapshot or {}).get("security"),
+                n_county.get("security"),
+            )
+            n_final_commercial = cls._safe_float(
+                (n_last_snapshot or {}).get("commercial"),
+                n_county.get("commercial"),
+            )
+            n_final_education = cls._safe_float(
+                (n_last_snapshot or {}).get("education"),
+                n_county.get("education"),
+            )
+            n_pop_change_pct = cls._pct_change(n_initial_pop, n_final_pop)
+            n_morale_delta = n_final_morale - n_morale_base
+            n_security_delta = n_final_security - n_security_base
+            n_commercial_delta = n_final_commercial - n_commercial_base
+            n_education_delta = n_final_education - n_education_base
+            n_treasury_delta = n_final_treasury - n_treasury_base
 
             neighbor_term_metrics.append({
                 "neighbor_id": n["id"],
@@ -501,10 +604,10 @@ class SummaryMixin:
                 "commercial_delta": n_commercial_delta,
                 "education_delta": n_education_delta,
                 "treasury_delta": n_treasury_delta,
-                "final_morale": cls._safe_float(n_county.get("morale"), 50),
-                "final_security": cls._safe_float(n_county.get("security"), 50),
-                "final_commercial": cls._safe_float(n_county.get("commercial"), 50),
-                "final_education": cls._safe_float(n_county.get("education"), 50),
+                "final_morale": n_final_morale,
+                "final_security": n_final_security,
+                "final_commercial": n_final_commercial,
+                "final_education": n_final_education,
                 "disaster_count": disaster_count_for_neighbor,
                 "exposure": exposure,
                 # Optional for future neighbor-specific social modeling.
@@ -600,11 +703,11 @@ class SummaryMixin:
         )
 
         disaster_rows = list(EventLog.objects.filter(
-            game=game, category="DISASTER", season__lte=MAX_MONTH,
+            game=game, category="DISASTER", season__lte=actual_final_season,
         ).values("season", "data"))
         disaster_count = len(disaster_rows)
         annexation_count = EventLog.objects.filter(
-            game=game, category="ANNEXATION", season__lte=MAX_MONTH,
+            game=game, category="ANNEXATION", season__lte=actual_final_season,
         ).count()
         broken_promises = Promise.objects.filter(game=game, status="BROKEN").count()
 
@@ -661,6 +764,39 @@ class SummaryMixin:
         )
         grade, outcome = cls._grade_and_outcome(overall_score)
 
+        # ── 中途革退检测 ──────────────────────────────────────────────────────
+        emergency = county.get('emergency', {})
+        player_status = emergency.get('player_status', 'ACTIVE')
+        term_end_reason = county.get('term_end_reason', '')
+        is_dismissed = player_status == 'DISMISSED'
+
+        if is_dismissed:
+            overall_score = round(min(overall_score, 30.0), 1)
+            grade = "不合格"
+            outcome = "任期中止·革退原任"
+
+        # 构建革退原因文字
+        dismissal_reason = ''
+        dismissal_season = None
+        if is_dismissed:
+            if term_end_reason == 'ANNUAL_REVIEW_DISMISSED':
+                dismissal_reason = '年度考评被认定失职，巡抚下令革退'
+                # 附加任内重大事件背景（如暴动）
+                riot = emergency.get('riot', {})
+                if riot.get('start_season'):
+                    riot_season = int(riot['start_season'])
+                    riot_source = riot.get('source', '')
+                    source_label = '连锁暴动' if riot_source == 'chain' else '农民暴动'
+                    dismissal_reason += f'（任内第{riot_season}月曾爆发{source_label}，引发后续失治）'
+            else:
+                takeover = emergency.get('prefect_takeover', {})
+                if takeover.get('final_decision') == 'DISMISSED':
+                    dismissal_season = int(takeover.get('start_season') or game.current_season)
+                    dismissal_reason = f'第{dismissal_season}月暴动，知府裁定革职免任'
+                else:
+                    dismissal_reason = '被革退原任'
+        # ─────────────────────────────────────────────────────────────────────
+
         style_tags = []
         if player is not None:
             if player.integrity >= 65:
@@ -669,11 +805,11 @@ class SummaryMixin:
                 style_tags.append("能吏型")
             if player.popularity >= 65:
                 style_tags.append("圆融型")
-        if legacy["commercial"] >= 60:
+        if final_commercial >= 60:
             style_tags.append("重商兴县")
-        if legacy["education"] >= 50:
+        if final_education >= 50:
             style_tags.append("教化渐成")
-        if legacy["security"] >= 60:
+        if final_security >= 60:
             style_tags.append("治安稳控")
         if not style_tags:
             style_tags.append("务实守成")
@@ -756,12 +892,14 @@ class SummaryMixin:
 
         # Yearly report sections
         yearly_reports = []
-        for year in (1, 2, 3):
+        for year in range(1, term_window["final_year"] + 1):
             info = yearly.get(year, {})
             winter = info.get("winter_snapshot") or {}
+            period_end_snapshot = info.get("period_end_snapshot") or {}
+            display_snapshot = winter or period_end_snapshot
             autumn = info.get("autumn") or {}
             start_season = (year - 1) * 12 + 1
-            end_season = year * 12
+            end_season = min(year * 12, actual_final_season)
             event_rows = EventLog.objects.filter(
                 game=game, season__gte=start_season, season__lte=end_season,
             ).exclude(category="SETTLEMENT").order_by("season").values(
@@ -775,17 +913,28 @@ class SummaryMixin:
                 }
                 for r in event_rows
             ]
-            if winter:
+            is_partial_year = (
+                year == term_window["final_year"] and term_window["partial_final_year"]
+            )
+            if display_snapshot:
                 summary_text = (
-                    f"年末县库{winter.get('treasury', 0)}两，"
-                    f"民心{winter.get('morale', 0)}，"
-                    f"治安{winter.get('security', 0)}。"
+                    f"任止于{term_window['final_label']}时，县库{display_snapshot.get('treasury', 0)}两，"
+                    f"民心{display_snapshot.get('morale', 0)}，"
+                    f"治安{display_snapshot.get('security', 0)}。"
+                    if is_partial_year
+                    else (
+                        f"年末县库{display_snapshot.get('treasury', 0)}两，"
+                        f"民心{display_snapshot.get('morale', 0)}，"
+                        f"治安{display_snapshot.get('security', 0)}。"
+                    )
                 )
             else:
                 summary_text = "缺少完整年终快照。"
             yearly_reports.append({
                 "year": year,
+                "label": f"第{year}年（未满）" if is_partial_year else f"第{year}年",
                 "winter_snapshot": winter,
+                "period_end_snapshot": display_snapshot,
                 "autumn": autumn,
                 "key_events": key_events,
                 "summary_text": summary_text,
@@ -851,7 +1000,7 @@ class SummaryMixin:
                 "role": "百姓口碑",
                 "comment": (
                     "日子比前些年安稳。"
-                    if legacy["morale"] >= 55
+                    if final_morale >= 55
                     else "百姓仍有怨气，教化与减负要并举。"
                 ),
             },
@@ -885,23 +1034,59 @@ class SummaryMixin:
             fallback_reviews=fallback_peer_reviews,
         )
 
-        headline = (
-            f"{county.get('county_type_name', '')}三年述职：{style_tags[0]}"
-            if county.get("county_type_name")
-            else f"三年述职：{style_tags[0]}"
-        )
-        narrative = (
-            f"任内县库{treasury_delta:+.1f}两，民心{morale_delta:+.1f}，"
-            f"治安{security_delta:+.1f}，结果分{result_score:.1f}，"
-            f"基建分{infra_score_adjusted:.1f}（消偏系数×{disaster_multiplier:.3f}），"
-            f"主观加成×{subjective_bonus:.2f}，"
-            f"综合评分{overall_score}（{grade}）。"
-        )
+        if is_dismissed:
+            county_name = county.get('county_type_name', '')
+            headline = (
+                f"{county_name}任期中止述职：{dismissal_reason}"
+                if county_name else f"任期中止述职：{dismissal_reason}"
+            )
+            narrative = (
+                f"【革退原任】{dismissal_reason}。"
+                f"任内县库{treasury_delta:+.1f}两，民心{morale_delta:+.1f}，"
+                f"治安{security_delta:+.1f}，"
+                f"综合评分{overall_score}（{grade}），任期提前终止。"
+            )
+        else:
+            headline = (
+                f"{county.get('county_type_name', '')}三年述职：{style_tags[0]}"
+                if county.get("county_type_name")
+                else f"三年述职：{style_tags[0]}"
+            )
+            narrative = (
+                f"任内县库{treasury_delta:+.1f}两，民心{morale_delta:+.1f}，"
+                f"治安{security_delta:+.1f}，结果分{result_score:.1f}，"
+                f"基建分{infra_score_adjusted:.1f}（消偏系数×{disaster_multiplier:.3f}），"
+                f"主观加成×{subjective_bonus:.2f}，"
+                f"综合评分{overall_score}（{grade}）。"
+            )
+
+        term_note = ""
+        if term_window["ended_early"]:
+            if dismissal_reason:
+                term_note = (
+                    f"任止于{term_window['final_label']}，{dismissal_reason}。"
+                    "以下述职仅统计实际在任月份。"
+                )
+            else:
+                term_note = (
+                    f"任止于{term_window['final_label']}。以下述职仅统计实际在任月份。"
+                )
+            if not is_dismissed:
+                county_name = county.get("county_type_name", "")
+                headline = (
+                    f"{county_name}任内述职（截至{term_window['final_label']}）：{style_tags[0]}"
+                    if county_name
+                    else f"任内述职（截至{term_window['final_label']}）：{style_tags[0]}"
+                )
 
         return {
             "meta": {
                 "game_id": game.id,
-                "final_month": MAX_MONTH,
+                "final_month": actual_final_season,
+                "end_reason": "dismissed" if is_dismissed else "completed",
+                "dismissal_reason": dismissal_reason,
+                "ended_early": term_window["ended_early"],
+                "term_note": term_note,
                 "county_type": county.get("county_type", ""),
                 "county_type_name": county.get("county_type_name", ""),
                 "baseline_note": (
@@ -956,7 +1141,7 @@ class SummaryMixin:
                     "label": "县库",
                     "unit": "两",
                     "initial": round(initial_treasury, 1),
-                    "final": round(legacy["treasury"], 1),
+                    "final": round(final_treasury, 1),
                     "delta": treasury_delta,
                 },
                 {
@@ -981,7 +1166,7 @@ class SummaryMixin:
                     "label": "民心",
                     "unit": "",
                     "initial": round(baseline_morale, 1),
-                    "final": round(legacy["morale"], 1),
+                    "final": round(final_morale, 1),
                     "delta": morale_delta,
                 },
                 {
@@ -989,7 +1174,7 @@ class SummaryMixin:
                     "label": "治安",
                     "unit": "",
                     "initial": round(baseline_security, 1),
-                    "final": round(legacy["security"], 1),
+                    "final": round(final_security, 1),
                     "delta": security_delta,
                 },
                 {
@@ -997,7 +1182,7 @@ class SummaryMixin:
                     "label": "商业",
                     "unit": "",
                     "initial": round(baseline_commercial, 1),
-                    "final": round(legacy["commercial"], 1),
+                    "final": round(final_commercial, 1),
                     "delta": commercial_delta,
                 },
                 {
@@ -1005,7 +1190,7 @@ class SummaryMixin:
                     "label": "文教",
                     "unit": "",
                     "initial": round(baseline_education, 1),
-                    "final": round(legacy["education"], 1),
+                    "final": round(final_education, 1),
                     "delta": education_delta,
                 },
                 {
@@ -1056,7 +1241,17 @@ class SummaryMixin:
         }
         initial_snap = county.get("initial_snapshot") or {}
 
-        yearly = {1: {}, 2: {}, 3: {}}
+        player_settlement_logs = list(EventLog.objects.filter(
+            game=game, category="SETTLEMENT", season__lte=MAX_MONTH,
+        ).order_by("season").values("season", "data"))
+        term_window = cls._build_term_window(
+            player_settlement_logs,
+            fallback_final_season=game.current_season - 1,
+        )
+        actual_final_season = term_window["final_season"]
+        legacy["final_month"] = actual_final_season
+
+        yearly = {year: {} for year in range(1, term_window["final_year"] + 1)}
         monthly_trends = []
         first_month_snapshot = None
         last_month_snapshot = None
@@ -1072,7 +1267,7 @@ class SummaryMixin:
         nlogs = list(NeighborEventLog.objects.filter(
             neighbor_county=neighbor,
             event_type="season_snapshot",
-            season__lte=MAX_MONTH,
+            season__lte=actual_final_season,
         ).order_by("season").values("season", "data"))
         for row in nlogs:
             data = row.get("data") or {}
@@ -1080,9 +1275,10 @@ class SummaryMixin:
             snap = data.get("monthly_snapshot")
             if snap:
                 monthly_trends.append(snap)
+                yearly.setdefault(year_of(season), {})["period_end_snapshot"] = snap
                 if season == 1:
                     first_month_snapshot = snap
-                if season == MAX_MONTH:
+                if season == actual_final_season:
                     last_month_snapshot = snap
             autumn = data.get("autumn")
             if autumn:
@@ -1105,6 +1301,7 @@ class SummaryMixin:
             last_month_snapshot = monthly_trends[-1]
 
         first_winter = yearly.get(1, {}).get("winter_snapshot") or {}
+        final_snapshot = last_month_snapshot or {}
         initial_population = (
             sum(v.get("population", 0) for v in initial_villages)
             if initial_villages else first_winter.get("total_population", final_pop)
@@ -1113,11 +1310,19 @@ class SummaryMixin:
             sum(v.get("farmland", 0) for v in initial_villages)
             if initial_villages else first_winter.get("total_farmland", final_farmland)
         )
-        initial_treasury = initial_snap.get("treasury", first_winter.get("treasury", legacy["treasury"]))
-        baseline_morale = initial_snap.get("morale", first_winter.get("morale", legacy["morale"]))
-        baseline_security = initial_snap.get("security", first_winter.get("security", legacy["security"]))
-        baseline_commercial = initial_snap.get("commercial", first_winter.get("commercial", legacy["commercial"]))
-        baseline_education = initial_snap.get("education", first_winter.get("education", legacy["education"]))
+        final_pop = int(cls._safe_float(final_snapshot.get("total_population"), final_pop))
+        final_farmland = int(cls._safe_float(final_snapshot.get("total_farmland"), final_farmland))
+        final_treasury = cls._safe_float(final_snapshot.get("treasury"), legacy["treasury"])
+        final_morale = cls._safe_float(final_snapshot.get("morale"), legacy["morale"])
+        final_security = cls._safe_float(final_snapshot.get("security"), legacy["security"])
+        final_commercial = cls._safe_float(final_snapshot.get("commercial"), legacy["commercial"])
+        final_education = cls._safe_float(final_snapshot.get("education"), legacy["education"])
+
+        initial_treasury = initial_snap.get("treasury", first_winter.get("treasury", final_treasury))
+        baseline_morale = initial_snap.get("morale", first_winter.get("morale", final_morale))
+        baseline_security = initial_snap.get("security", first_winter.get("security", final_security))
+        baseline_commercial = initial_snap.get("commercial", first_winter.get("commercial", final_commercial))
+        baseline_education = initial_snap.get("education", first_winter.get("education", final_education))
 
         y1_tax = cls._expected_tax_total_from_snapshot(first_month_snapshot, county)
         y3_tax = cls._expected_tax_total_from_snapshot(last_month_snapshot, county)
@@ -1126,17 +1331,17 @@ class SummaryMixin:
             tax_growth_ratio = y3_tax / y1_tax
 
         pop_change_pct = cls._pct_change(initial_population, final_pop) or 0
-        treasury_delta = round(legacy["treasury"] - initial_treasury, 1)
-        morale_delta = round(legacy["morale"] - baseline_morale, 1)
-        security_delta = round(legacy["security"] - baseline_security, 1)
-        commercial_delta = round(legacy["commercial"] - baseline_commercial, 1)
-        education_delta = round(legacy["education"] - baseline_education, 1)
+        treasury_delta = round(final_treasury - initial_treasury, 1)
+        morale_delta = round(final_morale - baseline_morale, 1)
+        security_delta = round(final_security - baseline_security, 1)
+        commercial_delta = round(final_commercial - baseline_commercial, 1)
+        education_delta = round(final_education - baseline_education, 1)
         tax_growth_pct = None
         if tax_growth_ratio is not None:
             tax_growth_pct = round((tax_growth_ratio - 1) * 100, 1)
 
         # Reuse the same benchmark pipeline as player summary (computed on-demand each click).
-        player_summary = cls._generate_summary_v2(game, game.county_data)
+        player_summary = cls._generate_summary_v2(game, load_county_state(game))
         bench_rows = player_summary.get("governor_score_benchmark", [])
         score_row = next(
             (row for row in bench_rows if row.get("neighbor_id") == neighbor.id),
@@ -1148,12 +1353,14 @@ class SummaryMixin:
         outcome = score_row.get("outcome") or cls._grade_and_outcome(comprehensive_score)[1]
 
         yearly_reports = []
-        for year in (1, 2, 3):
+        for year in range(1, term_window["final_year"] + 1):
             info = yearly.get(year, {})
             winter = info.get("winter_snapshot") or {}
+            period_end_snapshot = info.get("period_end_snapshot") or {}
+            display_snapshot = winter or period_end_snapshot
             autumn = info.get("autumn") or {}
             start_season = (year - 1) * 12 + 1
-            end_season = year * 12
+            end_season = min(year * 12, actual_final_season)
             event_rows = NeighborEventLog.objects.filter(
                 neighbor_county=neighbor,
                 season__gte=start_season,
@@ -1169,17 +1376,28 @@ class SummaryMixin:
                 }
                 for r in event_rows
             ]
-            if winter:
+            is_partial_year = (
+                year == term_window["final_year"] and term_window["partial_final_year"]
+            )
+            if display_snapshot:
                 summary_text = (
-                    f"年末县库{winter.get('treasury', 0)}两，"
-                    f"民心{winter.get('morale', 0)}，"
-                    f"治安{winter.get('security', 0)}。"
+                    f"任止于{term_window['final_label']}时，县库{display_snapshot.get('treasury', 0)}两，"
+                    f"民心{display_snapshot.get('morale', 0)}，"
+                    f"治安{display_snapshot.get('security', 0)}。"
+                    if is_partial_year
+                    else (
+                        f"年末县库{display_snapshot.get('treasury', 0)}两，"
+                        f"民心{display_snapshot.get('morale', 0)}，"
+                        f"治安{display_snapshot.get('security', 0)}。"
+                    )
                 )
             else:
                 summary_text = "缺少完整年终快照。"
             yearly_reports.append({
                 "year": year,
+                "label": f"第{year}年（未满）" if is_partial_year else f"第{year}年",
                 "winter_snapshot": winter,
+                "period_end_snapshot": display_snapshot,
                 "autumn": autumn,
                 "key_events": key_events,
                 "summary_text": summary_text,
@@ -1187,7 +1405,7 @@ class SummaryMixin:
 
         recent_rows = NeighborEventLog.objects.filter(
             neighbor_county=neighbor,
-            season__lte=MAX_MONTH,
+            season__lte=actual_final_season,
         ).exclude(event_type="season_snapshot").order_by("-season", "-id").values(
             "season", "category", "description",
         )[:12]
@@ -1274,7 +1492,12 @@ class SummaryMixin:
                 "has_school": v.get("has_school", False),
             })
 
-        title = f"{neighbor.county_name}·{neighbor.governor_name}知县任期述职"
+        title = (
+            f"{neighbor.county_name}·{neighbor.governor_name}知县任内述职"
+            f"（截至{term_window['final_label']}）"
+            if term_window["ended_early"]
+            else f"{neighbor.county_name}·{neighbor.governor_name}知县任期述职"
+        )
         narrative = (
             f"任内县库{treasury_delta:+.1f}两，民心{morale_delta:+.1f}，"
             f"治安{security_delta:+.1f}，综合分{comprehensive_score:.1f}（{grade}）。"
@@ -1284,7 +1507,8 @@ class SummaryMixin:
             "meta": {
                 "game_id": game.id,
                 "neighbor_id": neighbor.id,
-                "final_month": MAX_MONTH,
+                "final_month": actual_final_season,
+                "ended_early": term_window["ended_early"],
                 "generated_mode": "on_demand",
             },
             "governor": {
@@ -1321,7 +1545,7 @@ class SummaryMixin:
                     "label": "县库",
                     "unit": "两",
                     "initial": round(initial_treasury, 1),
-                    "final": round(legacy["treasury"], 1),
+                    "final": round(final_treasury, 1),
                     "delta": treasury_delta,
                 },
                 {
@@ -1338,7 +1562,7 @@ class SummaryMixin:
                     "label": "民心",
                     "unit": "",
                     "initial": round(baseline_morale, 1),
-                    "final": round(legacy["morale"], 1),
+                    "final": round(final_morale, 1),
                     "delta": morale_delta,
                 },
                 {
@@ -1346,7 +1570,7 @@ class SummaryMixin:
                     "label": "治安",
                     "unit": "",
                     "initial": round(baseline_security, 1),
-                    "final": round(legacy["security"], 1),
+                    "final": round(final_security, 1),
                     "delta": security_delta,
                 },
                 {
@@ -1354,7 +1578,7 @@ class SummaryMixin:
                     "label": "商业",
                     "unit": "",
                     "initial": round(baseline_commercial, 1),
-                    "final": round(legacy["commercial"], 1),
+                    "final": round(final_commercial, 1),
                     "delta": commercial_delta,
                 },
                 {
@@ -1362,7 +1586,7 @@ class SummaryMixin:
                     "label": "文教",
                     "unit": "",
                     "initial": round(baseline_education, 1),
-                    "final": round(legacy["education"], 1),
+                    "final": round(final_education, 1),
                     "delta": education_delta,
                 },
                 {

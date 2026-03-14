@@ -19,6 +19,7 @@ from .officialdom_constants import (
     POSITION_SPECS,
     PROVINCE_DISPLAY_NAMES,
 )
+from .state import load_county_state, save_player_state
 
 logger = logging.getLogger('game')
 
@@ -85,6 +86,10 @@ class OfficialdomService:
 
         # 12. 在 county_data 中记录行政归属
         cls._assign_admin_location(game, player_province, player_prefecture)
+
+        # 13. 县内地主与上层官员的动态强联系
+        from .agent import AgentService
+        AgentService.initialize_official_ties(game)
 
         logger.info("官场体系初始化完成: game=%s, archetype=%s, officials=%d",
                      game.id, archetype, len(officials) + 1)
@@ -596,13 +601,12 @@ class OfficialdomService:
     @staticmethod
     def _assign_admin_location(game, province='某省', prefecture='某府'):
         """在 county_data 中记录行政归属信息"""
-        county_data = game.county_data
+        county_data = load_county_state(game)
         county_data['admin_location'] = {
             'province': province,
             'prefecture': prefecture,
         }
-        game.county_data = county_data
-        game.save(update_fields=['county_data'])
+        save_player_state(game, county_data)
 
     # ------------------------------------------------------------------
     # 查询接口（供 API 使用）
@@ -702,7 +706,7 @@ class OfficialdomService:
         factions = Faction.objects.filter(game=game).select_related('leader')
 
         # 玩家所在省
-        player_province = game.county_data.get('admin_location', {}).get('province', '')
+        player_province = load_county_state(game).get('admin_location', {}).get('province', '')
 
         return {
             'monarch_profile': monarch_profile,
