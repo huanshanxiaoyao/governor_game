@@ -40,6 +40,7 @@ from .services.annual_review import AnnualReviewService
 from .services.bribery import BriberyService
 from .services.career_track import CareerTrackService
 from .services.constants import MAX_MONTH
+from .services.magistrate_service import MagistrateService
 from .services.new_term import NewTermService, TERMINAL_REASONS
 from .services.promotion_event import PromotionEventService
 from .services.state import load_county_state, save_player_state
@@ -142,7 +143,6 @@ class GameListCreateView(APIView):
 
         # Create player profile with background-specific defaults
         import random as _random
-        from .services.magistrate_service import MagistrateService
         defaults = PlayerProfile.BACKGROUND_DEFAULTS[background]
         WEALTH_START = {
             'HUMBLE':  (_random.uniform(10, 30)),

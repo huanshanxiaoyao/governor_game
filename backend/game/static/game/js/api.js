@@ -22,7 +22,18 @@
       opts.body = JSON.stringify(body);
     }
     return fetch(path, opts).then(function (res) {
-      return res.json().then(function (data) {
+      return res.text().then(function (text) {
+        var data = {};
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (_parseErr) {
+            var nonJsonError = new Error(res.ok ? "服务器返回了非 JSON 响应" : "服务器内部错误");
+            nonJsonError.status = res.status;
+            nonJsonError.raw = text;
+            throw nonJsonError;
+          }
+        }
         if (!res.ok) {
           var err = new Error(data.error || data.message || "请求失败");
           err.data = data;
