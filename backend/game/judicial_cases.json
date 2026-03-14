@@ -1,18 +1,42 @@
 {
   "document_title": "知府司法案件候选池",
-  "description": "基于明代史实改编的司法案件池，供知府司法系统（二审复审与击鼓鸣冤）随机抽取使用。",
-  "version": "v1.0",
-  "total_cases": 50,
+  "description": "基于明代史实改编的司法案件池，供知府司法系统（二审复审与击鼓鸣冤）随机抽取使用；现混入原判正确与原判失当两类卷宗。",
+  "version": "v1.1",
+  "total_cases": 80,
   "schema_ref": "docs/09_司法审判系统_知府.md §4.2",
   "category_summary": {
-    "吏治贪腐类": {"total": 15, "新手": 5, "进阶": 6, "高难": 4},
-    "冤狱平反类": {"total": 15, "新手": 3, "进阶": 6, "高难": 6},
-    "统筹治理类": {"total": 8,  "新手": 0, "进阶": 4, "高难": 4},
-    "民事纠纷类": {"total": 7,  "新手": 4, "进阶": 3, "高难": 0},
-    "刑事重案类": {"total": 5,  "新手": 2, "进阶": 2, "高难": 1}
+    "吏治贪腐类": {
+      "total": 21,
+      "新手": 7,
+      "进阶": 8,
+      "高难": 6
+    },
+    "冤狱平反类": {
+      "total": 21,
+      "新手": 5,
+      "进阶": 8,
+      "高难": 8
+    },
+    "统筹治理类": {
+      "total": 14,
+      "新手": 2,
+      "进阶": 6,
+      "高难": 6
+    },
+    "民事纠纷类": {
+      "total": 13,
+      "新手": 6,
+      "进阶": 5,
+      "高难": 2
+    },
+    "刑事重案类": {
+      "total": 11,
+      "新手": 4,
+      "进阶": 4,
+      "高难": 3
+    }
   },
   "cases": [
-
     {
       "case_id": "pool_001",
       "case_name": "祥符县常平仓赈粮监守自盗案",
@@ -42,7 +66,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 15, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": 15,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "10日后：祥符县百姓集体击鼓鸣冤，民望-20",
             "1个月后：按察司巡查发现卷宗漏洞，「失察」记录+1，按察使好感-10"
@@ -50,7 +79,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "王怀德触发求情行贿事件（可选收受/拒绝），可拒绝后弹劾",
             "若二次卷宗仍有问题，可追加弹劾"
@@ -58,7 +92,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 30, "magistrate_favor": -20, "inspector_favor": 20, "treasury": 800},
+          "immediate_effects": {
+            "prestige": 30,
+            "magistrate_favor": -20,
+            "inspector_favor": 20,
+            "treasury": 800
+          },
           "chain_events": [
             "张禄、李才无罪释放，供出知县王怀德主谋，追缴赃粮补充府库",
             "弹劾王怀德贪腐枉法，触发知县替换流程",
@@ -68,7 +107,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_002",
       "case_name": "驿丞虚报马匹侵吞马料案",
@@ -95,26 +133,44 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 5, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["量刑基本合理，无重大后续风险"]
+          "immediate_effects": {
+            "prestige": 4,
+            "magistrate_favor": 5,
+            "inspector_favor": 4,
+            "treasury": 0
+          },
+          "chain_events": [
+            "量刑与追缴基本妥当，核准后无重大后续风险。"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
-          "chain_events": ["要求补充邻县搜查程序合规证明及完整赃款追缴记录"]
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": -3,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍维持原判，只补做邻县搜查手续，拖延半月。"
+          ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 160},
+          "immediate_effects": {
+            "prestige": -4,
+            "magistrate_favor": -6,
+            "inspector_favor": 0,
+            "treasury": -30
+          },
           "chain_events": [
-            "提审发现周三实为吴平下属被迫配合，减轻周三刑罚至杖二十",
-            "追缴全部赃款一百六十两入府库"
+            "提审后确认主犯量刑并无失当，仅白耗押解与复核银三十两。"
           ]
         }
       ],
-      "drum_eligible": false
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
     },
-
     {
       "case_id": "pool_003",
       "case_name": "修堤款项虚报工程案",
@@ -142,7 +198,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 8, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": 8,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "下年汛期溃堤概率+40%，若溃堤则民望-30，府库须赔付抢险款项500两",
             "按察使好感-15"
@@ -150,7 +211,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "勒令冯茂15日内补全工程，追缴虚报差额或补施工",
             "若冯茂敷衍可升级弹劾"
@@ -158,7 +224,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -20, "inspector_favor": 12, "treasury": 320},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -20,
+            "inspector_favor": 12,
+            "treasury": 320
+          },
           "chain_events": [
             "追缴虚报工程款约三百两入府库，责令限期补全工程",
             "弹劾知县冯茂，考核减分，责令赔偿"
@@ -167,7 +238,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_004",
       "case_name": "里长虚报丁口冒领免役钱案",
@@ -194,17 +264,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 4, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["案情简单，核准后无重大风险；行贿十八户未受追究，风纪略有损伤"]
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": 4,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
+          "chain_events": [
+            "案情简单，核准后无重大风险；行贿十八户未受追究，风纪略有损伤"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
-          "chain_events": ["要求追查行贿十八户责任，补缴应服劳役或折银"]
+          "immediate_effects": {
+            "prestige": 3,
+            "magistrate_favor": -3,
+            "inspector_favor": 3,
+            "treasury": 0
+          },
+          "chain_events": [
+            "要求追查行贿十八户责任，补缴应服劳役或折银"
+          ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -5, "inspector_favor": 10, "treasury": 90},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -5,
+            "inspector_favor": 10,
+            "treasury": 90
+          },
           "chain_events": [
             "追缴全部九十两，追加十八户各罚银五两补入府库，总计约180两",
             "刘福改判杖八十，革去里长职务"
@@ -213,7 +302,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_005",
       "case_name": "县学教谕私吞束脩案",
@@ -239,17 +327,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 3, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["处罚偏轻，生员家长不满，民间风评略降"]
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": 3,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
+          "chain_events": [
+            "处罚偏轻，生员家长不满，民间风评略降"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
-          "chain_events": ["要求县衙彻查完整账目，并对「旁听」制度给出正式解释"]
+          "immediate_effects": {
+            "prestige": 3,
+            "magistrate_favor": -3,
+            "inspector_favor": 3,
+            "treasury": 0
+          },
+          "chain_events": [
+            "要求县衙彻查完整账目，并对「旁听」制度给出正式解释"
+          ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 6},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 6
+          },
           "chain_events": [
             "赵儒改判杖六十，追缴私吞六两入府库，并罚缴六两补偿受冷落生员",
             "解除教谕职务，府学推荐候补人选"
@@ -258,7 +365,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_006",
       "case_name": "粮长截留税粮入己案",
@@ -286,14 +392,24 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 5, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 0,
+            "magistrate_favor": 5,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "1个月后：按察司例行核查粮账，发现气象记录矛盾，「失察」记录+1，按察使好感-12"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县核对气象文书，重新核查损耗真实性",
             "知县可能继续包庇，若二次卷宗仍敷衍可追加弹劾"
@@ -301,7 +417,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 240},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 240
+          },
           "chain_events": [
             "提审魏大福，供出将八十石粮转卖于魏庄粮行，追回约三百两折银入府库",
             "魏大福判杖一百、徒三年，知县被申斥记过"
@@ -310,7 +431,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_007",
       "case_name": "常平仓官吏贱买贵卖牟利案",
@@ -338,21 +458,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 8, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 8,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "商户继续联署上告按察司，1个月后按察使主动问询知府，「失察」风险升高"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求追查三年差价流向，核实知县是否分润，限期补充证据"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 18, "magistrate_favor": -15, "inspector_favor": 15, "treasury": 150},
+          "immediate_effects": {
+            "prestige": 18,
+            "magistrate_favor": -15,
+            "inspector_favor": 15,
+            "treasury": 150
+          },
           "chain_events": [
             "钱顺供出知县参与分润，追缴差价部分入府库约一百五十两",
             "钱顺改判杖一百徒三年，知县被弹劾审查",
@@ -362,7 +497,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_008",
       "case_name": "知县诬告农民制造假案案",
@@ -390,7 +524,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "李三才妻子赴府衙击鼓鸣冤，民望-15",
             "按察使收到举报，好感-10"
@@ -398,7 +537,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙提供证明李三才捏造的具体书面证据，否则不得定罪",
             "知县可能继续操作，若二次仍无有效证据可弹劾"
@@ -406,7 +550,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -20, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -20,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "李三才无罪释放，知县被弹劾「打击举告、徇私枉法」",
             "全府民望+10，该县民望+20",
@@ -416,7 +565,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_009",
       "case_name": "刑房书吏索贿敲诈案",
@@ -444,14 +592,24 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "商户继续向按察司举告，1个月后按察使问询，知府承受压力"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙调取刑房全部账目和文书办理统计，重新核查",
             "郑平若有后台，可能进行反向施压"
@@ -459,7 +617,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "郑平供认索贿，累计约三十两，责令追缴并赔偿商户损失",
             "知县被申斥「失察属吏」，考核减分"
@@ -468,7 +631,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_010",
       "case_name": "知县私吞火耗超额中饱案",
@@ -496,7 +658,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "农户继续联署上控，1个月后布政司收到农户状词，知府被问责",
             "按察使好感-15"
@@ -504,14 +671,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙逐笔核对收据与账目，就三百两差额作出完整解释"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -22, "inspector_favor": 15, "treasury": 280},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -22,
+            "inspector_favor": 15,
+            "treasury": 280
+          },
           "chain_events": [
             "追查差额约二百八十两，知县被弹劾「私吞火耗」",
             "退还超额征收给农户，全县民望+15"
@@ -520,7 +697,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_011",
       "case_name": "衙役借徭役折色中饱私囊案",
@@ -548,21 +724,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "折役户丁联名向府衙陈情，民望-8"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙提供「运费手续费」的法律依据，无法提供则追缴差额"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 12, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 22},
+          "immediate_effects": {
+            "prestige": 12,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 22
+          },
           "chain_events": [
             "李顺供认侵吞，追缴二十二两入府库，退还折役户丁",
             "李顺杖六十革职，知县被申斥"
@@ -571,7 +762,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_012",
       "case_name": "赈灾名册虚列幽灵户口案",
@@ -600,7 +790,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "2个月后：巡抚派员核查赈灾案，幽灵户口被发现，知府被定「严重失察」",
             "府库须赔付两千两以上，巡抚好感-25",
@@ -609,7 +804,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙逐户核实，与黄册对照，限期重新提交完整核查报告",
             "知县可能销毁证据，需及时跟进"
@@ -617,7 +817,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 30, "magistrate_favor": -25, "inspector_favor": 20, "treasury": 1200},
+          "immediate_effects": {
+            "prestige": 30,
+            "magistrate_favor": -25,
+            "inspector_favor": 20,
+            "treasury": 1200
+          },
           "chain_events": [
             "提审知县主要亲信，供出幽灵户口共计一千六百石赈粮被转卖，追回折银入府库",
             "弹劾知县贺文远，触发弹劾审查与知县替换流程",
@@ -628,7 +833,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_013",
       "case_name": "盐税差额私分涉盐运司案",
@@ -657,7 +861,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 8, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 8,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "盐运司势力好感+5，但知府主动放弃查账权限损害声誉",
             "1个月后按察使发现知府未追查，好感-15"
@@ -665,7 +874,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县就盐商凭证与账目矛盾给出完整解释，同时向按察使报告盐运司干预情况",
             "盐运分司提举好感-10，可能升级为政治对抗"
@@ -673,7 +887,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -20, "inspector_favor": 15, "treasury": 300},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -20,
+            "inspector_favor": 15,
+            "treasury": 300
+          },
           "chain_events": [
             "追回差额三百两入府库，弹劾知县，同时向布政司举报盐运分司越权干预",
             "盐运司势力好感-25，后续可能遭受盐运相关刁难",
@@ -683,7 +902,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_014",
       "case_name": "漕粮亏空嫁祸运夫案",
@@ -712,7 +930,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 8, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 8,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "2个月后：运夫家属联署向都察院状告，漕运总督注意此案，向知府问询",
             "若事后证明运夫系冤枉，「严重失察」记录触发"
@@ -720,7 +943,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求核查通州接收记录与出发装货记录，就时间线矛盾作出解释",
             "漕运千户邓绍可能施压，漕运相关势力好感-8"
@@ -728,7 +956,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -22, "inspector_favor": 18, "treasury": 500},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -22,
+            "inspector_favor": 18,
+            "treasury": 500
+          },
           "chain_events": [
             "运夫翻供，供出漕粮实为知县与漕运千户出发前已抽取，重新包装成三千石，以劣粮替之",
             "运夫五人无罪释放，弹劾知县与漕运千户",
@@ -739,7 +972,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_015",
       "case_name": "兰阳县军器库存短缺案",
@@ -768,7 +1000,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "2个月后：布政司不满核查结果，向巡抚报告，知府被问责",
             "武器流入民间可能引发治安事件，概率30%"
@@ -776,7 +1013,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县配合追查武器流向，并向都司汇报涉及卫所情况",
             "千户所方面施压，卫所相关势力好感-10"
@@ -784,7 +1026,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -22, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -22,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "提审，供出千户白振以「折旧」名义将武器私自变卖，知县分润",
             "联合都司追查，弹劾知县与千户白振",
@@ -795,7 +1042,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_016",
       "case_name": "汤阴县嫁祸乡邻命案",
@@ -822,7 +1068,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 3, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 3,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "赵亮家人击鼓鸣冤，民望-20",
             "不在场证据被庙祝上报按察司，「失察」记录+1"
@@ -830,7 +1081,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求县衙核实清源庙庙祝证明及香客联署",
             "若核实属实，须重新查凶，赵亮获释"
@@ -838,7 +1094,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "赵亮无罪释放，不在场证据确认，重新追查真凶",
             "全府民望+8，该县民望+15"
@@ -847,7 +1108,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_017",
       "case_name": "捕快强迫无辜顶凶强盗案",
@@ -874,7 +1134,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "真正首犯继续活动，2个月后再次劫案，民望-10",
             "韩老四系冤枉事实日后被揭露，「失察」记录+1"
@@ -882,14 +1147,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求对照目击者描述重新审核，排除韩老四并追查真凶"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 18, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 18,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "韩老四翻供，供出是捕快王全威胁其顶凶换取减刑承诺，真凶另案追缉",
             "韩老四无罪释放，捕快王全被处分，全府民望+8"
@@ -898,7 +1173,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_018",
       "case_name": "兄弟田产争讼诬告毒杀案",
@@ -925,21 +1199,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 3, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 3,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "李二家人向按察司陈情，同期患病村民的证言被按察司采纳，「失察」记录+1"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求核查同期患病村民情况，对死者重新进行尸检验毒"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "李二无罪释放，认定系井水疫病致死，责令兄长李大诬告反坐，杖四十",
             "该县民望+12"
@@ -948,7 +1237,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_019",
       "case_name": "华亭县田产纠纷嫁祸命案",
@@ -978,7 +1266,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -8, "magistrate_favor": 15, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": 15,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "陈阿牛母亲击鼓鸣冤，民望-30",
             "言官弹劾知府「草菅人命」，吏部考核扣重大过失分"
@@ -986,7 +1279,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求核查凶器创口、重新核对时间线，并对管家刘忠进行问询",
             "华亭士绅集团好感-10，知县周文彬会触发求情事件"
@@ -994,7 +1292,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 40, "magistrate_favor": -25, "inspector_favor": 20, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 40,
+            "magistrate_favor": -25,
+            "inspector_favor": 20,
+            "treasury": 0
+          },
           "chain_events": [
             "陈阿牛翻供，供出系林文栋与管家刘忠合谋弑父，嫁祸陈阿牛",
             "陈阿牛无罪释放，林文栋、刘忠判斩监候，弹劾周文彬",
@@ -1005,7 +1308,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_020",
       "case_name": "豪强杀妾嫁祸亲夫案",
@@ -1033,7 +1335,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 8, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 8,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "张福家人持邻居证言向府衙击鼓，民望-18",
             "若日后真相被揭，「严重失察」记录"
@@ -1041,7 +1348,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求重新核查李克远当夜行踪，对苗氏与李克远关系展开调查",
             "豪强李克远势力好感-10"
@@ -1049,7 +1361,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 30, "magistrate_favor": -20, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 30,
+            "magistrate_favor": -20,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "张福无罪释放，提审李克远，供出与苗氏私情后为灭口而杀人",
             "李克远判斩立决，全府民望+15，豪强势力好感-20"
@@ -1058,7 +1375,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_021",
       "case_name": "刑讯逼供冤案平反",
@@ -1086,21 +1402,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "王二狗家人持入狱验伤记录向府衙陈情，按察使被告知，「失察」风险升高"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求重新核查入狱伤情与案发经过的关联，并对两目击者进行对质"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -15, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -15,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "王二狗翻供，称系刑房主事逼供，赵贵实为自行跌倒，非王二狗所殴",
             "无罪释放，刑房主事被处分，知县被申斥「刑讯失察」",
@@ -1110,7 +1441,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_022",
       "case_name": "宗族争产诬告谋杀案",
@@ -1138,7 +1468,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "陈孝仁家人持原始诊断书向按察司陈情，知府被追责",
             "「严重失察」风险，知县兄弟讼师关系事后被曝光"
@@ -1146,14 +1481,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -12, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -12,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求鉴定诊断书真伪，同时要求知县回避（因利害关系），由推官主持重审"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 28, "magistrate_favor": -20, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 28,
+            "magistrate_favor": -20,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "鉴定确认诊断书被伪造，陈孝仁无罪释放",
             "弹劾知县（利害关系回避失职），伪造证据者追究刑责",
@@ -1163,7 +1508,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_023",
       "case_name": "医疗事故诬陷庸医案",
@@ -1191,21 +1535,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 8, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 8,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "本县郎中联署上书抗议，县内医疗秩序受冲击，民望-8"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求补充郎中鉴定意见，并核查死者宿疾与死因的关联"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "柳大夫无罪释放，富商诬告反坐杖四十，赔偿柳大夫损失",
             "该县郎中群体好感大幅提升，民望+10"
@@ -1214,7 +1573,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_024",
       "case_name": "水灾逃亡被诬逃税漏役案",
@@ -1241,7 +1599,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 5, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 5,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "十三户联署向府衙陈情，邻县也确认其缴税记录，「失察」记录+1",
             "该县民望-12"
@@ -1249,14 +1612,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求核查邻县税收记录，就口头允许转移一事重新核实"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -15, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -15,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "三人无罪释放，知县被申斥「不查实情、草率定案」",
             "该县民望+15，建立水灾期间「逃户」认定正式程序"
@@ -1265,7 +1638,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_025",
       "case_name": "知县主导陷商人于冤案",
@@ -1294,7 +1666,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 12, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 12,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "郭老三家人向都察院陈情，2个月后都察院来函问询，知府承受压力",
             "若最终证实为冤案，「严重失察」记录，仕途影响重大"
@@ -1302,7 +1679,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -12, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -12,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "邓斌必然强力阻挠，通过多种渠道施压",
             "要求核查郭老三举告与拘押的时间关联，及财产转移记录",
@@ -1311,7 +1693,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 35, "magistrate_favor": -25, "inspector_favor": 20, "treasury": 500},
+          "immediate_effects": {
+            "prestige": 35,
+            "magistrate_favor": -25,
+            "inspector_favor": 20,
+            "treasury": 500
+          },
           "chain_events": [
             "郭老三无罪释放，提审钱富贵原账房供出邓斌策划全案，追缴财产入府库",
             "弹劾知县邓斌，触发知县替换流程",
@@ -1322,7 +1709,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_026",
       "case_name": "豪绅子弟杀人栽赃家仆案",
@@ -1350,7 +1736,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 12, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 12,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "被遣散家仆事后向按察司陈情，知府被问询",
             "若日后真相曝光，「严重失察」记录，仕途影响重大"
@@ -1358,7 +1749,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -12, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -12,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "曹家通过在朝亲戚施压，政治压力事件触发",
             "要求追访被遣散家仆，重新核查体格证据"
@@ -1366,7 +1762,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 35, "magistrate_favor": -22, "inspector_favor": 18, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 35,
+            "magistrate_favor": -22,
+            "inspector_favor": 18,
+            "treasury": 0
+          },
           "chain_events": [
             "追访家仆证词确认曹文祥当夜在场，吴三无罪释放，曹文祥被拘审",
             "曹文祥定罪，曹家势力好感-30，朝中曹家亲戚发起弹劾",
@@ -1376,7 +1777,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_027",
       "case_name": "三案串联官场积累冤案",
@@ -1404,7 +1804,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 12, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 12,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "三人家属联合向都察院陈情，知府被追责",
             "「严重失察」记录，同期三案核准引发声誉重大损失"
@@ -1412,7 +1817,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -15, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -15,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "要求三案独立重审，禁止王进关联人员作证，要求追查举告状与拘押时间关联",
             "知县将极力阻挠，可能需要直接对知县展开调查"
@@ -1420,7 +1830,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 40, "magistrate_favor": -25, "inspector_favor": 22, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 40,
+            "magistrate_favor": -25,
+            "inspector_favor": 22,
+            "treasury": 0
+          },
           "chain_events": [
             "三人均无罪释放，王进被定罪打击报复，知县被弹劾「包庇内亲、徇私枉法」",
             "全府民望+20，解锁「青天知府」称号条件进度",
@@ -1430,7 +1845,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_028",
       "case_name": "宦官家奴欺压致死案",
@@ -1458,7 +1872,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -10, "magistrate_favor": 10, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": 10,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "全府民望-15，「宦官家奴打死人只赔三十两」事件广泛传播",
             "按察使对知府失望，好感-15"
@@ -1466,7 +1885,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县依《大明律》「因盗伤人」条重新量刑，明确拒绝宦官书函影响",
             "宦官势力好感-15，可能引发宫中负面影响"
@@ -1474,7 +1898,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -15, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -15,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "钱二改判斩监候，赔付大幅提高至二百两",
             "向都察院举报宦官干扰司法书函，宦官势力好感-30",
@@ -1485,7 +1914,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_029",
       "case_name": "私盐案诬陷正经盐商案",
@@ -1513,7 +1941,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 10, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 10,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "刘正义家人向盐运司陈情，盐运司介入调查，知府被问询",
             "沈有财私盐继续泛滥，1个月后商税收入-10%"
@@ -1521,7 +1954,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -12, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -12,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求独立机构重新核查盐引与物证，排除巡检司单方面认定",
             "沈有财势力好感-10，知县可能加大阻力"
@@ -1529,7 +1967,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 30, "magistrate_favor": -22, "inspector_favor": 18, "treasury": 400},
+          "immediate_effects": {
+            "prestige": 30,
+            "magistrate_favor": -22,
+            "inspector_favor": 18,
+            "treasury": 400
+          },
           "chain_events": [
             "刘正义无罪释放，货物归还，追查沈有财私盐案，弹劾知县",
             "追缴沈有财私盐赃款约四百两入府库，全府商税收入+8%",
@@ -1539,7 +1982,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_030",
       "case_name": "富户假死脱罪嫁祸债主案",
@@ -1567,7 +2009,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "若邻县发现赵富贵并上报，知府「失察」事件触发",
             "徐老三倾家荡产，在该县传播对知府司法的不满"
@@ -1575,7 +2022,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求开棺重新验尸，核查大夫证明，并向邻县发文协查赵富贵行踪",
             "若赵富贵确实仍活，直接翻案"
@@ -1583,7 +2035,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -15, "inspector_favor": 15, "treasury": 200},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -15,
+            "inspector_favor": 15,
+            "treasury": 200
+          },
           "chain_events": [
             "开棺确认棺内非赵富贵，徐老三无罪释放，通缉赵富贵，追回债款",
             "赵富贵被捕后判以「诈死逃罪」、「欺公堂」等罪，追缴欠款约二百两",
@@ -1593,7 +2050,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_031",
       "case_name": "两县边界械斗伤亡案",
@@ -1621,7 +2077,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 0, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 0,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "两县均对知府判决不满，民望均下降-8",
             "水权问题未解决，下季度再次械斗概率60%"
@@ -1629,7 +2090,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求两县知县联合审理、统一管辖权认定，推官协助督办",
             "两县知县若配合，可在一个月内给出共同卷宗"
@@ -1637,7 +2103,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -8, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -8,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "府衙主导联合提审，确认挑衅方，对首犯从重处罚",
             "同步制定两县灌渠取水分配方案，交府衙存档，作为今后依据",
@@ -1647,7 +2118,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_032",
       "case_name": "流民聚众抢粮案统筹安置",
@@ -1674,7 +2144,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -8, "magistrate_favor": 5, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": 5,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "流民得知后再度聚众，规模扩大至五百人，发生第二次冲突，民望-20",
             "按察使批评「处置失当激化民变」，好感-12"
@@ -1682,7 +2157,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县依《大明律》引用减等条款重新量刑，同时提出流民安置方案",
             "若知县无法独立处置，府衙可协调邻府共同安置流民"
@@ -1690,7 +2170,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 18, "magistrate_favor": -5, "inspector_favor": 12, "treasury": -200},
+          "immediate_effects": {
+            "prestige": 18,
+            "magistrate_favor": -5,
+            "inspector_favor": 12,
+            "treasury": -200
+          },
           "chain_events": [
             "首犯改判杖八十服劳役，减免死刑；府衙拨粮二百石安置流民",
             "协调邻府共同安置，流民问题基本解决",
@@ -1700,7 +2185,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_033",
       "case_name": "外省客商杀人跨县管辖争议",
@@ -1728,21 +2212,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "山西会馆向都察院陈情，影响山西商人来府贸易意愿，商税收入-5%"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求重新对质三份证言，核实防卫情节是否成立，同时明告山西会馆程序规则"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -8, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -8,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "提审确认赵五先行动手，张义属防卫过当，改判杖一百、赔偿赵五家属百两",
             "山西会馆满意，山西籍商人来府贸易信心提升，商税收入+3%"
@@ -1751,7 +2250,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_034",
       "case_name": "跨县盗匪利用边界往复作案",
@@ -1778,7 +2276,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 0, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 0,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "下季度盗匪再次作案，伤亡更重，民望-12",
             "按察使询问知府为何未解决跨县盗匪问题，好感-8"
@@ -1786,7 +2289,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求两县联合提交围剿方案，知府协调经费分担，推官督办",
             "2个月内若两县不行动，知府可直接介入"
@@ -1794,7 +2302,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -5, "inspector_favor": 12, "treasury": -150},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -5,
+            "inspector_favor": 12,
+            "treasury": -150
+          },
           "chain_events": [
             "府衙直接调配两县民壮联合行动，拨款一百五十两作为围剿经费",
             "一月内捣毁窝点，盗匪基本被歼，两县治安大幅改善",
@@ -1804,7 +2317,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_035",
       "case_name": "运河私盐团伙跨县贩卖案",
@@ -1833,7 +2345,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 10, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 10,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "1个月后团伙再次作案，官兵被拒捕，按察司查到此前核准卷宗，「失察放纵」记录",
             "全府商税收入-10%，民望-12"
@@ -1841,7 +2358,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县回应邻县协查，核查船只真实情况，追查团伙上下线",
             "漕运势力好感-8，知县可能拖延"
@@ -1849,7 +2371,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 25, "magistrate_favor": -22, "inspector_favor": 20, "treasury": 1500},
+          "immediate_effects": {
+            "prestige": 25,
+            "magistrate_favor": -22,
+            "inspector_favor": 20,
+            "treasury": 1500
+          },
           "chain_events": [
             "提审供出主犯盐枭张彪，协调三县联合缉拿，查获私盐逾两万石，折银入府库",
             "弹劾知县马明远、巡检刘贵，触发知县替换",
@@ -1860,7 +2387,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_036",
       "case_name": "跨府大股流匪联合缉剿案",
@@ -1887,14 +2413,24 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 3, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 3,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "流匪继续活动，下季度匪案数量增加，民望-15，商路安全受损"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "向巡抚汇报两府协作困难，请求巡抚出面协调",
             "巡抚好感+5，但行动延迟一个季度"
@@ -1902,7 +2438,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 22, "magistrate_favor": -5, "inspector_favor": 15, "treasury": -200},
+          "immediate_effects": {
+            "prestige": 22,
+            "magistrate_favor": -5,
+            "inspector_favor": 15,
+            "treasury": -200
+          },
           "chain_events": [
             "单方面调集本府卫所精兵，以供词中营地信息突袭，同时通知东昌堵截",
             "铁脚张三被擒，团伙瓦解，追回劫掠财物折银约二百两，补入府库",
@@ -1913,7 +2454,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_037",
       "case_name": "运河漕粮劫案涉卫所内应",
@@ -1941,7 +2481,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "漕运总督发文责问，此段运河若再发劫案将追责本府",
             "内应问题未解决，下季度再次劫案概率50%"
@@ -1949,7 +2494,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -5, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -5,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求向都司汇报千户吴猛阻挠调查行为，请求都司独立核查",
             "吴猛势力好感-10，都司介入后调查拖延约一个季度"
@@ -1957,7 +2507,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -8, "inspector_favor": 18, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -8,
+            "inspector_favor": 18,
+            "treasury": 0
+          },
           "chain_events": [
             "对卫兵分组隔离审问，两组口供矛盾被揭露，最终供出三名内应卫兵配合劫案",
             "内应被处决，弹劾千户吴猛，追查漕粮下落",
@@ -1967,7 +2522,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_038",
       "case_name": "矿工聚众暴动伤亡后续案",
@@ -1995,7 +2549,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -8, "magistrate_favor": 8, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": 8,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "全府矿工群体情绪激动，民望-15",
             "按察使对知府「袒护矿主」不满，好感-10"
@@ -2003,7 +2562,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求区分主从，对主犯以故意伤害定罪，对从犯依欠薪情节大幅减刑",
             "同时追究矿主欠薪违约责任，责令赔付矿工欠款"
@@ -2011,7 +2575,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 22, "magistrate_favor": -15, "inspector_favor": 15, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 22,
+            "magistrate_favor": -15,
+            "inspector_favor": 15,
+            "treasury": 0
+          },
           "chain_events": [
             "主犯二人改判斩监候（减等为流配），从犯三人杖刑后释放",
             "矿主魏大绅被追究欠薪违约，赔付所有矿工四月工钱",
@@ -2022,7 +2591,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_039",
       "case_name": "三兄弟争夺遗产继承案",
@@ -2048,21 +2616,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 0, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 0,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "知县无从判断，请府裁定本身即已说明原审无法给出结论，核准无意义"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 3,
+            "magistrate_favor": -3,
+            "inspector_favor": 3,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县依《大明律》继承法作出裁定，并就书面协议真实性鉴定"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -3, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -3,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "府衙依《大明律》裁定：书面协议残缺无效，口头遗嘱证人未达标准，适用法定继承",
             "长子陈大取得主房与田产六亩，余九亩与存银三人均分",
@@ -2072,7 +2655,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_040",
       "case_name": "灌渠争水械斗轻伤案",
@@ -2096,21 +2678,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 3, "inspector_favor": 0, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 3,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
             "下季度同一灌渠再次发生争水事件，械斗规模扩大，民望-10"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -3, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -3,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县在处罚肇事者的同时，制定明确的用水分配规则存档"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 12, "magistrate_favor": -3, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 12,
+            "magistrate_favor": -3,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "肇事者依斗殴轻刑处罚，同时府衙制定分水方案：单日赵家庄、双日钱家庄，旱季额外补贴下游村",
             "两村民望+10，水权问题长期解决"
@@ -2119,7 +2716,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_041",
       "case_name": "田界模糊争讼积年案",
@@ -2145,17 +2741,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 0, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["纠纷继续，下任知县再次面对同样问题"]
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 0,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
+          "chain_events": [
+            "纠纷继续，下任知县再次面对同样问题"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
-          "chain_events": ["要求知县委托专业量地人员实地丈量，结合税册确定历史边界"]
+          "immediate_effects": {
+            "prestige": 3,
+            "magistrate_favor": -3,
+            "inspector_favor": 3,
+            "treasury": 0
+          },
+          "chain_events": [
+            "要求知县委托专业量地人员实地丈量，结合税册确定历史边界"
+          ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 10, "magistrate_favor": -3, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": -3,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "府衙委托推官专程丈量，结合税册确定历史占地面积，按税册折算边界",
             "明确裁定，双方各取得书面确认，十年积案彻底了结",
@@ -2165,7 +2780,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_042",
       "case_name": "高利贷合同欺诈案",
@@ -2191,21 +2805,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "田有余家破人亡，全乡传播对知县和知府司法的不满，民望-8"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求重新鉴定合同涂改，并传唤证人王老三当面作证"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "鉴定确认涂改属实，判田有余依口头约定还十二两，周六以「诈骗」论处杖八十",
             "调查其他两名借款人情况，周六若有惯犯证据加重处罚",
@@ -2215,7 +2844,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_043",
       "case_name": "典卖田地回赎被阻纠纷案",
@@ -2243,21 +2871,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 8, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 8,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "赵小虎向按察司陈情，里甲证明被按察司采信，知府「失察」记录风险"
           ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县就里甲证明的效力重新评估，传唤里长当面作证"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -10, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -10,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "里长当面证实赵小虎确实前往，依《大明律》判孙有为阻挠回赎违约，赵小虎按原价赎回田地",
             "孙有为罚银五两补偿赵小虎损失，乡绅好感-10，民望+10"
@@ -2266,7 +2909,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_044",
       "case_name": "商号合伙散伙诈骗案",
@@ -2293,19 +2935,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 0, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["知县无法判断，原审本就未定，核准无实际意义"]
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 0,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
+          "chain_events": [
+            "知县无法判断，原审本就未定，核准无实际意义"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -3, "inspector_favor": 5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -3,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县调取布行供货商和客户交易凭证，委托专业账房核对"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "推官调取第三方凭证，核实实际盈利约二百五十两（与郑安账册接近），判李富按协议分润",
             "李富须支付郑安一百二十五两，并赔偿郑安维权损失",
@@ -2315,7 +2974,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_045",
       "case_name": "入赘婚姻亡妻财产争夺案",
@@ -2342,19 +3000,36 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 0, "inspector_favor": 0, "treasury": 0},
-          "chain_events": ["原审已无定论，核准无实际意义"]
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 0,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
+          "chain_events": [
+            "原审已无定论，核准无实际意义"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 3,
+            "magistrate_favor": -3,
+            "inspector_favor": 3,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县核实收养文书合法性，并就钱来福贡献请账房估算"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 12, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 12,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "府衙裁定：钱来福无法定继承权，妻兄为合法继承人；但考量钱来福十年贡献，判妻兄补偿钱来福劳务金三十两，并允其于宅中居住三月至另觅住所",
             "双方均接受，事件平息"
@@ -2363,7 +3038,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_046",
       "case_name": "集市斗殴致死定性案",
@@ -2387,7 +3061,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -8, "magistrate_favor": 5, "inspector_favor": -8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": 5,
+            "inspector_favor": -8,
+            "treasury": 0
+          },
           "chain_events": [
             "孙大家属击鼓鸣冤，民望-20",
             "按察使收到目击者联署陈情，「失察」记录+1"
@@ -2395,14 +3074,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -8, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -8,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县依目击证词将「故杀」改为「斗殴杀人」定性重新量刑"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 18, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 18,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 0
+          },
           "chain_events": [
             "改判斗殴杀人，孙大杖一百、流放三千里、赔付周老三家属，免死刑",
             "知县被申斥「不查目击证词、草率定罪」，全县民望+10"
@@ -2411,7 +3100,6 @@
       ],
       "drum_eligible": true
     },
-
     {
       "case_id": "pool_047",
       "case_name": "盗窃杀人灭口定性案",
@@ -2435,27 +3123,44 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": 0, "magistrate_favor": 5, "inspector_favor": 3, "treasury": 0},
-          "chain_events": ["案件证据确凿，核准无风险，处置合规"]
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "案件证据确凿，核准无风险，处置合规。"
+          ]
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": -3, "inspector_favor": 3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -4,
+            "magistrate_favor": -3,
+            "inspector_favor": 0,
+            "treasury": 0
+          },
           "chain_events": [
-            "原审证据链完整，驳回重审无实质依据，只会造成延误"
+            "原审证据链完整，驳回重审无实益，徒增拖延。"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 3, "magistrate_favor": -5, "inspector_favor": 3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": 2,
+            "inspector_favor": 0,
+            "treasury": -40
+          },
           "chain_events": [
-            "提审后物证确认原判无误，原审知县判断正确，好感+8"
+            "提审后仍维持原判，额外验尸与押解耗银四十两，知县虽释然但对反复掣肘仍有芥蒂。"
           ]
         }
       ],
-      "drum_eligible": false
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
     },
-
     {
       "case_id": "pool_048",
       "case_name": "团伙绑架勒索撕票案",
@@ -2482,7 +3187,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "吴来家属向按察司陈情，若主从关系确实存在，「失察」风险触发",
             "失去吴来配合检举在逃者的机会"
@@ -2490,14 +3200,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求对二人进行对质，核实吴来被胁迫程度，同时追查赎金流向"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 15, "magistrate_favor": -8, "inspector_favor": 10, "treasury": 250},
+          "immediate_effects": {
+            "prestige": 15,
+            "magistrate_favor": -8,
+            "inspector_favor": 10,
+            "treasury": 250
+          },
           "chain_events": [
             "对质后确认吴来系被威胁看守，未直接参与绑架和杀害，改判流放",
             "吴来提供在逃四人藏匿信息，助缉捕成功，追回赎金约二百五十两",
@@ -2507,7 +3227,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_049",
       "case_name": "毒杀富户家长分产案",
@@ -2534,7 +3253,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -3, "magistrate_favor": 5, "inspector_favor": -3, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": 5,
+            "inspector_favor": -3,
+            "treasury": 0
+          },
           "chain_events": [
             "邻居向按察司陈情，按察使发文质问知府为何不开棺验尸",
             "若日后真相被揭，「严重失察」记录"
@@ -2542,14 +3266,24 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 5, "magistrate_favor": -5, "inspector_favor": 8, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 5,
+            "magistrate_favor": -5,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
           "chain_events": [
             "要求开棺验尸，强制排除投毒，家属无权拒绝知府命令"
           ]
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 20, "magistrate_favor": -12, "inspector_favor": 12, "treasury": 300},
+          "immediate_effects": {
+            "prestige": 20,
+            "magistrate_favor": -12,
+            "inspector_favor": 12,
+            "treasury": 300
+          },
           "chain_events": [
             "开棺验尸确认砒霜中毒，提审三名受益者，媳妇率先交代合谋始末",
             "三人定罪，追缴分割财产部分入府库（约三百两），李大户旁系亲属继承其余",
@@ -2559,7 +3293,6 @@
       ],
       "drum_eligible": false
     },
-
     {
       "case_id": "pool_050",
       "case_name": "盗匪攻县城仓库内应案",
@@ -2588,7 +3321,12 @@
       "options": [
         {
           "action": "核准原判",
-          "immediate_effects": {"prestige": -5, "magistrate_favor": 8, "inspector_favor": -5, "treasury": 0},
+          "immediate_effects": {
+            "prestige": -5,
+            "magistrate_favor": 8,
+            "inspector_favor": -5,
+            "treasury": 0
+          },
           "chain_events": [
             "内应未被清查，下季度类似袭击再次发生，民望-20",
             "三名民壮家属来府陈情，要求追查真相，民望-8",
@@ -2597,7 +3335,12 @@
         },
         {
           "action": "驳回重审",
-          "immediate_effects": {"prestige": 8, "magistrate_favor": -8, "inspector_favor": 10, "treasury": 0},
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": -8,
+            "inspector_favor": 10,
+            "treasury": 0
+          },
           "chain_events": [
             "要求知县秘密调查刘有财行踪，同时就兵备道回函态度向按察使报告",
             "刘有财若察觉可能潜逃，需迅速行动"
@@ -2605,7 +3348,12 @@
         },
         {
           "action": "提审改判",
-          "immediate_effects": {"prestige": 28, "magistrate_favor": -12, "inspector_favor": 18, "treasury": 350},
+          "immediate_effects": {
+            "prestige": 28,
+            "magistrate_favor": -12,
+            "inspector_favor": 18,
+            "treasury": 350
+          },
           "chain_events": [
             "秘密核查刘有财家产，发现近期新增约三百两；突击拘押提审后供认与盗匪首领有勾结",
             "刘有财判斩立决，供词指引追捕盗匪团伙，追回库银约三百五十两",
@@ -2615,7 +3363,1926 @@
         }
       ],
       "drum_eligible": false
+    },
+    {
+      "case_id": "pool_051",
+      "case_name": "河阳县县丞冒领修桥工银案",
+      "difficulty": "新手",
+      "category": "吏治贪腐类",
+      "source_county": "河阳县",
+      "source_season": 4,
+      "dossier_text": "河阳县修桥工役银三十六两，由县丞杜安经手发放。工匠名册、桥料收据与匠首口供互相印证，确认杜安虚列十二名短工，侵吞工银十二两。原审知县依诈取官银论杖七十、追赃入官，报府复核。",
+      "attachments": [
+        "工匠名册",
+        "桥料收据",
+        "匠首薛二供词",
+        "追赃入库簿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "翻案者所称“工匠未到场”与匠首、桥料收据和完工日期互相矛盾，原审证据链闭合。",
+          "赃银十二两已在杜安家中起获并登记入簿，非单凭口供定罪。"
+        ],
+        "secondary": [
+          "杜安妻弟代为奔走申诉，但未提出任何新证据。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后无追加风险，河阳县照例结案。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "补做核验后仍维持原判，徒耗半月。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，押解与复勘耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_052",
+      "case_name": "临清县巡检受贿纵放私盐案",
+      "difficulty": "进阶",
+      "category": "吏治贪腐类",
+      "source_county": "临清县",
+      "source_season": 8,
+      "dossier_text": "临清县巡检马顺受盐枭贿银，夜间擅开水门放船出境。原审调得河卡签押簿、盐包暗记与同班弓兵证词，判马顺杖一百、徒三年，并追缴受贿银七十两。其家属称马顺系“奉命放行”，请府翻案。",
+      "attachments": [
+        "河卡签押簿",
+        "盐包暗记验认单",
+        "弓兵同班证词",
+        "受贿银七十两入官簿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "所谓“奉命放行”并无上司手令，签押簿却清楚留下马顺私改时辰的笔迹。",
+          "盐包暗记与查获私盐来源完全吻合，非可伪造的泛泛物证。"
+        ],
+        "secondary": [
+          "家属翻案仅凭邻里陈情，并无新证。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后私盐余党不敢借机翻供，临清卡口秩序稳定。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回补问后仍维持原判，盐枭借机串供。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判无误，额外传唤盐枭与押船耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_053",
+      "case_name": "永宁县库吏调换官铜成色案",
+      "difficulty": "高难",
+      "category": "吏治贪腐类",
+      "source_county": "永宁县",
+      "source_season": 11,
+      "dossier_text": "永宁县库吏冯谦将上解官铜暗中调换为掺铅劣铜，并把差额售与私炉。原审知县调得炉户账簿、冶炼灰样与同库书役供词，判冯谦徒流并没收赃利。冯氏族人称化验失准，联名求翻。",
+      "attachments": [
+        "炉户账簿",
+        "冶炼灰样验单",
+        "书役供词",
+        "赃利折银入库簿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "灰样由府城、县库两处匠人分别验认，结果一致，原审技术证据充分。",
+          "私炉账簿中的交货日期与县库点收日期精确对应，足证调换并非巧合。"
+        ],
+        "secondary": [
+          "族人上书避谈灰样来源，只反复指称“手段过重”，更像求情而非翻案。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后永宁县库内舞弊链条被及时截断。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "重审仍维持原判，却让同案私炉趁隙转移余证。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后原判不变，重新验样与押解匠人耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_054",
+      "case_name": "嘉鱼县河泊所书办短解鱼税案",
+      "difficulty": "新手",
+      "category": "吏治贪腐类",
+      "source_county": "嘉鱼县",
+      "source_season": 6,
+      "dossier_text": "嘉鱼县河泊所书办宋福在鱼税册上反复少记大船、多记小船，以短解税银中饱私囊。原审知县据税册、渡口榜示和商贩证词，判宋福杖八十、追补税银。宋福兄长称“账簿习惯不同”，请府复核。",
+      "attachments": [
+        "鱼税册",
+        "渡口榜示抄件",
+        "商贩证词",
+        "追补税银收据"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "同月榜示所载船数与税册差额稳定存在，非偶然记错。",
+          "三名商贩都能说出同一收税人和收税地点，与账册笔迹相合。"
+        ],
+        "secondary": [
+          "所谓“账簿习惯不同”不能解释短解税银最终流入宋福私囊。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后河泊所补齐税银，本案无再生枝节。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回核账后仍维持原判，只徒增商贩往返作证。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认短解属实，押解证人与重核税船耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_055",
+      "case_name": "广义州州学训导冒领膏火银案",
+      "difficulty": "进阶",
+      "category": "吏治贪腐类",
+      "source_county": "广义州",
+      "source_season": 5,
+      "dossier_text": "广义州训导何敬在膏火银册中虚增廪生名额，连续两季冒领膏火银。原审知州取学籍簿、岁考点名与银库支给簿互证，判何敬革职并追赃。何敬自称“代管余银以备修葺”，请府改轻。",
+      "attachments": [
+        "学籍簿",
+        "岁考点名册",
+        "银库支给簿",
+        "修葺预算草稿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "所谓“备修葺”并无州学公议文书，银库支给簿却显示何敬亲笔领银。",
+          "岁考点名与学籍人数一致，足证原审并非误把缺额算成在册。"
+        ],
+        "secondary": [
+          "何敬仅拿出事后补写的修葺草稿，不能对抗完整账证。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后州学账目收束，学官群体无再翻案空间。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍判革职，只令州学停摆半月。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判无误，重查学籍与押解生员耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_056",
+      "case_name": "卫辉县监仓书役串票侵折漕粮案",
+      "difficulty": "高难",
+      "category": "吏治贪腐类",
+      "source_county": "卫辉县",
+      "source_season": 12,
+      "dossier_text": "卫辉县监仓书役刘庆与押粮军士串通，在交卸票据上层层做旧，侵折漕粮并折卖于民间。原审知县据交卸票、仓耗记录与粮行赃粮单据，判刘庆等徒流并追赃。押粮军士家属称“仓耗本就如此”，求府缓改。",
+      "attachments": [
+        "交卸票据",
+        "仓耗记录",
+        "粮行单据",
+        "军士供词"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "仓耗幅度远超同年同仓均值，且每次都集中在刘庆经手批次，原审统计证据有力。",
+          "赃粮单据上的批号与交卸票批号逐一对应，不能以“自然损耗”解释。"
+        ],
+        "secondary": [
+          "家属陈情只援引旧例，却不回应具体批号与赃粮去向。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后监仓舞弊链条被定案，卫辉仓政得以整饬。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍维持徒流，只让同案军士有机会串证。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后原判无误，重调漕票与押粮军士耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_057",
+      "case_name": "陈留县击鼓申雪盗牛案",
+      "difficulty": "新手",
+      "category": "冤狱平反类",
+      "source_county": "陈留县",
+      "source_season": 3,
+      "dossier_text": "陈留县老妇击鼓称其子赵小五系替人顶罪，实则县中盗牛案另有主谋。原审知县已取牛角烙印、销赃牵牛绳与夜行更夫证词，判赵小五杖八十徒一年。老妇仅凭母子哭诉，请府平反。",
+      "attachments": [
+        "牛角烙印验认单",
+        "销赃牵牛绳",
+        "更夫证词",
+        "赵小五供词"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "烙印与失牛主登记完全一致，且牵牛绳在赵小五住处起获，并非单凭供词定案。",
+          "老妇所称“顶罪”没有任何替代嫌犯与新证支持。"
+        ],
+        "secondary": [
+          "赵小五翻供前后只改口赃牛去向，对关键物证始终无法解释。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后证据闭合，击鼓者亦被劝返，不再生事。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审后仍维持原判，徒增老妇往返奔走。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，调卷押人耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_058",
+      "case_name": "海宁县盐商家属申雪通番案",
+      "difficulty": "进阶",
+      "category": "冤狱平反类",
+      "source_county": "海宁县",
+      "source_season": 9,
+      "dossier_text": "海宁县盐商吴泰因私售海盐与倭船私下交易，被原审依私通外夷例论处。其家属称吴泰只是“海上迷航误泊”，请府洗雪。原审卷内有暗记盐票、海防巡丁证词与夜间交易火号记录。",
+      "attachments": [
+        "暗记盐票",
+        "海防巡丁证词",
+        "火号记录",
+        "没收盐银清册"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "火号记录与巡丁见到的倭船停泊时刻完全吻合，所谓“误泊”说不能成立。",
+          "暗记盐票只用于私售番货，非官盐正常流转票式。"
+        ],
+        "secondary": [
+          "吴家所举“天气突变”并无同夜风浪记录佐证。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后海宁县私盐商路收敛，海防巡丁亦得安堵。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍维持原判，却让海上同党有时间销毁联络证据。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判无误，复核海防口供和船只笔录耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_059",
+      "case_name": "建昌县宗族联名申雪杀妻案",
+      "difficulty": "高难",
+      "category": "冤狱平反类",
+      "source_county": "建昌县",
+      "source_season": 10,
+      "dossier_text": "建昌县陈大山因殴妻致死被判绞监候，其宗族联名称死者本有旧疾，系误判。原审调得验尸格目、邻妇呼救证词与木杖裂痕，证成陈大山长期殴虐，案发日重击致死。宗族以“孝义”为名请府翻案。",
+      "attachments": [
+        "验尸格目",
+        "邻妇证词",
+        "木杖裂痕验录",
+        "族老联名状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "验尸格目明确记载致命创伤在后脑，不是旧疾暴发所能形成。",
+          "宗族联名状回避了案发当晚呼救与木杖碎裂两项关键事实。"
+        ],
+        "secondary": [
+          "建昌县族老与陈家素有婚姻往来，联名请雪动机并不纯粹。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后宗族虽不满，但按察司认可原审采证完整。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回再审后仍维持原判，却刺激宗族借机鼓噪。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后原判不变，押解证人与二次验尸耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_060",
+      "case_name": "兰阳县误伤致死求免徒刑案",
+      "difficulty": "新手",
+      "category": "冤狱平反类",
+      "source_county": "兰阳县",
+      "source_season": 7,
+      "dossier_text": "兰阳县农户宋柱争渠口时推搡邻人，致其跌入石堰身亡。其父老称系“失手无心”，要求免徒。原审按误伤致死论徒，已引明律减等条文，并查得二人争执在先，定性并无过重。",
+      "attachments": [
+        "争渠口口供",
+        "仵作验伤录",
+        "明律引用抄录",
+        "乡约证词"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "原审已按误伤致死减等处理，并非把宋柱按故杀重判。",
+          "乡约与仵作都证明死者因跌撞石堰致命，定性与量刑彼此吻合。"
+        ],
+        "secondary": [
+          "父老求免主要出于乡情，并未指出任何程序错误。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后乡里虽有惋惜，但认定知府处置平允。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审后仍维持原判，耽误秋收调解。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判已属减等，押解证人耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_061",
+      "case_name": "德清县脚夫劫货翻案案",
+      "difficulty": "进阶",
+      "category": "冤狱平反类",
+      "source_county": "德清县",
+      "source_season": 2,
+      "dossier_text": "德清县脚夫钱七被判与三人合谋劫货。其家属称钱七只是受雇搬运，不知赃货来路。原审已调得雇价簿、分赃银与同伙供词，表明钱七在劫案前就知货主行期，并按分赃份额受银。",
+      "attachments": [
+        "雇价簿",
+        "分赃银清点录",
+        "同伙供词",
+        "货主失单"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "钱七所得并非普通搬运脚价，而与劫案总赃银比例相合，难以解释为“不知情搬运”。",
+          "同伙三人口供在分赃时点、藏银位置上完全能互证。"
+        ],
+        "secondary": [
+          "家属反复强调钱七贫苦，却回避其事前踩点事实。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后德清县盗货案就此了结，货主亦止诉。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍维持原判，货主再度停业等待，怨气反增。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后原判无误，重调赃银与同伙对质耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_062",
+      "case_name": "安庆府举人门生代讼诬告反坐案",
+      "difficulty": "高难",
+      "category": "冤狱平反类",
+      "source_county": "安庆府",
+      "source_season": 12,
+      "dossier_text": "安庆府举人门生周博代民上讼，先后两次捏造州学侵银与军饷短发之事，均被查明无据，原审依诬告反坐论杖流。周博借士林关系称自己“为民请命”，求府翻案。原审附有前两次查核结果与伪造书信原件。",
+      "attachments": [
+        "前两次查核结果",
+        "伪造书信原件",
+        "周博自书草稿",
+        "州学与军饷核账簿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "两封匿名“揭帖”笔迹与周博草稿一致，伪造来源已被原审查实。",
+          "周博并非举告失实一次，而是两案接连捏造，原审适用诬告反坐并无不当。"
+        ],
+        "secondary": [
+          "士林求情集中谈其“敢言”，并不反驳伪造笔迹与账簿核对结果。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后士林虽有杂音，但按察司认可原审法理周全。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "重审后仍维持反坐，反使士林党比借机鼓噪。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后原判无误，复验笔迹与调卷核账耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": true,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_063",
+      "case_name": "新蔡县流民分屯折粮安置案",
+      "difficulty": "新手",
+      "category": "统筹治理类",
+      "source_county": "新蔡县",
+      "source_season": 5,
+      "dossier_text": "新蔡县知县将三十余户流民分屯于三村，以折粮代短役，并限一月内补造保甲册。乡绅指其“纵容流民侵地”，请府撤案。原审附保甲册草案、村正具结与空荒地亩册，显示安置有据。",
+      "attachments": [
+        "保甲册草案",
+        "村正具结",
+        "空荒地亩册",
+        "折粮支给单"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "分屯对象皆安置在官荒与撂荒地，不涉侵占熟田，乡绅指控缺乏实据。",
+          "折粮代役限期明确，并未免除流民后续编审义务。"
+        ],
+        "secondary": [
+          "上控乡绅同时请求把荒地改佃给本族，利益冲突明显。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后流民秩序稳定，三村未生大乱。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议拖慢编册，流民又起流动。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -30
+          },
+          "chain_events": [
+            "提审后确认安置方案可行，另调人复丈荒地耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_064",
+      "case_name": "临朐县两县联防夜禁截盗案",
+      "difficulty": "进阶",
+      "category": "统筹治理类",
+      "source_county": "临朐县",
+      "source_season": 9,
+      "dossier_text": "临朐县与邻县约定夜禁三旬，并轮值巡更截盗。商户指夜禁妨市，请府否决。原审卷附两县会签文书、盗案下降记录与夜禁豁免名单，证明措施属临时权宜且已见效。",
+      "attachments": [
+        "两县会签文书",
+        "盗案下降记录",
+        "夜禁豁免名单",
+        "商户联名状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "夜禁只及三旬，且对米盐急运另开豁免，不是无限制封市。",
+          "盗案下降记录与巡更轮值完全对应，原审对联防必要性判断站得住脚。"
+        ],
+        "secondary": [
+          "联名商户多为夜间贩酒者，其损失与公共治安并不等价。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后两县联防得续行，盗案继续回落。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议令联防中断，夜盗又有抬头。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -50
+          },
+          "chain_events": [
+            "提审后确认原判妥当，重调两县巡册耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_065",
+      "case_name": "海门县疫后封渡限市案",
+      "difficulty": "高难",
+      "category": "统筹治理类",
+      "source_county": "海门县",
+      "source_season": 11,
+      "dossier_text": "海门县在疫后七日内封渡限市，只保留药材与米粮通行。豪商告称知县越权误市，要求改判赔偿。原审附医官会签、疫户名册与限市期限榜示，表明措施有期限、有豁免、有医官背书。",
+      "attachments": [
+        "医官会签",
+        "疫户名册",
+        "限市榜示",
+        "药材米粮豁免单"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "限市期限仅七日且明示豁免药材米粮，难认定为无端禁市。",
+          "医官会签与疫户名册显示当时确有扩散风险，原审认定措施必要。"
+        ],
+        "secondary": [
+          "豪商状中主张“日损数百两”，却拿不出实际账簿，仅泛言损失。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后海门县防疫威信得以维持，商路在限期后恢复。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议造成口岸再起争论，疫区管控摇摆。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -100
+          },
+          "chain_events": [
+            "提审后确认原判可守，重调医官与渡口册籍耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_066",
+      "case_name": "栈道修复徭役折免案",
+      "difficulty": "新手",
+      "category": "统筹治理类",
+      "source_county": "宁武县",
+      "source_season": 4,
+      "dossier_text": "宁武县山道塌毁，知县将原定短役改为修栈道，并对孤寡与病弱者折免。里老告称知县“擅自改徭”。原审卷附塌毁勘验、徭役名册与折免缘由，显示改派符合民生所急。",
+      "attachments": [
+        "塌毁勘验录",
+        "徭役名册",
+        "折免缘由",
+        "栈道修复工簿"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "改派所用人力未超原额，只是把短役用途改为急需修路，并非额外苛派。",
+          "孤寡病弱折免均有保甲具结，不是任意徇私。"
+        ],
+        "secondary": [
+          "上告里老本身承包旧栈道挑运，栈道不通对其私利影响更大。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后山道通行恢复，民间对折免安排并无大怨。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍维持原判，却拖慢工期。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -25
+          },
+          "chain_events": [
+            "提审后确认改派无失，重验塌毁路段耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_067",
+      "case_name": "安丰县河决后缓征安民案",
+      "difficulty": "进阶",
+      "category": "统筹治理类",
+      "source_county": "安丰县",
+      "source_season": 8,
+      "dossier_text": "安丰县河决后，知县将秋粮征期顺延半月，并以义仓平粜安民。豪绅控其“私减税额”。原审已核明知县并未减额，只是缓征，且平粜账册与义仓出仓单吻合。",
+      "attachments": [
+        "缓征告示",
+        "义仓出仓单",
+        "平粜账册",
+        "豪绅控状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "告示明确写明“额不减、期顺延”，豪绅将缓征曲解为减征。",
+          "义仓平粜账册与出仓单数额一致，未见私吞或挪用。"
+        ],
+        "secondary": [
+          "豪绅急于催征，主要是其自家高利贷收息安排受阻。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后安丰县缓征与平粜得以并行，民心稳定。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议令征期再乱，乡间讹言四起。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -60
+          },
+          "chain_events": [
+            "提审后确认原判妥当，重核义仓出入与河决灾册耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_068",
+      "case_name": "宁海州海防轮戍改派案",
+      "difficulty": "高难",
+      "category": "统筹治理类",
+      "source_county": "宁海州",
+      "source_season": 6,
+      "dossier_text": "宁海州因沿海警情紧张，知州将原“整月守望”改为“轮戍五日一换”，并调近岸保甲配合。部分豪户控称“扰民坏商”。原审卷附海警文书、轮戍册与港汊巡线图，显示改派更利于稳防而非加码。",
+      "attachments": [
+        "海警文书",
+        "轮戍册",
+        "巡线图",
+        "豪户控状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "轮戍后总丁数并未增加，只是缩短单人连续守望时长，原审认定“更稳而不更重”有据。",
+          "巡线图与海警来犯方向相符，改派并非无端折腾。"
+        ],
+        "secondary": [
+          "豪户控状主要担心雇工轮值影响自家海货出运，明显夹带私利。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后宁海州轮戍得续，海防不致因豪户争讼而摇摆。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议使轮戍册久悬未决，沿海巡防士气受损。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -100
+          },
+          "chain_events": [
+            "提审后确认改派稳妥，重调轮戍册与海警文书耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_069",
+      "case_name": "典妻赎身银两争讼案",
+      "difficulty": "新手",
+      "category": "民事纠纷类",
+      "source_county": "乐安县",
+      "source_season": 3,
+      "dossier_text": "乐安县王三将妻典与高家一年，期满携银赎回。高家称需另付衣食银八两。原审知县据典契原文与中人证词，判依原契二十两赎回，不许加索。高家求府改判。",
+      "attachments": [
+        "典契原文",
+        "中人证词",
+        "二十两赎银",
+        "高家诉状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "典契并无“衣食银另计”条款，中人证词亦确认当时议定一次结清。",
+          "高家提出的额外八两没有任何账簿或另约作证。"
+        ],
+        "secondary": [
+          "高家所谓“添衣费”直到期满才提，明显临时加码。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后双方按原契履行，民间评议知府守约。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍照原契处理，只让妇人多滞留半月。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，重传中人耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_070",
+      "case_name": "布行散伙亏折分账案",
+      "difficulty": "进阶",
+      "category": "民事纠纷类",
+      "source_county": "苏县",
+      "source_season": 11,
+      "dossier_text": "苏县布行合伙散伙，李茂称应按亏折后余资平分，周成却要求先抽走自己垫本利息。原审知县据原合伙契与三年流水，判按契先扣本、后按余资均分。周成不服上诉。",
+      "attachments": [
+        "合伙契",
+        "三年流水账",
+        "垫本收据",
+        "散伙议单"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "原合伙契明载“先归本钱、后分盈余”，原审照契断理，不见任意变更。",
+          "周成要求先取利息，但契中根本没有按月生息条文。"
+        ],
+        "secondary": [
+          "周成所引惯例仅属同业口头说法，不能对抗成契。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后双方按契结算，商界普遍认可。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重议拖慢清账，布行库货继续贬价。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判符契，重查流水与账房耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_071",
+      "case_name": "祖坟风水侵地争界案",
+      "difficulty": "高难",
+      "category": "民事纠纷类",
+      "source_county": "歙县",
+      "source_season": 9,
+      "dossier_text": "歙县两姓因祖坟风水争界，赵姓称钱姓新筑坟圈侵入祖地七尺。原审知县据旧税册、丈量图与两代保甲旧供，判钱姓退界七尺。钱姓上诉称“风水形胜不可移”。",
+      "attachments": [
+        "旧税册",
+        "丈量图",
+        "两代保甲旧供",
+        "钱姓上诉状"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "旧税册与丈量图对界线记载一致，原审并非只凭风水之说断案。",
+          "钱姓主张“不可移”针对的是风水，不是地界事实，不能推翻税册。"
+        ],
+        "secondary": [
+          "两代保甲旧供都指出旧界石位置，只因近年被新坟遮掩。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后钱姓虽不满，但地界证据清楚，讼端可息。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回再丈只会再起宗族械斗风险。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后确认原判无误，重丈地界与护送两姓耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_072",
+      "case_name": "退婚聘礼折耗争讼案",
+      "difficulty": "新手",
+      "category": "民事纠纷类",
+      "source_county": "平江县",
+      "source_season": 2,
+      "dossier_text": "平江县张家退婚后要求王家全额退还聘礼十六两外加绸缎折价。原审知县查明婚礼未成且绸缎未拆封，判十六两与原绸原样退还，不另算折价。张家不服。",
+      "attachments": [
+        "聘礼单",
+        "媒人证词",
+        "未拆封绸缎",
+        "退婚书"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "聘礼单与实物绸缎数量吻合，原审判原样退还已有实据。",
+          "张家主张折价，但绸缎并未使用，额外折价无法律与习俗依据。"
+        ],
+        "secondary": [
+          "媒人证词确认退婚系双方同意，不存在额外赔礼约定。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后媒人居中交割，纠纷可平。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回后仍原样退还，只拖延两家另择婚事。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，重传媒人与验物耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_073",
+      "case_name": "佃户歉收减租违约案",
+      "difficulty": "进阶",
+      "category": "民事纠纷类",
+      "source_county": "华阴县",
+      "source_season": 8,
+      "dossier_text": "华阴县佃户因歉收请求减租，地主不同意，佃户遂自行短缴。原审知县查契后认定契中明载“遇大旱减三成租”，且当年县册已有旱情登记，判地主按契减租。地主上诉。",
+      "attachments": [
+        "佃租契",
+        "旱情登记",
+        "收租簿",
+        "乡约证词"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "契中减租条款写明“大旱减三成”，原审只是照契执行。",
+          "县册旱情登记与乡约证词都能证明当年减收属实。"
+        ],
+        "secondary": [
+          "地主只强调“往年未减”，却回避了今年旱情与契中条款。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后佃户与地主依契和解，收租秩序恢复。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审拖慢秋后收租，乡间谣言四起。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判合契，重查旱情簿与丈租耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_074",
+      "case_name": "收养文书真伪争产案",
+      "difficulty": "高难",
+      "category": "民事纠纷类",
+      "source_county": "常熟县",
+      "source_season": 10,
+      "dossier_text": "常熟县顾氏死后无子，旁支顾礼持收养文书争产。原审知县比对乡约存底、族谱修记与文书印记，判收养文书系真，顾礼为合法继嗣。其叔父不服，称文书后补。",
+      "attachments": [
+        "收养文书",
+        "乡约存底",
+        "族谱修记",
+        "印记比对录"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "乡约存底与收养文书日期、印记一致，足证文书非事后补造。",
+          "族谱修记在顾氏生前已载顾礼为嗣，与叔父“后补”说法相反。"
+        ],
+        "secondary": [
+          "叔父若推翻收养即可独得家产，争产动机极强。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后顾礼继嗣资格坐实，族内虽有不平但难再翻案。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回再审令族产继续冻结，宗族冲突升级。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后确认原判无误，重校印记与族谱耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_075",
+      "case_name": "夜劫银铺伤主案",
+      "difficulty": "新手",
+      "category": "刑事重案类",
+      "source_county": "吴江县",
+      "source_season": 7,
+      "dossier_text": "吴江县银铺夜遭劫掠，店主重伤。原审据染血短刀、赃银包与更夫证词，判主犯许六劫银伤主，杖毙从犯一人，另徒流二人。许六家属称短刀系“栽赃”，请府翻案。",
+      "attachments": [
+        "染血短刀",
+        "赃银包",
+        "更夫证词",
+        "仵作验伤录"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "染血短刀与许六屋中刀鞘完全吻合，且赃银包在其屋后水沟起出，原审物证坚实。",
+          "更夫与店主对许六身形、口音描述一致，不是单一指认。"
+        ],
+        "secondary": [
+          "家属所谓“栽赃”不能解释为何赃银就藏在自家后沟。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后吴江县商户得安，银铺案就此了结。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审导致受伤店主再度候审，商户怨气上升。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，押解凶徒与重验伤耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_076",
+      "case_name": "乡勇误报窝藏通匪案",
+      "difficulty": "进阶",
+      "category": "刑事重案类",
+      "source_county": "博平县",
+      "source_season": 6,
+      "dossier_text": "博平县乡勇报民户周家窝藏通匪，原审却查明周家长子主动为匪送饭并通报巡逻时间，故依窝藏通匪论罪。周家称只是“被逼送饭”，请求改轻。原审附匪徒口供、密信与周家长子收银凭据。",
+      "attachments": [
+        "匪徒口供",
+        "密信",
+        "收银凭据",
+        "乡勇巡逻册"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "周家长子不仅送饭，还按密信通知乡勇巡逻时辰，已超“被逼供食”范围。",
+          "收银凭据显示其多次受银，不是一次性被胁从。"
+        ],
+        "secondary": [
+          "周家仅强调山匪威胁，却无法解释持续受银与通风报信。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后乡勇与百姓都明白“胁从有别、主动通匪另论”。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审让山匪余党借机煽惑周家。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判无误，押解匪徒与核验密信耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_077",
+      "case_name": "毒杀同伙分赃灭口案",
+      "difficulty": "高难",
+      "category": "刑事重案类",
+      "source_county": "潞城县",
+      "source_season": 11,
+      "dossier_text": "潞城县张二与同伙盗得绸货后，以砒霜酒毒杀一人独吞分赃。原审据砒霜残渣、分赃账与幸存者供词，判张二绞监候。其族兄称酒中砒霜系“误投鼠药”，请府复核。",
+      "attachments": [
+        "砒霜残渣验单",
+        "分赃账",
+        "幸存者供词",
+        "酒壶验录"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "砒霜残渣只集中在死者所饮一壶，不能用“误投鼠药”解释。",
+          "分赃账显示死者应分银未领，张二案发后独占其份额，动机明确。"
+        ],
+        "secondary": [
+          "族兄所称鼠药存放位置与酒壶摆放位置并不相近。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后潞城县群盗知所畏惧，按察司亦认原审采证严密。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回再审令同伙家属借机串联翻供。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后确认原判无误，重验毒物与押解证人耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_078",
+      "case_name": "连环纵火焚仓案",
+      "difficulty": "新手",
+      "category": "刑事重案类",
+      "source_county": "邳州",
+      "source_season": 4,
+      "dossier_text": "邳州两月内三处草仓接连失火，原审知州据火绒袋、夜行脚印与嫌犯供词，判周八纵火泄愤。周八妻称供词系惊吓所致，求府翻案。",
+      "attachments": [
+        "火绒袋",
+        "脚印比对录",
+        "供词",
+        "失火勘验图"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "三处火场所留火绒袋针脚一致，且都能在周八家中找到同批布料。",
+          "脚印尺寸与周八草鞋完全相合，不是只有口供。"
+        ],
+        "secondary": [
+          "妻子仅称“惊吓”却不能解释火绒袋与草鞋痕迹。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 6,
+            "magistrate_favor": 6,
+            "inspector_favor": 5,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后邳州仓火讼端可息，民间恐慌渐平。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -4,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审令火案久悬，仓丁人人自危。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -6,
+            "magistrate_favor": -8,
+            "inspector_favor": -3,
+            "treasury": -20
+          },
+          "chain_events": [
+            "提审后确认原判无误，重勘火场耗银二十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_079",
+      "case_name": "山道劫镖主从定罪案",
+      "difficulty": "进阶",
+      "category": "刑事重案类",
+      "source_county": "泾阳县",
+      "source_season": 8,
+      "dossier_text": "泾阳县山道劫镖案中，主犯韩五持刀，副手姚三望风。原审据镖局名册、被夺旗帜与口供，判韩五斩监候、姚三徒流。姚家称姚三只是路过误从。",
+      "attachments": [
+        "镖局名册",
+        "被夺旗帜",
+        "韩五与姚三口供",
+        "押解笔录"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "姚三在案前两日已随韩五踩点，并持旗帜引路，不是“临时路过”。",
+          "原审已区分主犯与望风从犯，量刑并未混同。"
+        ],
+        "secondary": [
+          "姚家强调其未持刀，却回避其望风与分赃事实。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 8,
+            "magistrate_favor": 8,
+            "inspector_favor": 6,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后主从区分清楚，镖局亦认可原审公允。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -2,
+            "magistrate_favor": -6,
+            "inspector_favor": 1,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回重审使镖局赔货久久难结。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -8,
+            "magistrate_favor": -10,
+            "inspector_favor": -4,
+            "treasury": -40
+          },
+          "chain_events": [
+            "提审后确认原判无误，重调镖局人证与山道勘验耗银四十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
+    },
+    {
+      "case_id": "pool_080",
+      "case_name": "祭祀夜宴误毒致死案",
+      "difficulty": "高难",
+      "category": "刑事重案类",
+      "source_county": "余姚县",
+      "source_season": 12,
+      "dossier_text": "余姚县宗祠夜宴后，一人中毒身亡。原审查明厨役周旺因旧怨将砒霜混入专供死者的温酒壶中，依故意毒杀论绞监候。周氏宗亲称众人同席，为何独死一人，疑非蓄意。",
+      "attachments": [
+        "温酒壶验录",
+        "砒霜残渣",
+        "厨役供词",
+        "同席宾客证词"
+      ],
+      "suspicion_markers": {
+        "critical": [
+          "砒霜只在死者专用温酒壶中检出，同席公壶并无毒性，足证系定向下毒。",
+          "周旺与死者旧怨由三名同席宾客证实，动机并非空泛推断。"
+        ],
+        "secondary": [
+          "宗亲所称“误毒”无法解释为何毒只在专壶中出现。"
+        ]
+      },
+      "options": [
+        {
+          "action": "核准原判",
+          "immediate_effects": {
+            "prestige": 10,
+            "magistrate_favor": 10,
+            "inspector_favor": 8,
+            "treasury": 0
+          },
+          "chain_events": [
+            "核准后余姚县宗祠纷争得定，按察司亦认可原审周密。"
+          ]
+        },
+        {
+          "action": "驳回重审",
+          "immediate_effects": {
+            "prestige": -3,
+            "magistrate_favor": -8,
+            "inspector_favor": 2,
+            "treasury": 0
+          },
+          "chain_events": [
+            "发回再审令宗族借机再起械斗。"
+          ]
+        },
+        {
+          "action": "提审改判",
+          "immediate_effects": {
+            "prestige": -10,
+            "magistrate_favor": -12,
+            "inspector_favor": -6,
+            "treasury": -80
+          },
+          "chain_events": [
+            "提审后确认原判无误，复验毒壶与押解宾客耗银八十两。"
+          ]
+        }
+      ],
+      "drum_eligible": false,
+      "judgment_truth": "ORIGINAL_VALID"
     }
-
   ]
 }

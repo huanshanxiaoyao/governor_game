@@ -1,5 +1,7 @@
 """知府游戏 API 视图"""
 
+import threading
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,6 +9,7 @@ from rest_framework.views import APIView
 
 from .models import AdminUnit, GameState
 from .services import PrefectureService
+from .services.annual_review import AnnualReviewService
 from .services.constants import month_of_year
 
 
@@ -87,6 +90,8 @@ class PrefectureOverviewView(APIView):
         game, err = _get_prefect_game(request, game_id)
         if err:
             return err
+        if month_of_year(game.current_season) in {11, 12}:
+            AnnualReviewService.ensure_prefecture_self_reviews(game)
         return Response(PrefectureService.get_prefecture_overview(game))
 
 
@@ -103,8 +108,43 @@ class PrefectureAdvanceView(APIView):
             return err
         if game.current_season > 36:
             return Response({"error": "任期已满"}, status=status.HTTP_400_BAD_REQUEST)
+        blocker = AnnualReviewService.get_prefecture_advance_blocker(game)
+        if blocker:
+            return Response({"error": blocker}, status=status.HTTP_400_BAD_REQUEST)
         result = PrefectureService.advance_month(game)
+        if "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+
+class PrefecturePrecomputeView(APIView):
+    """
+    POST /api/prefecture/<game_id>/precompute/
+    后台预推演下辖州县 AI 施政，供下次推进复用
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+        if game.current_season > 36:
+            return Response({"status": "game_over"})
+
+        next_season = game.current_season
+        threading.Thread(
+            target=PrefectureService.precompute_ai_decisions,
+            args=(game.id, next_season),
+            daemon=True,
+        ).start()
+        return Response({"status": "started", "season": next_season},
+                        status=status.HTTP_202_ACCEPTED)
+
+    def get(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+        return Response(PrefectureService.get_precompute_status(game.id, game.current_season))
 
 
 class PrefectureCountyListView(APIView):
@@ -139,6 +179,42 @@ class PrefectureCountyDetailView(APIView):
         return Response(detail)
 
 
+class PrefecturePersonnelView(APIView):
+    """
+    GET  /api/prefecture/<game_id>/personnel/        — 人事评议总览
+    POST /api/prefecture/<game_id>/personnel/        — 提交单个下属年度评议
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+        return Response(AnnualReviewService.get_prefecture_personnel_payload(game))
+
+    def post(self, request, game_id):
+        from .serializers import PrefectureAnnualReviewSerializer
+
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+
+        serializer = PrefectureAnnualReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        result = AnnualReviewService.submit_prefecture_review(
+            game=game,
+            unit_id=data["unit_id"],
+            grade=data["grade"],
+            strengths=data["strengths"],
+            weaknesses=data["weaknesses"],
+            focus=data["focus"],
+        )
+        if "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
 class PrefectureQuotaView(APIView):
     """
     POST /api/prefecture/<game_id>/quota/
@@ -165,6 +241,7 @@ class PrefectureQuotaView(APIView):
         result = PrefectureService.distribute_quota(game, assignments)
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        PrefectureService.invalidate_precompute(game)
         return Response(result)
 
 
@@ -201,6 +278,7 @@ class PrefectureDirectiveView(APIView):
         # 保留最近3条未消费指令
         unit.unit_data['pending_directives'] = unit.unit_data['pending_directives'][-3:]
         unit.save(update_fields=['unit_data'])
+        PrefectureService.invalidate_precompute(game)
 
         gp = unit.unit_data.get('governor_profile', {})
         return Response({
@@ -243,6 +321,7 @@ class PrefectureInvestView(APIView):
         result = PrefectureService.invest(game, project, level)
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        PrefectureService.invalidate_precompute(game)
         return Response(result)
 
 

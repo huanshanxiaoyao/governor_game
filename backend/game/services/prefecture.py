@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 
 from django.db import connection
 
-from ..models import AdminUnit, Agent
+from ..models import AdminUnit, Agent, GameState, NeighborPrecompute
 from .constants import (
     COUNTY_TYPES,
     ARCHETYPE_TO_STYLES,
@@ -29,6 +29,7 @@ from .settlement import SettlementService
 from .ai_governor import AIGovernorService
 from .emergency import EmergencyService
 from .magistrate_service import MagistrateService
+from .annual_review import AnnualReviewService
 
 logger = logging.getLogger('game')
 
@@ -69,6 +70,13 @@ TIER_THRESHOLDS = [
     (88, 99,  "优秀"),
 ]
 
+DISASTER_TYPE_LABELS = {
+    "flood": "洪灾",
+    "drought": "旱灾",
+    "locust": "蝗灾",
+    "plague": "疫病",
+}
+
 
 def score_to_tier(score: float) -> str:
     """将 0–99 数值转换为 8 档状况描述"""
@@ -77,6 +85,11 @@ def score_to_tier(score: float) -> str:
         if lo <= s <= hi:
             return label
     return "及格"
+
+
+def _clamp_meter(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    """Clamp relationship/reputation meters to a stable range."""
+    return max(lo, min(hi, float(value)))
 
 
 # ===== 府域类型定义 =====
@@ -132,7 +145,7 @@ PREFECTURE_INVESTMENT_SPECS = {
         "durations": [4,   6,   10],    # 建设工期（月）
     },
     "road": {
-        "label": "跨县驿道",
+        "label": "交通基建",
         "field": "road_level",
         "max_level": 2,
         "costs":     [400, 800],
@@ -146,7 +159,7 @@ PREFECTURE_INVESTMENT_SPECS = {
         "durations": [0],               # 即时完工
     },
     "river": {
-        "label": "河道治理",
+        "label": "水利基建",
         "field": "river_work_level",
         "max_level": 2,
         "costs":     [600, 1000],
@@ -235,13 +248,15 @@ class PrefectureService:
             "prefecture_type": prefecture_type,
             "prefecture_type_name": ptype["name"],
             "treasury": 800,
+            "judicial_prestige": 50,        # 司法声望（0-100）
+            "inspector_favor": 50,          # 按察使观感（0-100）
             "annual_quota": 0,           # 在县初始化后动态计算，见下方
             "quota_assignments": {},         # {unit_id: amount}
             "inspection_used": {"tongpan": 0, "tuiguan": 0},  # 年度核查次数
             "school_level": 0,               # 府学等级 0–3
-            "road_level": 0,                 # 跨县驿道等级 0–2
+            "road_level": 0,                 # 交通基建等级 0–2
             "granary": False,                # 府级义仓
-            "river_work_level": 0,           # 河道治理进度 0–2
+            "river_work_level": 0,           # 水利基建等级 0–2
             "year_end_review_pending": False,
             "exam_pending": False,
             "pending_events": [],
@@ -445,6 +460,10 @@ class PrefectureService:
         season = game.current_season
         moy = month_of_year(season)
 
+        blocker = AnnualReviewService.get_prefecture_advance_blocker(game)
+        if blocker:
+            return {"error": blocker}
+
         # ── 建设队列推进（每月冒头）──
         completed_construction = cls._tick_construction(pdata, season)
 
@@ -452,8 +471,21 @@ class PrefectureService:
             AdminUnit.objects.filter(game=game, unit_type='COUNTY', parent=prefecture_unit)
         )
 
-        # ── AI 决策（并行 LLM）──
-        decision_results = cls._compute_ai_decisions(subordinates, season)
+        # ── AI 决策：优先使用后台预推演缓存 ──
+        precompute = NeighborPrecompute.objects.filter(
+            game=game, season=season, status='done',
+        ).first()
+        if precompute:
+            logger.info("Using prefecture precomputed results for game %s season %s (%d counties)",
+                        game.id, season, len(precompute.results))
+            decision_results = cls._apply_cached_ai_results(subordinates, precompute.results)
+        else:
+            logger.info("No prefecture precompute ready for game %s season %s, computing in parallel",
+                        game.id, season)
+            decision_results = cls._compute_ai_decisions(subordinates, season)
+
+        # 清除已消费的预计算记录
+        NeighborPrecompute.objects.filter(game=game).delete()
 
         # ── 府级基础建设上下文（传入县级结算，影响灾害/商业/人口）──
         prefecture_ctx = {
@@ -553,13 +585,22 @@ class PrefectureService:
         if moy in {3, 6, 9, 12}:
             pending_cases = cls._generate_judicial_cases(pdata, subordinates, moy, season)
 
+        next_season = season + 1
+        transition = AnnualReviewService.handle_prefecture_transition(
+            game=game,
+            processed_season=season,
+            next_season=next_season,
+        )
+        if transition.get("personnel_result"):
+            pdata["personnel_last_result"] = transition["personnel_result"]
+
         prefecture_unit.unit_data = pdata
         prefecture_unit.save(update_fields=['unit_data'])
 
-        game.current_season = season + 1
+        game.current_season = next_season
         game.save(update_fields=['current_season'])
 
-        return {
+        result = {
             "season": season,  # the month just processed
             "remit_total": round(remit_total, 1),
             "treasury": pdata['treasury'],
@@ -569,6 +610,25 @@ class PrefectureService:
             "construction_completed": completed_construction,
             "pending_cases": pending_cases,
         }
+        if transition.get("personnel_opened"):
+            result["personnel_opened"] = True
+            result["personnel_ready_count"] = transition.get("personnel_ready_count", 0)
+        if transition.get("personnel_result"):
+            result["personnel_result"] = transition["personnel_result"]
+        return result
+
+    @classmethod
+    def _apply_cached_ai_results(cls, subordinates, cached: dict) -> dict:
+        """将预推演缓存应用到下辖州县对象上。"""
+        decision_results = {}
+        for unit in subordinates:
+            entry = cached.get(str(unit.id))
+            if entry:
+                unit.unit_data = copy.deepcopy(entry.get("unit_data") or unit.unit_data)
+                decision_results[unit.id] = entry.get("events", [])
+            else:
+                decision_results[unit.id] = []
+        return decision_results
 
     @classmethod
     def _compute_ai_decisions(cls, subordinates, season):
@@ -604,6 +664,135 @@ class PrefectureService:
                     results[uid] = []
 
         return results
+
+    @classmethod
+    def invalidate_precompute(cls, game) -> None:
+        """清理当前月份的府级AI预推演缓存。"""
+        NeighborPrecompute.objects.filter(game=game).delete()
+
+    @classmethod
+    def precompute_ai_decisions(cls, game_id: int, season: int) -> None:
+        """后台预推演下辖州县 AI 施政决策。"""
+        from django.db import connection as outer_conn
+
+        try:
+            precompute, created = NeighborPrecompute.objects.get_or_create(
+                game_id=game_id,
+                defaults={'season': season, 'status': 'computing', 'results': {}},
+            )
+            if not created and precompute.status == 'computing' and precompute.season == season:
+                logger.info("Prefecture precompute already running for game %s season %s, skipping",
+                            game_id, season)
+                return
+            if not created and precompute.status == 'done' and precompute.season == season:
+                logger.info("Prefecture precompute already done for game %s season %s, skipping",
+                            game_id, season)
+                return
+
+            if not created:
+                precompute.season = season
+                precompute.status = 'computing'
+                precompute.results = {}
+                precompute.save(update_fields=['season', 'status', 'results', 'updated_at'])
+
+            game = GameState.objects.select_related('player_unit').get(id=game_id)
+            if game.player_role != 'PREFECT' or not game.player_unit_id:
+                precompute.status = 'done'
+                precompute.save(update_fields=['status', 'updated_at'])
+                return
+
+            subordinates = list(
+                AdminUnit.objects.filter(
+                    game=game, unit_type='COUNTY', parent=game.player_unit,
+                )
+            )
+            if not subordinates:
+                precompute.status = 'done'
+                precompute.save(update_fields=['status', 'updated_at'])
+                return
+
+            subordinate_copies = []
+            for unit in subordinates:
+                unit_copy = copy.copy(unit)
+                unit_copy.unit_data = copy.deepcopy(unit.unit_data)
+                subordinate_copies.append((unit.id, unit_copy))
+
+            logger.info("Starting prefecture precompute for game %s season %s (%d counties)",
+                        game_id, season, len(subordinate_copies))
+
+            results = {}
+
+            def _compute_one(unit_id, unit_copy):
+                from django.db import connection as thread_conn
+                try:
+                    adapter = _SubordinateAdapter(unit_copy)
+                    events = AIGovernorService.make_decisions(adapter, season)
+                    return unit_id, {
+                        "events": events,
+                        "unit_data": unit_copy.unit_data,
+                        "last_reasoning": unit_copy.unit_data.get('_last_reasoning', ''),
+                        "county_name": unit_copy.unit_data.get('county_name', ''),
+                        "governor_name": unit_copy.unit_data.get('governor_profile', {}).get('name', ''),
+                    }
+                except Exception as e:
+                    logger.warning(
+                        "Prefecture precompute failed for county %s (%s): %s",
+                        unit_copy.unit_data.get('county_name', ''), unit_id, e,
+                    )
+                    return unit_id, None
+                finally:
+                    thread_conn.close()
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(_compute_one, unit_id, unit_copy): unit_id
+                    for unit_id, unit_copy in subordinate_copies
+                }
+                for future in as_completed(futures):
+                    unit_id, result = future.result()
+                    if result is not None:
+                        results[str(unit_id)] = result
+                    precompute.results = results
+                    precompute.save(update_fields=['results', 'updated_at'])
+
+            if not results:
+                NeighborPrecompute.objects.filter(game_id=game_id).delete()
+                logger.warning("Prefecture precompute produced no usable county results for game %s season %s",
+                               game_id, season)
+                return
+
+            precompute.status = 'done'
+            precompute.save(update_fields=['status', 'updated_at'])
+            logger.info("Prefecture precompute done for game %s season %s: %d/%d succeeded",
+                        game_id, season, len(results), len(subordinate_copies))
+
+        except Exception:
+            logger.warning("Prefecture precompute failed", exc_info=True)
+            # 删除失败缓存，保证正式推进时会回退到同步计算，而不是消费空结果。
+            NeighborPrecompute.objects.filter(game_id=game_id).delete()
+        finally:
+            outer_conn.close()
+
+    @classmethod
+    def get_precompute_status(cls, game_id: int, season: int) -> dict:
+        """查询府级AI预推演进度。"""
+        precompute = NeighborPrecompute.objects.filter(game_id=game_id).first()
+        if not precompute or precompute.season != season:
+            return {"status": "idle", "completed": [], "completed_count": 0}
+
+        completed = []
+        for unit_id, entry in precompute.results.items():
+            completed.append({
+                "unit_id": int(unit_id),
+                "county_name": entry.get("county_name", ""),
+                "governor_name": entry.get("governor_name", ""),
+            })
+
+        return {
+            "status": precompute.status if precompute.status in ('computing', 'done') else 'idle',
+            "completed": completed,
+            "completed_count": len(completed),
+        }
 
     # ==================== 汇报生成 ====================
 
@@ -688,9 +877,9 @@ class PrefectureService:
     def inspect_county(cls, game, unit_id: int, inspect_type: str) -> dict:
         """
         通判核账（tongpan）或推官巡查（tuiguan）：返回真实精确数值。
-        每年每类最多3次（消耗1次），跨县驿道等级决定每次可覆盖的县数：
+        每年每类最多3次（消耗1次），交通基建等级决定每次可覆盖的县数：
           road_level 0 → 1县，road_level 1 → 2县，road_level 2 → 3县。
-        目标县固定为 unit_id，额外县由系统自动选取（驿道加成）。
+        目标县固定为 unit_id，额外县由系统自动选取（交通基建加成）。
         返回 {"results": [...], "road_level": N, "bonus_counties": M}。
         """
         pdata = game.player_unit.unit_data
@@ -703,7 +892,7 @@ class PrefectureService:
         if not target:
             return {"error": "县不存在"}
 
-        # 驿道决定本次可覆盖县数（目标县 + 额外县）
+        # 交通基建决定本次可覆盖县数（目标县 + 额外县）
         road_level = pdata.get("road_level", 0)
         max_counties = 1 + road_level  # 0→1, 1→2, 2→3
 
@@ -718,11 +907,12 @@ class PrefectureService:
 
         def _extract(unit, itype):
             cd = unit.unit_data
+            county_name = cd.get('county_name') or cd.get('prefecture_name') or f"行政单元#{unit.id}"
             total_pop = sum(v.get('population', 0) for v in cd.get('villages', []))
             if itype == 'tongpan':
                 return {
                     "type": "通判核账",
-                    "county_name": unit.name,
+                    "county_name": county_name,
                     "unit_id": unit.id,
                     "treasury": round(cd.get('treasury', 0), 1),
                     "last_remit": round(cd.get('last_remit', 0), 1),
@@ -732,7 +922,7 @@ class PrefectureService:
             else:
                 return {
                     "type": "推官巡查",
-                    "county_name": unit.name,
+                    "county_name": county_name,
                     "unit_id": unit.id,
                     "security": round(cd.get('security', 50), 1),
                     "morale": round(cd.get('morale', 50), 1),
@@ -787,6 +977,7 @@ class PrefectureService:
     def get_prefecture_overview(cls, game) -> dict:
         """返回府情总览数据"""
         pdata = game.player_unit.unit_data
+        personnel = AnnualReviewService.get_prefecture_personnel_payload(game)
         subordinates = list(
             AdminUnit.objects.filter(game=game, unit_type='COUNTY', parent=game.player_unit)
         )
@@ -798,6 +989,7 @@ class PrefectureService:
             reports = cd.get('subordinate_reports', [])
             latest = reports[-1] if reports else None
             gp = cd.get('governor_profile', {})
+            disaster = cd.get('disaster_this_year') or {}
             county_summaries.append({
                 "unit_id": unit.id,
                 "county_name": cd.get('county_name', ''),
@@ -806,6 +998,8 @@ class PrefectureService:
                 "governor_archetype": gp.get('archetype', 'MIDDLING'),
                 "latest_report": latest,
                 "quota": pdata.get('quota_assignments', {}).get(str(unit.id), 0),
+                "has_disaster": bool(disaster),
+                "disaster_type": disaster.get('type'),
             })
 
         return {
@@ -817,12 +1011,78 @@ class PrefectureService:
             "annual_quota": pdata.get('annual_quota', 0),
             "school_level": pdata.get('school_level', 0),
             "road_level": pdata.get('road_level', 0),
+            "river_work_level": pdata.get('river_work_level', 0),
+            "judicial_prestige": pdata.get('judicial_prestige', 50),
+            "inspector_favor": pdata.get('inspector_favor', 50),
             "current_season": game.current_season,
             "year_end_review_pending": pdata.get('year_end_review_pending', False),
             "exam_pending": pdata.get('exam_pending', False),
             "pending_judicial_count": len(pdata.get('pending_judicial_cases', [])),
+            "todo_items": cls._build_overview_todos(pdata, subordinates),
             "counties": county_summaries,
+            "personnel_available": personnel.get("available", False),
+            "personnel_phase": personnel.get("phase"),
+            "personnel_summary": personnel.get("summary", {}),
         }
+
+    @classmethod
+    def _build_overview_todos(cls, pdata: dict, subordinates: list) -> list:
+        """汇总府情总览的待办事项提醒。"""
+        todo_items = []
+
+        if pdata.get('year_end_review_pending'):
+            todo_items.append({
+                "type": "year_end_review",
+                "severity": "high",
+                "title": "腊月评议待完成",
+                "count": 1,
+                "county_names": [],
+                "target_tab": "pref-tab-overview",
+            })
+
+        pending_cases = pdata.get('pending_judicial_cases', [])
+        if pending_cases:
+            todo_items.append({
+                "type": "judicial_case",
+                "severity": "high",
+                "title": f"待审议司法案件 {len(pending_cases)} 件",
+                "count": len(pending_cases),
+                "county_names": [],
+                "target_tab": "pref-tab-judicial",
+            })
+
+        disaster_counties = []
+        disaster_types = set()
+        for unit in subordinates:
+            disaster = unit.unit_data.get('disaster_this_year') or {}
+            if not disaster:
+                continue
+            county_name = unit.unit_data.get('county_name', '')
+            if county_name:
+                disaster_counties.append(county_name)
+            dtype = DISASTER_TYPE_LABELS.get(disaster.get('type'))
+            if dtype:
+                disaster_types.add(dtype)
+
+        if disaster_counties:
+            disaster_summary = "、".join(disaster_counties[:3])
+            if len(disaster_counties) > 3:
+                disaster_summary += "等"
+            type_summary = "、".join(sorted(disaster_types))
+            title = f"{len(disaster_counties)} 个下辖县州发生自然灾害"
+            if type_summary:
+                title += f"（{type_summary}）"
+            todo_items.append({
+                "type": "county_disaster",
+                "severity": "medium",
+                "title": title,
+                "count": len(disaster_counties),
+                "county_names": disaster_counties,
+                "summary": disaster_summary,
+                "target_tab": "pref-tab-counties",
+            })
+
+        return todo_items
 
     @classmethod
     def get_county_detail(cls, game, unit_id: int) -> dict:
@@ -844,6 +1104,28 @@ class PrefectureService:
             },
             "reports": cd.get('subordinate_reports', []),
             "quota": game.player_unit.unit_data.get('quota_assignments', {}).get(str(unit_id), 0),
+            "infrastructure": {
+                "irrigation_level":    cd.get('irrigation_level', 0),
+                "medical_level":       cd.get('medical_level', 0),
+                "school_level":        cd.get('school_level', 0),
+                "bailiff_level":       cd.get('bailiff_level', 0),
+                "tax_rate":            cd.get('tax_rate', 0.12),
+                "commercial_tax_rate": cd.get('commercial_tax_rate', 0.03),
+                "has_granary":         cd.get('has_granary', False),
+                "active_investments":  [
+                    {
+                        "description":       inv.get('description', ''),
+                        "completion_season": inv.get('completion_season'),
+                        "started_season":    inv.get('started_season'),
+                    }
+                    for inv in cd.get('active_investments', [])
+                ],
+            },
+            "annual_review": AnnualReviewService._serialize_cycle(
+                AnnualReviewService._find_cycle(
+                    cd, AnnualReviewService.display_year_for_season(game.current_season),
+                )
+            ),
         }
 
     # ==================== 府级基础建设 ====================
@@ -1227,7 +1509,64 @@ class PrefectureService:
         return {
             'pending_cases': pending_full,
             'judicial_log': pdata.get('judicial_log', []),
+            'judicial_meta': {
+                'judicial_prestige': pdata.get('judicial_prestige', 50),
+                'inspector_favor': pdata.get('inspector_favor', 50),
+            },
         }
+
+    @classmethod
+    def _apply_judicial_effects(cls, game, pdata: dict, case_data: dict, effects: dict) -> dict:
+        """将司法决策的即时效果真正落到府域存档中。"""
+        applied = {}
+
+        treasury_delta = round(float(effects.get('treasury', 0) or 0), 1)
+        if treasury_delta:
+            pdata['treasury'] = round(pdata.get('treasury', 0) + treasury_delta, 1)
+        applied['treasury'] = treasury_delta
+
+        prestige_delta = int(effects.get('prestige', 0) or 0)
+        if prestige_delta:
+            pdata['judicial_prestige'] = round(_clamp_meter(
+                pdata.get('judicial_prestige', 50) + prestige_delta
+            ), 1)
+        else:
+            pdata.setdefault('judicial_prestige', 50)
+        applied['judicial_prestige'] = pdata.get('judicial_prestige', 50)
+
+        inspector_delta = int(effects.get('inspector_favor', 0) or 0)
+        if inspector_delta:
+            pdata['inspector_favor'] = round(_clamp_meter(
+                pdata.get('inspector_favor', 50) + inspector_delta
+            ), 1)
+        else:
+            pdata.setdefault('inspector_favor', 50)
+        applied['inspector_favor'] = pdata.get('inspector_favor', 50)
+
+        magistrate_delta = int(effects.get('magistrate_favor', 0) or 0)
+        applied['prefect_affinity'] = None
+        if magistrate_delta:
+            source_county = case_data.get('source_county')
+            county_units = AdminUnit.objects.filter(
+                game=game, unit_type='COUNTY', parent=game.player_unit,
+            )
+            target_unit = next(
+                (
+                    unit for unit in county_units
+                    if unit.unit_data.get('county_name') == source_county
+                ),
+                None,
+            )
+            if target_unit is not None:
+                cd = target_unit.unit_data
+                cd['prefect_affinity'] = round(_clamp_meter(
+                    cd.get('prefect_affinity', 50) + magistrate_delta
+                ), 1)
+                target_unit.unit_data = cd
+                target_unit.save(update_fields=['unit_data'])
+                applied['prefect_affinity'] = cd['prefect_affinity']
+
+        return applied
 
     @classmethod
     def decide_judicial_case(cls, game, case_id: str, action: str) -> dict:
@@ -1244,10 +1583,7 @@ class PrefectureService:
 
         pdata = game.player_unit.unit_data
         effects = option.get('immediate_effects', {})
-
-        # 应用府库变化
-        treasury_delta = effects.get('treasury', 0)
-        pdata['treasury'] = round(pdata.get('treasury', 0) + treasury_delta, 1)
+        applied_state = cls._apply_judicial_effects(game, pdata, case_data, effects)
 
         # 移入已决列表
         decided = pdata.get('decided_cases', [])
@@ -1271,6 +1607,7 @@ class PrefectureService:
             'season':      game.current_season - 1,
             'action':      action,
             'effects':     effects,
+            'applied_state': applied_state,
             'chain_events': option.get('chain_events', []),
         })
         pdata['judicial_log'] = log[-30:]
@@ -1283,6 +1620,7 @@ class PrefectureService:
             'case_name':   case_data['case_name'],
             'action':      action,
             'effects':     effects,
+            'applied_state': applied_state,
             'chain_events': option.get('chain_events', []),
             'treasury':    pdata['treasury'],
         }
