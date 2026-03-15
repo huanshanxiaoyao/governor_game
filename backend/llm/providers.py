@@ -11,6 +11,7 @@ class ProviderConfig:
     base_url: str
     api_key: str
     default_model: str
+    sdk_type: str = 'openai'  # 'openai' or 'anthropic'
 
 
 def get_provider(name=None):
@@ -31,6 +32,7 @@ def get_provider(name=None):
         base_url=cfg['base_url'],
         api_key=cfg['api_key'],
         default_model=cfg['default_model'],
+        sdk_type=cfg.get('sdk_type', 'openai'),
     )
 
 
@@ -43,6 +45,7 @@ def get_all_providers():
             base_url=cfg['base_url'],
             api_key=cfg['api_key'],
             default_model=cfg['default_model'],
+            sdk_type=cfg.get('sdk_type', 'openai'),
         )
         for name, cfg in providers.items()
     }

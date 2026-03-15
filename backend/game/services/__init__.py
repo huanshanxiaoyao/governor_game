@@ -39,6 +39,12 @@ from .officialdom import OfficialdomService
 from .magistrate_service import MagistrateService
 from .emergency import EmergencyService
 from .prefecture import PrefectureService, score_to_tier, TIER_THRESHOLDS, REPORT_MONTHS
+from .ai_negotiation import AIGovernorNegotiationService, is_ai_negotiation_enabled
+from .bribery import BriberyService
+from .career_track import CareerTrackService
+from .promotion_event import PromotionEventService
+from .new_term import NewTermService, TERMINAL_REASONS
+from .state import load_player_state, load_county_state, save_player_state, mutate_player_state
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -81,4 +87,11 @@ __all__ = [
     "score_to_tier",
     "TIER_THRESHOLDS",
     "REPORT_MONTHS",
+    "AIGovernorNegotiationService",
+    "is_ai_negotiation_enabled",
+    "BriberyService",
+    "load_player_state",
+    "load_county_state",
+    "save_player_state",
+    "mutate_player_state",
 ]

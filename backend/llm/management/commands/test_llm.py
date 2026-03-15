@@ -64,7 +64,7 @@ class Command(BaseCommand):
             start = time.time()
             response = client.chat(
                 [{'role': 'user', 'content': '用中文说你好，只需要一句话。'}],
-                max_tokens=64,
+                max_tokens=512,
             )
             elapsed = time.time() - start
             self.stdout.write(self.style.SUCCESS(
@@ -81,7 +81,7 @@ class Command(BaseCommand):
                 start = time.time()
                 result = client.chat_json(
                     [{'role': 'user', 'content': '返回一个JSON对象，包含greeting字段，值为中文问候语。'}],
-                    max_tokens=64,
+                    max_tokens=512,
                 )
                 elapsed = time.time() - start
                 self.stdout.write(self.style.SUCCESS(

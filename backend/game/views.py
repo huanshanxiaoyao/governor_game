@@ -354,7 +354,7 @@ class RespondBribeView(APIView):
             msg = f"收受{matched['gentry_name']}银两{matched['amount']}两，此事不予追究。"
         else:
             # 记录拒绝，确保结算时绕过随机概率门直接触发交涉
-            from game.services.bribery import bribe_key as _bk
+            from .services.bribery import bribe_key as _bk
             key = _bk(village_name, event_type)
             if 'rejected_bribes' not in county:
                 county['rejected_bribes'] = {}

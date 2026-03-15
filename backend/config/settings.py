@@ -112,8 +112,12 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# AI Negotiation — set True to enable LLM-driven negotiation for neighbor counties
+# (adds ~2 LLM calls per annexation/hidden-land event; keep False when many AI counties run)
+AI_NEGOTIATION_ENABLED = os.getenv('AI_NEGOTIATION_ENABLED', '').lower() in ('true', '1', 'yes')
+
 # LLM Providers
-LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'openai')
+LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')
 
 LLM_PROVIDERS = {
     'openai': {
@@ -131,7 +135,16 @@ LLM_PROVIDERS = {
         'api_key': os.getenv('DEEPSEEK_API_KEY', ''),
         'default_model': os.getenv('DEEPSEEK_MODEL', 'deepseek-chat'),
     },
+    'minimax': {
+        'sdk_type': 'anthropic',
+        'base_url': os.getenv('ANTHROPIC_BASE_URL', 'https://api.minimax.io/anthropic'),
+        'api_key': os.getenv('ANTHROPIC_API_KEY', ''),
+        'default_model': os.getenv('MINIMAX_MODEL', 'MiniMax-M2.1'),
+    },
 }
+
+# Feishu log webhook — set in .env to enable WARNING+ push notifications
+FEISHU_LOG_WEBHOOK = os.getenv('FEISHU_LOG_WEBHOOK', '')
 
 # Logging
 LOGGING = {
@@ -142,21 +155,31 @@ LOGGING = {
             'format': '{levelname} {asctime} {name} {message}',
             'style': '{',
         },
+        'feishu': {
+            'format': '[{levelname}] {name}\n{message}\n→ {pathname}:{lineno}',
+            'style': '{',
+        },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
+        'feishu': {
+            'class': 'config.logging_handlers.FeishuHandler',
+            'level': 'WARNING',
+            'formatter': 'feishu',
+            'webhook_url': FEISHU_LOG_WEBHOOK,
+        },
     },
     'loggers': {
         'llm': {
-            'handlers': ['console'],
+            'handlers': ['console', 'feishu'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'game': {
-            'handlers': ['console'],
+            'handlers': ['console', 'feishu'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },

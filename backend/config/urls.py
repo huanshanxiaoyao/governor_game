@@ -5,6 +5,7 @@ from django.views.generic import TemplateView
 
 urlpatterns = [
     path('', ensure_csrf_cookie(TemplateView.as_view(template_name='game/index.html')), name='home'),
+    path('llm-bench/', ensure_csrf_cookie(TemplateView.as_view(template_name='game/llm_bench.html')), name='llm-bench'),
     path('admin/', admin.site.urls),
     path('api/', include('game.urls')),
     path('api/auth/', include('rest_framework.urls')),

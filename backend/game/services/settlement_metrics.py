@@ -219,11 +219,17 @@ class MetricsMixin:
         county["fiscal_year"] = fy
 
         # 6. 存储盈余信息供前端展示
+        # monthly_pcs（pre-consumption）用于触发过度消费机制，但展示时需用扣除后储备重新计算，
+        # 避免出现"月均余粮正值"与"储备远小于月消耗"之间的矛盾。
+        post_reserve = county["peasant_grain_reserve"]
+        post_surplus_total = post_reserve - months_to_harvest * base_monthly_consumption
+        display_monthly_pcs = post_surplus_total / max(total_pop, 1) / months_to_harvest
+
         county["peasant_surplus"] = {
-            "reserve": round(county["peasant_grain_reserve"]),
+            "reserve": round(post_reserve),
             "months_to_harvest": months_to_harvest,
             "per_capita_surplus": round(per_capita_surplus, 1),
-            "monthly_per_capita_surplus": round(monthly_pcs, 1),
+            "monthly_per_capita_surplus": round(display_monthly_pcs, 1),
             "demand_factor": round(demand_factor, 2),
             "monthly_consumption": round(monthly_consumption),
             "baseline_monthly_consumption": round(base_monthly_consumption),

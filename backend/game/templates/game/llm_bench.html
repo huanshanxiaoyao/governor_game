@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Benchmark — 知县模拟器</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: #1a1d27;
+    border-bottom: 1px solid #2d3148;
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .header h1 { font-size: 16px; font-weight: 600; color: #a78bfa; }
+  .header .sub { color: #64748b; font-size: 12px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    height: calc(100vh - 49px);
+  }
+
+  /* ── Config Panel ── */
+  .config-panel {
+    background: #1a1d27;
+    border-right: 1px solid #2d3148;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .section-title {
+    font-size: 11px; font-weight: 600; color: #475569;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding-bottom: 6px; border-bottom: 1px solid #1e2235;
+  }
+
+  .field label {
+    display: block; font-size: 11px; font-weight: 600; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;
+  }
+  .field select {
+    width: 100%; background: #0f1117; border: 1px solid #2d3148;
+    border-radius: 6px; color: #e2e8f0; padding: 8px 10px;
+    font-size: 13px; outline: none; font-family: inherit;
+  }
+  .field select:focus { border-color: #6366f1; }
+  .field .hint { font-size: 11px; color: #475569; margin-top: 4px; }
+
+  .mode-banner {
+    background: #0c1a2e; border: 1px solid #1d4ed8; border-radius: 6px;
+    padding: 8px 12px; font-size: 12px; color: #93c5fd; display: none;
+  }
+  .mode-banner.visible { display: block; }
+
+  /* ── Provider rows ── */
+  .providers-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .provider-block {
+    background: #0f1117; border: 1px solid #2d3148; border-radius: 7px;
+    overflow: hidden; transition: border-color 0.15s;
+  }
+  .provider-block.has-selection { border-color: #4f46e5; }
+
+  .provider-block-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; cursor: pointer; user-select: none;
+  }
+  .provider-block-header:hover { background: #141727; }
+
+  .prov-master {
+    accent-color: #6366f1; width: 14px; height: 14px; flex-shrink: 0; cursor: pointer;
+  }
+  .prov-label { font-weight: 600; font-size: 13px; flex: 1; }
+  .prov-sel-count {
+    font-size: 11px; color: #6366f1; background: #1e1b4b;
+    border-radius: 10px; padding: 1px 7px; display: none;
+  }
+  .prov-sel-count.visible { display: inline; }
+
+  .provider-models {
+    border-top: 1px solid #1e2235;
+    padding: 6px 10px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  .model-check-row {
+    display: flex; align-items: center; gap: 7px;
+    padding: 4px 6px; border-radius: 5px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .model-check-row:hover { background: #151823; }
+  .model-check-row input[type=checkbox] {
+    accent-color: #6366f1; width: 13px; height: 13px; flex-shrink: 0; cursor: pointer;
+  }
+  .model-check-row .mname { font-size: 12px; color: #cbd5e1; flex: 1; }
+  .model-check-row .mtag-default {
+    font-size: 10px; color: #7c3aed; background: #1e1b4b;
+    border-radius: 3px; padding: 1px 5px;
+  }
+
+  .btn-run {
+    width: 100%; padding: 10px; background: #6366f1; color: white;
+    border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-run:hover { background: #4f46e5; }
+  .btn-run:disabled { background: #3730a3; opacity: 0.6; cursor: not-allowed; }
+
+  /* ── Results Panel ── */
+  .results-panel { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  .results-header { display: flex; align-items: center; gap: 10px; }
+  .results-header h2 { font-size: 14px; font-weight: 600; color: #94a3b8; }
+  .template-badge {
+    background: #1e293b; border: 1px solid #334155; border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; color: #7c3aed; font-family: monospace;
+  }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px; align-items: start;
+  }
+
+  /* ── Prompt Section (right panel, below results) ── */
+  .prompt-section { border-top: 1px solid #1e2235; padding-top: 12px; }
+  .prompt-toggle {
+    background: none; border: 1px solid #2d3148; border-radius: 6px;
+    color: #94a3b8; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;
+  }
+  .prompt-toggle:hover { border-color: #6366f1; color: #e2e8f0; }
+  .prompt-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+  .prompt-box {
+    margin-top: 8px;
+    background: #0f1117; border: 1px solid #2d3148; border-radius: 6px;
+    padding: 10px; font-size: 11px; color: #94a3b8; white-space: pre-wrap;
+    max-height: 400px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.5; display: none;
+  }
+  .prompt-box.open { display: block; }
+
+  /* ── Result Card ── */
+  .result-card {
+    background: #1a1d27; border: 1px solid #2d3148; border-radius: 8px; overflow: hidden;
+  }
+  .result-card.success { border-color: #166534; }
+  .result-card.error   { border-color: #7f1d1d; }
+  .result-card.loading { opacity: 0.6; }
+
+  .card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #2d3148; background: #151823; flex-wrap: wrap;
+  }
+  .card-header .provider-name { font-weight: 600; font-size: 13px; }
+  .card-header .model-name {
+    color: #a78bfa; font-size: 11px; font-family: 'SF Mono','Fira Code',monospace;
+    background: #1e1b4b; border-radius: 3px; padding: 1px 6px;
+  }
+  .card-header .latency { margin-left: auto; font-size: 12px; font-weight: 500; color: #34d399; }
+  .latency.slow { color: #f59e0b; }
+  .latency.very-slow { color: #ef4444; }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
+  .status-dot.ok  { background: #22c55e; }
+  .status-dot.err { background: #ef4444; }
+  .status-dot.loading { background: #6366f1; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  .validity-badge { font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: 500; }
+  .validity-badge.ok  { background: #14532d; color: #4ade80; }
+  .validity-badge.err { background: #450a0a; color: #f87171; }
+
+  .card-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .json-fields { display: flex; flex-direction: column; gap: 8px; }
+  .json-field { display: flex; flex-direction: column; gap: 3px; }
+  .json-field .key {
+    font-size: 10px; font-weight: 600; color: #7c3aed;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .json-field .val {
+    color: #e2e8f0; font-size: 13px; line-height: 1.5;
+    padding: 6px 8px; background: #0f1117; border-radius: 4px; border-left: 2px solid #2d3148;
+  }
+  .json-field .val.analysis  { border-left-color: #f59e0b; }
+  .json-field .val.reasoning { border-left-color: #6366f1; font-size: 12px; color: #94a3b8; }
+  .json-field .val.decisions { font-family: 'SF Mono','Fira Code',monospace; font-size: 11px; color: #a3e635; border-left-color: #22c55e; white-space: pre-wrap; }
+
+  .collapsible-toggle {
+    background: none; border: 1px solid #2d3148; border-radius: 4px;
+    color: #64748b; padding: 4px 8px; font-size: 11px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px; width: fit-content;
+  }
+  .collapsible-toggle:hover { color: #94a3b8; border-color: #475569; }
+  .collapsible-toggle.reasoning-toggle { border-color: #3730a3; color: #818cf8; }
+  .collapsible-toggle.reasoning-toggle:hover { border-color: #6366f1; color: #a5b4fc; }
+  .collapsible-box {
+    border-radius: 4px; padding: 8px;
+    font-size: 11px; font-family: 'SF Mono','Fira Code',monospace;
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 260px; overflow-y: auto; display: none; margin-top: 4px;
+  }
+  .collapsible-box.open { display: block; }
+  .collapsible-box.raw-box { background: #0f1117; color: #94a3b8; }
+  .collapsible-box.reasoning-box {
+    background: #0d0f1f; color: #a5b4fc;
+    border: 1px solid #1e1b4b; line-height: 1.6;
+  }
+
+  .error-msg {
+    color: #fca5a5; font-size: 12px; padding: 8px;
+    background: #2d0b0b; border-radius: 4px; border-left: 2px solid #ef4444;
+  }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; color: #475569;
+    padding: 60px 20px; text-align: center; grid-column: 1 / -1;
+  }
+  .empty-state .icon { font-size: 48px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>LLM Benchmark</h1>
+  <span class="sub">知县模拟器 · 开发调试工具</span>
+</div>
+
+<div class="layout">
+
+  <!-- Config Panel -->
+  <div class="config-panel">
+
+    <div class="section-title">存档 &amp; AI知县</div>
+
+    <div class="field">
+      <label>存档</label>
+      <select id="game-select"><option value="">加载中…</option></select>
+    </div>
+
+    <div class="field">
+      <label>AI知县</label>
+      <select id="npc-select" disabled><option value="">请先选择存档</option></select>
+      <div class="hint" id="npc-hint"></div>
+    </div>
+
+    <div class="mode-banner" id="mode-banner">
+      ⚙️ AI决策模式 — 直接生成本月施政决策，无需输入消息
+    </div>
+
+    <div class="section-title">Providers &amp; 模型</div>
+    <div class="providers-list" id="providers-list"></div>
+
+    <button class="btn-run" id="run-btn" disabled>▶ 开始对比</button>
+
+  </div>
+
+  <!-- Results Panel -->
+  <div class="results-panel">
+    <div class="results-header">
+      <h2>对比结果</h2>
+      <span class="template-badge" id="template-badge" style="display:none"></span>
+    </div>
+    <div class="results-grid" id="results-grid">
+      <div class="empty-state">
+        <div class="icon">⚗️</div>
+        <p>选择存档和 AI知县，<br>勾选模型后点击「开始对比」</p>
+      </div>
+    </div>
+
+    <!-- Prompt preview — below results -->
+    <div class="prompt-section">
+      <button class="prompt-toggle" id="prompt-toggle" disabled>
+        <span>查看 Prompt 内容</span>
+        <span id="prompt-arrow">▼</span>
+      </button>
+      <div class="prompt-box" id="prompt-box"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = {
+  games:   '/api/bench/games/',
+  context: '/api/bench/context/',
+  run:     '/api/bench/run/',
+};
+
+// provider → 可选模型列表，第一项为默认模型
+const PROVIDER_META = [
+  { name: 'minimax',  label: 'MiniMax',  models: ['MiniMax-M2.1', 'MiniMax-M2.5', 'MiniMax-M2'] },
+  { name: 'qwen',     label: 'Qwen',     models: ['qwen-plus', 'qwen3.5-flash', 'qwen3.5-plus'] },
+  { name: 'deepseek', label: 'DeepSeek', models: ['deepseek-chat', 'deepseek-reasoner'] },
+  { name: 'openai',   label: 'OpenAI',   models: ['gpt-4o'] },
+];
+
+let gamesData = [];
+let selectedGame = null;
+let selectedNpc  = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderProviders();
+  loadGames();
+  document.getElementById('game-select').addEventListener('change', onGameChange);
+  document.getElementById('npc-select').addEventListener('change', onNpcChange);
+  document.getElementById('run-btn').addEventListener('click', onRun);
+  document.getElementById('prompt-toggle').addEventListener('click', onPromptToggle);
+});
+
+// ── Provider blocks ──
+function renderProviders() {
+  document.getElementById('providers-list').innerHTML = PROVIDER_META.map(p => {
+    const modelRows = p.models.map((m, idx) => `
+      <label class="model-check-row">
+        <input type="checkbox" class="model-cb" data-provider="${p.name}" value="${m}"
+               ${idx === 0 && p.name === 'minimax' ? 'checked' : ''}>
+        <span class="mname">${m}</span>
+        ${idx === 0 ? '<span class="mtag-default">默认</span>' : ''}
+      </label>`).join('');
+
+    return `<div class="provider-block" id="pblock-${p.name}">
+      <div class="provider-block-header" onclick="toggleProviderAll('${p.name}')">
+        <input type="checkbox" class="prov-master" id="pmaster-${p.name}"
+               ${p.name === 'minimax' ? 'checked' : ''}
+               onclick="event.stopPropagation();onMasterClick('${p.name}')">
+        <span class="prov-label">${p.label}</span>
+        <span class="prov-sel-count" id="psel-${p.name}"></span>
+      </div>
+      <div class="provider-models">${modelRows}</div>
+    </div>`;
+  }).join('');
+
+  // Listen to individual model checkboxes
+  document.querySelectorAll('.model-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      syncMasterState(cb.dataset.provider);
+      updateRunBtn();
+    });
+  });
+
+  syncAllMasters();
+}
+
+function toggleProviderAll(provName) {
+  const master = document.getElementById('pmaster-' + provName);
+  const cbs = document.querySelectorAll(`.model-cb[data-provider="${provName}"]`);
+  // If any unchecked → check all; else uncheck all
+  const anyUnchecked = [...cbs].some(cb => !cb.checked);
+  cbs.forEach(cb => cb.checked = anyUnchecked);
+  syncMasterState(provName);
+  updateRunBtn();
+}
+
+function onMasterClick(provName) {
+  const master = document.getElementById('pmaster-' + provName);
+  const cbs = document.querySelectorAll(`.model-cb[data-provider="${provName}"]`);
+  cbs.forEach(cb => cb.checked = master.checked);
+  syncMasterState(provName);
+  updateRunBtn();
+}
+
+function syncMasterState(provName) {
+  const master = document.getElementById('pmaster-' + provName);
+  const cbs = [...document.querySelectorAll(`.model-cb[data-provider="${provName}"]`)];
+  const checkedCount = cbs.filter(cb => cb.checked).length;
+
+  master.checked = checkedCount > 0;
+  master.indeterminate = checkedCount > 0 && checkedCount < cbs.length;
+
+  const countEl = document.getElementById('psel-' + provName);
+  if (checkedCount > 0) {
+    countEl.textContent = checkedCount + ' 个';
+    countEl.classList.add('visible');
+  } else {
+    countEl.classList.remove('visible');
+  }
+
+  const block = document.getElementById('pblock-' + provName);
+  block.classList.toggle('has-selection', checkedCount > 0);
+}
+
+function syncAllMasters() {
+  PROVIDER_META.forEach(p => syncMasterState(p.name));
+}
+
+// 返回选中的 runs 列表：[{provider, model}, ...]
+function getSelectedRuns() {
+  return [...document.querySelectorAll('.model-cb:checked')].map(cb => ({
+    provider: cb.dataset.provider,
+    model: cb.value,
+  }));
+}
+
+// ── Load games ──
+async function loadGames() {
+  try {
+    const res = await apiFetch(API.games);
+    gamesData = res.games || [];
+    const sel = document.getElementById('game-select');
+    if (!gamesData.length) {
+      sel.innerHTML = '<option value="">（无存档）</option>';
+      return;
+    }
+    const roleLabel = { COUNTY_MAGISTRATE: '知县', PREFECT: '知府', GOVERNOR: '巡抚', CABINET: '内阁' };
+    sel.innerHTML = '<option value="">请选择存档…</option>' + gamesData.map(g => {
+      const role = roleLabel[g.player_role] || g.player_role;
+      const npcCount = g.npcs ? g.npcs.length : 0;
+      return `<option value="${g.game_id}">#${g.game_id} ${g.county_name} · 第${g.season}月 [${role}] (${npcCount}个AI知县)</option>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('game-select').innerHTML = `<option value="">加载失败: ${e.message}</option>`;
+  }
+}
+
+// ── Game / NPC change ──
+function onGameChange() {
+  const gameId = parseInt(document.getElementById('game-select').value);
+  selectedGame = gamesData.find(g => g.game_id === gameId) || null;
+  selectedNpc = null;
+
+  const npcSel = document.getElementById('npc-select');
+  const hint = document.getElementById('npc-hint');
+
+  if (!selectedGame) {
+    npcSel.innerHTML = '<option value="">请先选择存档</option>';
+    npcSel.disabled = true;
+    updateRunBtn(); updateModeBanner(); return;
+  }
+
+  const npcs = selectedGame.npcs || [];
+  npcSel.disabled = false;
+  if (!npcs.length) {
+    npcSel.innerHTML = '<option value="">（无 AI知县数据）</option>';
+    hint.textContent = '该存档暂无AI知县可测试';
+  } else {
+    const sourceLabel = npcs[0].source === 'neighbor_county' ? '邻县知县' : '下属知县';
+    npcSel.innerHTML = `<option value="">请选择${sourceLabel}…</option>` +
+      npcs.map(n => `<option value="${n.id}">${n.name}（${n.county_name}）— ${n.description}</option>`).join('');
+    hint.textContent = '';
+  }
+
+  document.getElementById('prompt-toggle').disabled = true;
+  document.getElementById('prompt-box').classList.remove('open');
+  updateRunBtn(); updateModeBanner();
+}
+
+function onNpcChange() {
+  const npcId = parseInt(document.getElementById('npc-select').value);
+  const npcs = selectedGame?.npcs || [];
+  selectedNpc = npcs.find(n => n.id === npcId) || null;
+
+  document.getElementById('npc-hint').textContent = selectedNpc ? selectedNpc.description : '';
+  document.getElementById('prompt-toggle').disabled = !selectedNpc;
+  document.getElementById('prompt-box').classList.remove('open');
+  document.getElementById('prompt-arrow').textContent = '▼';
+  updateRunBtn(); updateModeBanner();
+}
+
+function updateModeBanner() {
+  document.getElementById('mode-banner').classList.toggle('visible', !!selectedNpc);
+}
+
+function updateRunBtn() {
+  const hasRuns = getSelectedRuns().length > 0;
+  document.getElementById('run-btn').disabled = !selectedGame || !selectedNpc || !hasRuns;
+}
+
+// ── Prompt preview ──
+async function onPromptToggle() {
+  const box = document.getElementById('prompt-box');
+  const arrow = document.getElementById('prompt-arrow');
+  if (box.classList.contains('open')) {
+    box.classList.remove('open'); arrow.textContent = '▼'; return;
+  }
+  box.textContent = '渲染中…'; box.classList.add('open'); arrow.textContent = '▲';
+  try {
+    const res = await apiFetch(API.context, {
+      method: 'POST',
+      body: JSON.stringify({
+        game_id: selectedGame.game_id,
+        npc_source: selectedNpc.source,
+        npc_id: selectedNpc.id,
+      }),
+    });
+    box.textContent = `【System】\n${res.system_prompt}\n\n【User】\n${res.user_prompt}`;
+  } catch (e) {
+    box.textContent = `错误: ${e.message}`;
+  }
+}
+
+// ── Run comparison ──
+async function onRun() {
+  const runs = getSelectedRuns();
+  if (!runs.length || !selectedGame || !selectedNpc) return;
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = '⏳ 对比中…';
+
+  const grid = document.getElementById('results-grid');
+  const badge = document.getElementById('template-badge');
+  badge.style.display = 'none';
+  grid.innerHTML = runs.map((r, i) => renderLoadingCard(r, i)).join('');
+
+  document.getElementById('prompt-box').classList.remove('open');
+  document.getElementById('prompt-arrow').textContent = '▼';
+
+  try {
+    const res = await apiFetch(API.run, {
+      method: 'POST',
+      body: JSON.stringify({
+        game_id: selectedGame.game_id,
+        npc_source: selectedNpc.source,
+        npc_id: selectedNpc.id,
+        runs,
+      }),
+    });
+    badge.textContent = res.template_name; badge.style.display = '';
+    grid.innerHTML = res.results.map((r, i) => renderResultCard(r, i)).join('');
+    attachRawToggles();
+  } catch (e) {
+    grid.innerHTML = `<div class="error-msg" style="grid-column:1/-1">请求失败: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ 开始对比';
+  }
+}
+
+// ── Card renderers ──
+function renderLoadingCard(run, idx) {
+  const meta = PROVIDER_META.find(p => p.name === run.provider) || { label: run.provider };
+  return `<div class="result-card loading">
+    <div class="card-header">
+      <span class="status-dot loading"></span>
+      <span class="provider-name">${meta.label}</span>
+      <span class="model-name">${escHtml(run.model)}</span>
+    </div>
+    <div class="card-body"><div style="color:#475569;font-size:12px">等待响应…</div></div>
+  </div>`;
+}
+
+function renderResultCard(r, idx) {
+  const meta = PROVIDER_META.find(p => p.name === r.provider) || { label: r.provider };
+  const cardClass = r.error && !r.parsed ? 'error' : 'success';
+  const statusClass = r.error && !r.parsed ? 'err' : 'ok';
+  const lms = r.latency_ms;
+  const latencyClass = lms > 20000 ? 'very-slow' : lms > 10000 ? 'slow' : '';
+  const latencyText = lms ? `${(lms / 1000).toFixed(1)}s` : '';
+  const rawId = `raw-${idx}`;
+
+  let body = r.parsed
+    ? renderGovernorFields(r.parsed)
+    : `<div class="error-msg">${escHtml(r.error || r.raw || '空响应')}</div>`;
+  if (r.error && r.parsed) {
+    body += `<div class="error-msg" style="margin-top:6px">${escHtml(r.error)}</div>`;
+  }
+
+  const validBadge = `<span class="validity-badge ${r.valid ? 'ok' : 'err'}">${r.valid ? '✓ JSON' : '✗ JSON'}</span>`;
+
+  const rcId = `rc-${idx}`;
+  const rcSection = r.reasoning_content ? `
+    <button class="collapsible-toggle reasoning-toggle" data-target="${rcId}">
+      <span>🧠 推理过程（reasoning_content）</span> <span>▼</span>
+    </button>
+    <div class="collapsible-box reasoning-box" id="${rcId}">${escHtml(r.reasoning_content)}</div>` : '';
+
+  return `<div class="result-card ${cardClass}">
+    <div class="card-header">
+      <span class="status-dot ${statusClass}"></span>
+      <span class="provider-name">${meta.label}</span>
+      <span class="model-name">${escHtml(r.model)}</span>
+      ${validBadge}
+      <span class="latency ${latencyClass}">${latencyText}</span>
+    </div>
+    <div class="card-body">
+      ${body}
+      ${rcSection}
+      ${r.raw ? `
+        <button class="collapsible-toggle" data-target="${rawId}"><span>原始响应</span> <span>▼</span></button>
+        <div class="collapsible-box raw-box" id="${rawId}">${escHtml(r.raw)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderGovernorFields(parsed) {
+  const fields = [];
+
+  if (parsed.analysis !== undefined) {
+    fields.push(`<div class="json-field">
+      <span class="key">分析（analysis）</span>
+      <div class="val analysis">${escHtml(String(parsed.analysis))}</div>
+    </div>`);
+  }
+  if (parsed.reasoning !== undefined) {
+    fields.push(`<div class="json-field">
+      <span class="key">推理（reasoning）</span>
+      <div class="val reasoning">${escHtml(String(parsed.reasoning))}</div>
+    </div>`);
+  }
+  if (parsed.decisions !== undefined) {
+    const d = parsed.decisions;
+    const dText = typeof d === 'object' ? JSON.stringify(d, null, 2) : String(d);
+    let inline = '';
+    if (typeof d === 'object') {
+      const invs = d.investments || [];
+      const invText = invs.length
+        ? invs.map(i => typeof i === 'string' ? i : `${i.action}${i.target_village ? '·' + i.target_village : ''}`).join(', ')
+        : '无';
+      inline = `<div style="margin-bottom:6px;font-size:12px;color:#94a3b8">
+        投资: <b style="color:#e2e8f0">${escHtml(invText)}</b>
+        &nbsp;·&nbsp; 税率: <b style="color:#e2e8f0">${d.tax_rate !== undefined ? (d.tax_rate * 100).toFixed(0) + '%' : '—'}</b>
+        &nbsp;·&nbsp; 商税: <b style="color:#e2e8f0">${d.commercial_tax_rate !== undefined ? (d.commercial_tax_rate * 100).toFixed(0) + '%' : '—'}</b>
+        &nbsp;·&nbsp; 医疗: <b style="color:#e2e8f0">${d.medical_level !== undefined ? d.medical_level + '级' : '—'}</b>
+      </div>`;
+    }
+    fields.push(`<div class="json-field">
+      <span class="key">决策（decisions）</span>
+      ${inline}
+      <div class="val decisions">${escHtml(dText)}</div>
+    </div>`);
+  }
+
+  return `<div class="json-fields">${fields.join('')}</div>`;
+}
+
+function attachRawToggles() {
+  document.querySelectorAll('.collapsible-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const box = document.getElementById(btn.dataset.target);
+      box.classList.toggle('open');
+      btn.querySelector('span:last-child').textContent = box.classList.contains('open') ? '▲' : '▼';
+    });
+  });
+}
+
+// ── Utils ──
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function getCsrf() {
+  return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('csrftoken='))?.split('=')[1]||'';
+}
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), ...(opts.headers||{}) },
+    ...opts,
+  });
+  if (res.status === 403) throw new Error('未登录，请先访问 /admin/ 登录');
+  if (!res.ok) { const t = await res.text(); throw new Error(`HTTP ${res.status}: ${t.slice(0,120)}`); }
+  return res.json();
+}
+</script>
+</body>
+</html>

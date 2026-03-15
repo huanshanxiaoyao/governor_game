@@ -28,11 +28,11 @@ def save_player_state(game, state, mirror_legacy=True):
 
     if game.player_unit_id:
         player_unit = game.player_unit
-        player_unit.unit_data = copy.deepcopy(payload)
+        player_unit.unit_data = payload
         player_unit.save(update_fields=["unit_data"])
 
         if mirror_legacy and player_unit.unit_type == "COUNTY":
-            game.county_data = copy.deepcopy(payload)
+            game.county_data = payload
             game.save(update_fields=["county_data", "updated_at"])
             return payload
 
@@ -45,7 +45,11 @@ def save_player_state(game, state, mirror_legacy=True):
 
 
 def mutate_player_state(game, mutator, mirror_legacy=True):
-    """Run a mutator against the current player state and persist it."""
+    """Run a mutator against the current player state and persist it.
+
+    供 Phase 3 写路径迁移使用：将"读-改-写"收口到此函数，
+    mutator(state) 只操作内存中的 state dict，无需关心保存细节。
+    """
     state = load_player_state(game)
     mutator(state)
     save_player_state(game, state, mirror_legacy=mirror_legacy)
