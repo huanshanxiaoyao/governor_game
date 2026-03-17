@@ -79,30 +79,23 @@ class AdminUnit(models.Model):
 
 class PlayerProfile(models.Model):
     """玩家档案 - 每局游戏一个"""
-    BACKGROUND_CHOICES = [
-        ('HUMBLE', '寒门子弟'),
-        ('SCHOLAR', '书香门第'),
-        ('OFFICIAL', '官宦之后'),
-    ]
-
-    # 默认初始值：知识/技能按出身背景设定
-    BACKGROUND_DEFAULTS = {
-        'HUMBLE': {'knowledge': 3.0, 'skill': 3.0},
-        'SCHOLAR': {'knowledge': 5.0, 'skill': 3.0},
-        'OFFICIAL': {'knowledge': 4.0, 'skill': 5.0},
-    }
 
     game = models.OneToOneField(GameState, on_delete=models.CASCADE, related_name='player')
-    background = models.CharField(max_length=10, choices=BACKGROUND_CHOICES, help_text='出身背景')
 
-    # 内在能力（隐藏，1-10，通过失败后成功提升）
+    # 内在能力（隐藏，1.0-10.0，随游戏经历提升）
     knowledge = models.FloatField(default=3.0, help_text='知识：农耕/经济/地理，影响治理效果')
     skill = models.FloatField(default=3.0, help_text='技能：谈判/协调，影响谈判效果')
 
-    # 声望（半隐藏，0-100，玩家看5档分级±偏差）
+    # 声望四维（半隐藏，0-100，玩家看5档分级±偏差，行为驱动）
     integrity = models.IntegerField(default=50, help_text='清名：公正廉洁的口碑')
     competence = models.IntegerField(default=30, help_text='能名：干练能干的口碑')
     popularity = models.IntegerField(default=10, help_text='人缘：官场好相处的口碑')
+    authority = models.IntegerField(default=40, help_text='威名：必要时强硬、令人敬畏的口碑')
+
+    # 政治理念三维（半隐藏，0.0-1.0，从中立0.5出发，随行为漂移）
+    state_vs_people = models.FloatField(default=0.5, help_text='社稷—黎民：0=优先百姓，1=优先国家指标')
+    central_vs_local = models.FloatField(default=0.5, help_text='集权—分权：0=地方自主，1=恭顺中央')
+    pragmatic_vs_ideal = models.FloatField(default=0.5, help_text='现实—理想：0=坚守原则，1=务实妥协')
 
     # 家产（个人财富，两）
     personal_wealth = models.FloatField(default=0.0, help_text='家产（两）：任内积累的个人财富，含合法薪俸与灰色所得')
@@ -114,7 +107,7 @@ class PlayerProfile(models.Model):
         db_table = 'player_profiles'
 
     def __str__(self):
-        return f"Player - Game#{self.game_id} ({self.get_background_display()})"
+        return f"Player - Game#{self.game_id}"
 
 
 class Agent(models.Model):
@@ -472,3 +465,88 @@ class Faction(models.Model):
 
     def __str__(self):
         return f"{self.name} (圣眷:{self.imperial_favor}) - Game#{self.game_id}"
+
+
+class JudicialGenerationState(models.Model):
+    """司法卷宗实例化后台任务状态。"""
+
+    STATUS_CHOICES = [
+        ('PENDING', '待生成'),
+        ('RUNNING', '生成中'),
+        ('READY', '已完成'),
+        ('FAILED', '失败'),
+    ]
+
+    game = models.OneToOneField(
+        GameState, on_delete=models.CASCADE, related_name='judicial_generation',
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    total_windows = models.IntegerField(default=0)
+    generated_windows = models.IntegerField(default=0)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'judicial_generation_states'
+
+    def __str__(self):
+        return f"JudicialGeneration Game#{self.game_id} [{self.status}]"
+
+
+class JudicialCaseInstance(models.Model):
+    """本局司法卷宗实例。"""
+
+    STATUS_CHOICES = [
+        ('PENDING_ASSISTANT_REVIEW', '待县丞意见'),
+        ('PENDING_MAGISTRATE_ROUND_1', '待知县一审'),
+        ('RETURNED_FOR_REVIEW', '打回重审'),
+        ('PENDING_MAGISTRATE_ROUND_2', '待知县二审'),
+        ('SUBMITTED_TO_PREFECT', '已上呈知府'),
+        ('DEFERRED_TO_PREFECT', '委托知府裁定'),
+        ('PREFECT_DECIDED', '知府已裁定'),
+        ('WITHDRAWN_THIS_QUARTER', '本季度暂缓'),
+    ]
+
+    game = models.ForeignKey(
+        GameState, on_delete=models.CASCADE, related_name='judicial_cases',
+    )
+    county_unit = models.ForeignKey(
+        AdminUnit, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='judicial_cases',
+    )
+    prefect_unit = models.ForeignKey(
+        AdminUnit, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='prefecture_judicial_cases',
+    )
+    template_case_id = models.CharField(max_length=50)
+    county_review_season = models.IntegerField()
+    prefect_review_season = models.IntegerField()
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING_MAGISTRATE_ROUND_1')
+    local_payload = models.JSONField(default=dict)
+    actor_map = models.JSONField(default=dict)
+    assistant_rounds = models.JSONField(default=list)
+    magistrate_rounds = models.JSONField(default=list)
+    submitted_to_prefect = models.BooleanField(default=False)
+    submitted_season = models.IntegerField(null=True, blank=True)
+    prefect_decision = models.JSONField(default=dict, blank=True)
+    debug_meta = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'judicial_case_instances'
+        indexes = [
+            models.Index(fields=['game', 'county_review_season']),
+            models.Index(fields=['game', 'prefect_review_season']),
+            models.Index(fields=['county_unit', 'status']),
+            models.Index(fields=['prefect_unit', 'status']),
+        ]
+
+    def __str__(self):
+        county_name = ''
+        if self.county_unit_id:
+            county_name = self.county_unit.unit_data.get('county_name', '')
+        return f"JudicialCase {self.template_case_id} {county_name} S{self.county_review_season} [{self.status}]"

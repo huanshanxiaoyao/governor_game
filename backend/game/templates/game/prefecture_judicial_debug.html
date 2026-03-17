@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>司法调试面板</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0f172a; color:#e2e8f0; }
+  .page { max-width: 1400px; margin:0 auto; padding:24px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+  .title h1 { margin:0; font-size:28px; }
+  .title p { margin:8px 0 0; color:#94a3b8; }
+  .meta { display:flex; gap:10px; flex-wrap:wrap; }
+  .pill { background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:999px; padding:6px 12px; font-size:13px; }
+  .panel { background:#111827; border:1px solid #243041; border-radius:14px; padding:18px; margin-bottom:20px; }
+  .panel h2 { margin:0 0 12px; font-size:18px; }
+  .panel h3 { margin:0 0 10px; font-size:15px; color:#cbd5e1; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+  .list { display:grid; gap:12px; }
+  .card { background:#0b1220; border:1px solid #263142; border-radius:12px; padding:14px; }
+  .card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:10px; }
+  .case-title { font-size:16px; font-weight:600; }
+  .badge-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .badge { border-radius:999px; padding:3px 10px; font-size:12px; font-weight:600; }
+  .pending { background:#102d44; color:#7dd3fc; }
+  .decided { background:#16351f; color:#86efac; }
+  .deferred { background:#3f2c0b; color:#fcd34d; }
+  .muted { background:#312e81; color:#c4b5fd; }
+  .meta-table { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:8px 16px; margin:10px 0; }
+  .meta-item { background:#111c2c; border-radius:8px; padding:8px 10px; }
+  .meta-item strong { display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; }
+  pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.5; color:#cbd5e1; background:#09111f; border-radius:10px; padding:12px; border:1px solid #1f2a3a; }
+  details { margin-top:8px; }
+  summary { cursor:pointer; color:#93c5fd; }
+  .summary-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; }
+  .summary-box { background:#0b1220; border:1px solid #263142; border-radius:12px; padding:12px; }
+  .summary-box strong { display:block; color:#94a3b8; font-size:12px; margin-bottom:6px; }
+  .hint { color:#94a3b8; font-size:13px; }
+  .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .toolbar select { min-width: 360px; background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:10px; padding:10px 12px; }
+  .toolbar button { background:#2563eb; color:#fff; border:none; border-radius:10px; padding:10px 14px; cursor:pointer; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="panel">
+      <h2>选择存档</h2>
+      <form method="get" action="/api/judicial/debug/page/" class="toolbar">
+        <select name="game_id" onchange="this.form.submit()">
+          <option value="">请选择游戏存档</option>
+          {% for item in game_options %}
+            <option value="{{ item.id }}" {% if item.id == selected_game_id %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">切换存档</button>
+      </form>
+    </div>
+
+    {% if game %}
+    <div class="header">
+      <div class="title">
+        <h1>司法调试面板</h1>
+        <p>游戏 #{{ game.id }} · 当前回合 {{ game.current_season }} · 查看本局实例化卷宗、县丞意见、知县处理与知府复审状态。</p>
+      </div>
+      <div class="meta">
+        <span class="pill">生成状态 {{ generation.status|default:"PENDING" }}</span>
+        <span class="pill">窗口 {{ generation.generated_windows|default:0 }}/{{ generation.total_windows|default:0 }}</span>
+        <span class="pill">待审知府卷宗 {{ pending_cases|length }}</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>实例化进度</h2>
+      <div class="summary-grid">
+        <div class="summary-box"><strong>生成状态</strong>{{ generation.status|default:"PENDING" }}</div>
+        <div class="summary-box"><strong>窗口进度</strong>{{ generation.generated_windows|default:0 }} / {{ generation.total_windows|default:0 }}</div>
+        <div class="summary-box"><strong>待知府复审</strong>{{ pending_cases|length }}</div>
+        <div class="summary-box"><strong>最近错误</strong>{{ generation.last_error|default:"—" }}</div>
+      </div>
+    </div>
+
+    {% if county_cases %}
+    <div class="panel">
+      <h2>当前县级待审卷宗</h2>
+      <div class="list">
+        {% for case in county_cases %}
+          <div class="card">
+            <div class="card-head">
+              <div class="case-title">{{ case.case_name }}</div>
+              <div class="badge-row">
+                <span class="badge pending">{{ case.source_county }}</span>
+                <span class="badge muted">第{{ case.current_round }}轮</span>
+              </div>
+            </div>
+            <div class="meta-table">
+              <div class="meta-item"><strong>实例 ID</strong>{{ case.instance_id }}</div>
+              <div class="meta-item"><strong>县丞意见</strong>{{ case.assistant_opinion.opinion_label|default:"—" }}</div>
+            </div>
+            <details>
+              <summary>卷宗正文</summary>
+              <pre>{{ case.dossier_text }}</pre>
+            </details>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="grid">
+      <div class="panel">
+        <h2>当前知府待审卷宗</h2>
+        {% if pending_cases %}
+          <div class="list">
+            {% for case in pending_cases %}
+              <div class="card">
+                <div class="card-head">
+                  <div class="case-title">{{ case.case_name }}</div>
+                  <div class="badge-row">
+                    <span class="badge pending">{{ case.source_county }}</span>
+                    <span class="badge muted">{{ case.status }}</span>
+                  </div>
+                </div>
+                <div class="meta-table">
+                  <div class="meta-item"><strong>实例 ID</strong>{{ case.instance_id }}</div>
+                  <div class="meta-item"><strong>模板 ID</strong>{{ case.template_case_id }}</div>
+                  <div class="meta-item"><strong>县丞意见</strong>{{ case.assistant_opinion.opinion_label|default:"—" }}</div>
+                  <div class="meta-item"><strong>知县决定</strong>{{ case.magistrate_decision.action_label|default:"—" }}</div>
+                  <div class="meta-item"><strong>决策来源</strong>{{ case.magistrate_decision.decision_source|default:"—" }}</div>
+                  <div class="meta-item"><strong>模型</strong>{{ case.magistrate_decision.model|default:"—" }}</div>
+                </div>
+                <details>
+                  <summary>卷宗正文</summary>
+                  <pre>{{ case.dossier_text }}</pre>
+                </details>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="hint">当前没有进入知府待审的卷宗。</p>
+        {% endif %}
+      </div>
+
+      <div class="panel">
+        <h2>实例状态汇总</h2>
+        {% if status_summary %}
+          <div class="summary-grid">
+            {% for key, value in status_summary.items %}
+              <div class="summary-box"><strong>{{ key }}</strong>{{ value }}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="hint">暂无状态汇总。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>本局实例化卷宗（前 200 条）</h2>
+      {% if cases %}
+        <div class="list">
+          {% for item in cases %}
+            <div class="card">
+              <div class="card-head">
+                <div class="case-title">{{ item.case_name }}</div>
+                <div class="badge-row">
+                  {% if item.status == "PREFECT_DECIDED" %}
+                    <span class="badge decided">{{ item.status }}</span>
+                  {% elif item.status == "DEFERRED_TO_PREFECT" %}
+                    <span class="badge deferred">{{ item.status }}</span>
+                  {% else %}
+                    <span class="badge pending">{{ item.status }}</span>
+                  {% endif %}
+                  <span class="badge muted">{{ item.county_name }}</span>
+                </div>
+              </div>
+              <div class="meta-table">
+                <div class="meta-item"><strong>实例 ID</strong>{{ item.instance_id }}</div>
+                <div class="meta-item"><strong>模板 ID</strong>{{ item.template_case_id }}</div>
+                <div class="meta-item"><strong>县级司法月</strong>{{ item.county_review_season }}</div>
+                <div class="meta-item"><strong>知府司法月</strong>{{ item.prefect_review_season }}</div>
+                <div class="meta-item"><strong>知县处理轮次</strong>{{ item.magistrate_rounds|length }}</div>
+              </div>
+              <details>
+                <summary>本地角色映射</summary>
+                <pre>{{ item.actor_map|pprint }}</pre>
+              </details>
+              <details>
+                <summary>县丞轮次</summary>
+                <pre>{{ item.assistant_rounds|pprint }}</pre>
+              </details>
+              <details>
+                <summary>知县轮次</summary>
+                <pre>{{ item.magistrate_rounds|pprint }}</pre>
+              </details>
+              <details>
+                <summary>知府裁决</summary>
+                <pre>{{ item.prefect_decision|pprint }}</pre>
+              </details>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="hint">尚未生成实例化卷宗。</p>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="panel">
+      <p class="hint">当前账号下还没有可用存档。</p>
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

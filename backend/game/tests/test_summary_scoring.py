@@ -47,7 +47,7 @@ def _create_completed_game():
         current_season=MAX_MONTH + 1,
         county_data=county,
     )
-    PlayerProfile.objects.create(game=game, background="HUMBLE")
+    PlayerProfile.objects.create(game=game)
     return game
 
 

@@ -290,6 +290,9 @@ class AnnualReviewService:
         season = game.current_season
         moy = month_of_year(season)
         display_year = cls.display_year_for_season(season)
+        if moy in {11, 12}:
+            cls.ensure_prefecture_self_reviews(game)
+
         subordinates = list(
             AdminUnit.objects.filter(
                 game=game, unit_type="COUNTY", parent=game.player_unit,
@@ -307,9 +310,6 @@ class AnnualReviewService:
                 phase = "review"
             else:
                 phase = "published"
-
-        if moy in {11, 12}:
-            cls.ensure_prefecture_self_reviews(game)
 
         counties = []
         summary = {
@@ -669,6 +669,23 @@ class AnnualReviewService:
             incident_flags.append("知府接管")
             incident_penalty += 15.0
 
+        judicial_summary = cls._build_judicial_summary(county, season)
+        if judicial_summary["case_count"]:
+            if judicial_summary["overturned_count"]:
+                incident_flags.append(f"司法复核推翻{judicial_summary['overturned_count']}案")
+            if judicial_summary["remand_count"]:
+                incident_flags.append(f"司法复核退回{judicial_summary['remand_count']}案")
+            if judicial_summary["integrity_signal"] < 0:
+                incident_penalty += min(12.0, abs(judicial_summary["integrity_signal"]) * 2.5)
+            if judicial_summary["competence_signal"] < 0:
+                incident_penalty += min(10.0, abs(judicial_summary["competence_signal"]) * 2.0)
+            if (
+                judicial_summary["upheld_count"]
+                and judicial_summary["integrity_signal"] >= 0
+                and judicial_summary["competence_signal"] >= 0
+            ):
+                incident_penalty = max(0.0, incident_penalty - min(4.0, judicial_summary["upheld_count"]))
+
         score = (
             min(100.0, quota_completion_pct) * 0.35
             + stability_score * 0.35
@@ -691,6 +708,37 @@ class AnnualReviewService:
             "objective_score": score,
             "objective_grade": cls._grade_from_score(score),
             "incident_flags": incident_flags,
+            "judicial_summary": judicial_summary,
+        }
+
+    @classmethod
+    def _build_judicial_summary(cls, county: dict, season: int) -> dict:
+        review_year = year_of(season)
+        history = county.get("judicial_review_history") or []
+        relevant = [item for item in history if int(item.get("review_year") or 0) == review_year]
+        performance = county.get("judicial_performance") or {}
+
+        upheld_count = sum(1 for item in relevant if item.get("upheld"))
+        remand_count = sum(1 for item in relevant if item.get("remanded"))
+        overturned_count = sum(1 for item in relevant if item.get("overturned"))
+        competence_signal = sum(int((item.get("judicial_signal") or {}).get("competence", 0) or 0) for item in relevant)
+        integrity_signal = sum(int((item.get("judicial_signal") or {}).get("integrity", 0) or 0) for item in relevant)
+
+        return {
+            "review_year": review_year,
+            "case_count": len(relevant),
+            "upheld_count": upheld_count,
+            "remand_count": remand_count,
+            "overturned_count": overturned_count,
+            "competence_signal": competence_signal,
+            "integrity_signal": integrity_signal,
+            "lifetime_performance": {
+                "upheld_count": int(performance.get("upheld_count", 0) or 0),
+                "remand_count": int(performance.get("remand_count", 0) or 0),
+                "overturned_count": int(performance.get("overturned_count", 0) or 0),
+                "competence_signal": int(performance.get("competence_signal", 0) or 0),
+                "integrity_signal": int(performance.get("integrity_signal", 0) or 0),
+            },
         }
 
     @classmethod
@@ -716,13 +764,30 @@ class AnnualReviewService:
         cycle["objective_snapshot"] = snapshot
         candor_penalty = int((cycle.get("self_statement_meta") or {}).get("candor_penalty", 0))
         adjusted_score = max(0.0, snapshot.get("objective_score", 0) - candor_penalty)
+
+        # 威名效果：地主投诉扣分（每条-5分，最多-15分）
+        complaints = int(county.get("prefect_complaints", 0))
+        complaint_penalty = 5 * min(3, complaints)
+        adjusted_score = max(0.0, adjusted_score - complaint_penalty)
+
         grade = cls._grade_from_score(adjusted_score)
+
+        # 3条以上投诉强制降一档
+        if complaints >= 3:
+            grade_order = list(reversed(cls.GRADES))  # 差→优
+            idx = grade_order.index(grade) if grade in grade_order else 0
+            if idx > 0:
+                grade = grade_order[idx - 1]
+
         strengths = cls._build_strengths(snapshot)
         weaknesses = cls._build_weaknesses(snapshot, cycle.get("self_statement_meta") or {})
+        if complaints > 0:
+            weaknesses = weaknesses + [f"本年度收到{complaints}份乡绅陈情，知府认为治境强硬有余、怀柔不足"]
         focus = cls._build_focus(snapshot)
         return {
             "grade": grade,
             "score": round(adjusted_score, 1),
+            "complaint_penalty": complaint_penalty,
             "strengths": strengths,
             "weaknesses": weaknesses,
             "focus": focus,

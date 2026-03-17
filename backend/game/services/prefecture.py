@@ -1,15 +1,14 @@
 """知府游戏服务 — 府域初始化、月度结算、汇报生成"""
 
 import copy
-import json
 import logging
-import os
 import random
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from typing import Optional
 
 from django.db import connection
 
-from ..models import AdminUnit, Agent, GameState, NeighborPrecompute
+from ..models import AdminUnit, Agent, GameState, JudicialCaseInstance, NeighborPrecompute
 from .constants import (
     COUNTY_TYPES,
     ARCHETYPE_TO_STYLES,
@@ -21,6 +20,7 @@ from .constants import (
     generate_governor_profile,
     month_of_year,
     month_name,
+    year_of,
     CORVEE_PER_CAPITA,
     QUOTA_BASE_COLLECTION_EFFICIENCY,
 )
@@ -30,30 +30,9 @@ from .ai_governor import AIGovernorService
 from .emergency import EmergencyService
 from .magistrate_service import MagistrateService
 from .annual_review import AnnualReviewService
+from .judicial_caseflow import JudicialCaseflowService
 
 logger = logging.getLogger('game')
-
-
-# ===== 司法案件池（模块级加载）=====
-def _load_judicial_pool():
-    """从 docs/historical_materials/law_cases_pool.json 加载案件池"""
-    pool_path = os.path.join(
-        os.path.dirname(__file__),   # .../game/services/
-        '..',                        # .../game/
-        'judicial_cases.json',
-    )
-    pool_path = os.path.normpath(pool_path)
-    try:
-        with open(pool_path, encoding='utf-8') as f:
-            data = json.load(f)
-        return {c['case_id']: c for c in data.get('cases', [])}
-    except Exception as e:
-        logger.warning("司法案件池加载失败，路径: %s，错误: %s", pool_path, e)
-        return {}
-
-
-JUDICIAL_CASE_POOL = _load_judicial_pool()
-JUDICIAL_CASES_LIST = list(JUDICIAL_CASE_POOL.values())
 
 # ===== 汇报月份 =====
 REPORT_MONTHS = {2, 5, 8, 11}
@@ -580,10 +559,11 @@ class PrefectureService:
         if moy == 1:
             pdata['inspection_used'] = {"tongpan": 0, "tuiguan": 0}
 
-        # ── 季度末：生成司法案件 ──
+        # ── 县级司法月：AI 下辖州县先行处理本地卷宗 ──
         pending_cases = []
-        if moy in {3, 6, 9, 12}:
-            pending_cases = cls._generate_judicial_cases(pdata, subordinates, moy, season)
+        judicial_processed = None
+        if moy in {2, 5, 8, 11}:
+            judicial_processed = JudicialCaseflowService.auto_process_ai_counties(game, season)
 
         next_season = season + 1
         transition = AnnualReviewService.handle_prefecture_transition(
@@ -610,6 +590,8 @@ class PrefectureService:
             "construction_completed": completed_construction,
             "pending_cases": pending_cases,
         }
+        if judicial_processed is not None:
+            result["judicial_processed"] = judicial_processed
         if transition.get("personnel_opened"):
             result["personnel_opened"] = True
             result["personnel_ready_count"] = transition.get("personnel_ready_count", 0)
@@ -978,9 +960,15 @@ class PrefectureService:
         """返回府情总览数据"""
         pdata = game.player_unit.unit_data
         personnel = AnnualReviewService.get_prefecture_personnel_payload(game)
+        judicial_payload = JudicialCaseflowService.get_prefecture_payload(game)
+        pending_judicial_count = len(judicial_payload.get('pending_cases', []))
         subordinates = list(
             AdminUnit.objects.filter(game=game, unit_type='COUNTY', parent=game.player_unit)
         )
+
+        # 司法统计（批量查询，避免 N+1）
+        subordinate_ids = [u.id for u in subordinates]
+        judicial_stats_map = JudicialCaseflowService.get_county_judicial_stats(game, subordinate_ids)
 
         # 汇总最新汇报数据（取各县最后一次汇报的指标）
         county_summaries = []
@@ -1000,6 +988,7 @@ class PrefectureService:
                 "quota": pdata.get('quota_assignments', {}).get(str(unit.id), 0),
                 "has_disaster": bool(disaster),
                 "disaster_type": disaster.get('type'),
+                "judicial_stats": judicial_stats_map.get(unit.id, {}),
             })
 
         return {
@@ -1017,8 +1006,8 @@ class PrefectureService:
             "current_season": game.current_season,
             "year_end_review_pending": pdata.get('year_end_review_pending', False),
             "exam_pending": pdata.get('exam_pending', False),
-            "pending_judicial_count": len(pdata.get('pending_judicial_cases', [])),
-            "todo_items": cls._build_overview_todos(pdata, subordinates),
+            "pending_judicial_count": pending_judicial_count,
+            "todo_items": cls._build_overview_todos(pdata, subordinates, pending_judicial_count),
             "counties": county_summaries,
             "personnel_available": personnel.get("available", False),
             "personnel_phase": personnel.get("phase"),
@@ -1026,7 +1015,7 @@ class PrefectureService:
         }
 
     @classmethod
-    def _build_overview_todos(cls, pdata: dict, subordinates: list) -> list:
+    def _build_overview_todos(cls, pdata: dict, subordinates: list, pending_judicial_count: int) -> list:
         """汇总府情总览的待办事项提醒。"""
         todo_items = []
 
@@ -1040,13 +1029,12 @@ class PrefectureService:
                 "target_tab": "pref-tab-overview",
             })
 
-        pending_cases = pdata.get('pending_judicial_cases', [])
-        if pending_cases:
+        if pending_judicial_count:
             todo_items.append({
                 "type": "judicial_case",
                 "severity": "high",
-                "title": f"待审议司法案件 {len(pending_cases)} 件",
-                "count": len(pending_cases),
+                "title": f"待审议司法案件 {pending_judicial_count} 件",
+                "count": pending_judicial_count,
                 "county_names": [],
                 "target_tab": "pref-tab-judicial",
             })
@@ -1126,6 +1114,10 @@ class PrefectureService:
                     cd, AnnualReviewService.display_year_for_season(game.current_season),
                 )
             ),
+            "judicial": {
+                "stats": JudicialCaseflowService.get_county_judicial_stats(game, [unit_id]).get(unit_id, {}),
+                "recent_decisions": JudicialCaseflowService.get_county_judicial_decisions(game, unit_id, limit=5),
+            },
         }
 
     # ==================== 府级基础建设 ====================
@@ -1426,94 +1418,31 @@ class PrefectureService:
     # ==================== 司法系统 ====================
 
     @classmethod
-    def _generate_judicial_cases(cls, pdata: dict, subordinates: list, moy: int, season: int) -> list:
-        """
-        季度末生成 1–2 份待决卷宗，存入 pdata['pending_judicial_cases']。
-        返回供前端立即展示的完整卷宗列表。
-        """
-        if not JUDICIAL_CASES_LIST:
-            return []
-
-        decided = set(pdata.get('decided_cases', []))
-        available = [c for c in JUDICIAL_CASES_LIST if c['case_id'] not in decided]
-        if not available:
-            # 案件池耗尽则重置（允许重复）
-            decided = set()
-            pdata['decided_cases'] = []
-            available = JUDICIAL_CASES_LIST[:]
-
-        # 按季度偏好分类
-        category_prefs = {
-            3:  ['吏治贪腐类', '冤狱平反类'],
-            6:  ['冤狱平反类', '民事纠纷类'],
-            9:  ['吏治贪腐类', '刑事重案类'],
-            12: ['统筹治理类', '吏治贪腐类'],
-        }
-        prefs = category_prefs.get(moy, [])
-        preferred = [c for c in available if c['category'] in prefs]
-        others    = [c for c in available if c['category'] not in prefs]
-
-        # 难度权重随游戏年份递增
-        year = (season - 1) // 12 + 1
-        if year == 1:
-            diff_w = {'新手': 0.60, '进阶': 0.35, '高难': 0.05}
-        elif year == 2:
-            diff_w = {'新手': 0.25, '进阶': 0.55, '高难': 0.20}
-        else:
-            diff_w = {'新手': 0.10, '进阶': 0.50, '高难': 0.40}
-
-        def _pick(pool):
-            if not pool:
-                return None
-            weights = [diff_w.get(c['difficulty'], 0.33) for c in pool]
-            return random.choices(pool, weights=weights, k=1)[0]
-
-        selected = []
-        c1 = _pick(preferred or others)
-        if c1:
-            selected.append(c1)
-            rest = [c for c in available if c['case_id'] != c1['case_id']]
-            if rest and random.random() < 0.6:   # 60% 概率生成第二份卷宗
-                c2 = _pick(rest)
-                if c2:
-                    selected.append(c2)
-
-        # 写入待决列表（只存元数据，完整数据按需从 JUDICIAL_CASE_POOL 查取）
-        pdata['pending_judicial_cases'] = [
-            {
-                'case_id':       c['case_id'],
-                'case_name':     c['case_name'],
-                'difficulty':    c['difficulty'],
-                'category':      c['category'],
-                'source_county': c['source_county'],
-                'assigned_season': season,
-            }
-            for c in selected
-        ]
-
-        return selected   # 完整卷宗数据直接返回给前端
-
-    @classmethod
     def get_judicial_cases(cls, game) -> dict:
         """返回待决卷宗列表（完整数据）和已决日志"""
-        pdata = game.player_unit.unit_data
-        pending_meta = pdata.get('pending_judicial_cases', [])
+        return JudicialCaseflowService.get_prefecture_payload(game)
 
-        # 从案件池查取完整卷宗数据
-        pending_full = []
-        for m in pending_meta:
-            full = JUDICIAL_CASE_POOL.get(m['case_id'])
-            if full:
-                pending_full.append(full)
+    @classmethod
+    def get_judicial_debug_data(cls, game) -> dict:
+        return JudicialCaseflowService.get_debug_payload(game)
 
-        return {
-            'pending_cases': pending_full,
-            'judicial_log': pdata.get('judicial_log', []),
-            'judicial_meta': {
-                'judicial_prestige': pdata.get('judicial_prestige', 50),
-                'inspector_favor': pdata.get('inspector_favor', 50),
-            },
-        }
+    @classmethod
+    def _find_source_county_unit(cls, game, case_data: dict):
+        source_unit_id = case_data.get('source_unit_id')
+        if source_unit_id:
+            unit = AdminUnit.objects.filter(
+                id=source_unit_id, game=game, unit_type='COUNTY', parent=game.player_unit,
+            ).first()
+            if unit is not None:
+                return unit
+
+        source_county = case_data.get('source_county')
+        if not source_county:
+            return None
+        return AdminUnit.objects.filter(
+            game=game, unit_type='COUNTY', parent=game.player_unit,
+            unit_data__county_name=source_county,
+        ).first()
 
     @classmethod
     def _apply_judicial_effects(cls, game, pdata: dict, case_data: dict, effects: dict) -> dict:
@@ -1546,17 +1475,7 @@ class PrefectureService:
         magistrate_delta = int(effects.get('magistrate_favor', 0) or 0)
         applied['prefect_affinity'] = None
         if magistrate_delta:
-            source_county = case_data.get('source_county')
-            county_units = AdminUnit.objects.filter(
-                game=game, unit_type='COUNTY', parent=game.player_unit,
-            )
-            target_unit = next(
-                (
-                    unit for unit in county_units
-                    if unit.unit_data.get('county_name') == source_county
-                ),
-                None,
-            )
+            target_unit = cls._find_source_county_unit(game, case_data)
             if target_unit is not None:
                 cd = target_unit.unit_data
                 cd['prefect_affinity'] = round(_clamp_meter(
@@ -1569,42 +1488,137 @@ class PrefectureService:
         return applied
 
     @classmethod
+    def _derive_judicial_signals(cls, case_data: dict, action: str) -> dict:
+        factors = case_data.get('initial_review_factors') or {}
+        beneficiary_gain = float(factors.get('beneficiary_gain', 0.5) or 0.5)
+        coverup_risk = float(factors.get('coverup_risk', 0.5) or 0.5)
+        evidence_doubt = float(factors.get('evidence_doubt', 0.5) or 0.5)
+
+        competence = 0
+        integrity = 0
+        if action == '核准原判':
+            competence = 1
+            integrity = 1 if evidence_doubt <= 0.45 and beneficiary_gain <= 0.45 else 0
+        elif action == '驳回重审':
+            competence = -1
+            integrity = -1 if coverup_risk >= 0.65 else 0
+        elif action == '提审改判':
+            competence = -2
+            integrity = -2 if beneficiary_gain >= 0.60 or coverup_risk >= 0.65 else -1
+        return {
+            'competence': competence,
+            'integrity': integrity,
+        }
+
+    @classmethod
+    def _record_county_judicial_outcome(cls, game, case_data: dict, action: str, option: dict) -> Optional[dict]:
+        target_unit = cls._find_source_county_unit(game, case_data)
+        if target_unit is None:
+            return None
+
+        cd = target_unit.unit_data
+        history = list(cd.get('judicial_review_history', []))
+        performance = dict(cd.get('judicial_performance', {}))
+        signals = cls._derive_judicial_signals(case_data, action)
+
+        assigned_season = int(case_data.get('assigned_season') or game.current_season)
+        review_year = year_of(assigned_season)
+        upheld = action == '核准原判'
+        remanded = action == '驳回重审'
+        overturned = action == '提审改判'
+
+        history.append({
+            'instance_id': case_data.get('instance_id'),
+            'template_case_id': case_data.get('template_case_id') or case_data.get('case_id'),
+            'case_id': case_data.get('case_id'),
+            'case_name': case_data.get('case_name'),
+            'source_unit_id': target_unit.id,
+            'source_county': target_unit.unit_data.get('county_name', ''),
+            'source_governor_name': target_unit.unit_data.get('governor_profile', {}).get('name', ''),
+            'assigned_season': assigned_season,
+            'review_year': review_year,
+            'initial_magistrate_decision': case_data.get('initial_magistrate_decision', 'AFFIRM_ORIGINAL'),
+            'initial_magistrate_reason': case_data.get('initial_magistrate_reason', ''),
+            'prefect_action': action,
+            'effects': copy.deepcopy(option.get('immediate_effects', {})),
+            'judicial_signal': signals,
+            'upheld': upheld,
+            'remanded': remanded,
+            'overturned': overturned,
+        })
+        cd['judicial_review_history'] = history[-20:]
+
+        performance['upheld_count'] = int(performance.get('upheld_count', 0) or 0) + (1 if upheld else 0)
+        performance['remand_count'] = int(performance.get('remand_count', 0) or 0) + (1 if remanded else 0)
+        performance['overturned_count'] = int(performance.get('overturned_count', 0) or 0) + (1 if overturned else 0)
+        performance['competence_signal'] = int(performance.get('competence_signal', 0) or 0) + signals['competence']
+        performance['integrity_signal'] = int(performance.get('integrity_signal', 0) or 0) + signals['integrity']
+        cd['judicial_performance'] = performance
+
+        target_unit.unit_data = cd
+        target_unit.save(update_fields=['unit_data'])
+        return {
+            'source_unit_id': target_unit.id,
+            'source_county': cd.get('county_name', ''),
+            'signals': signals,
+            'performance': performance,
+        }
+
+    @classmethod
     def decide_judicial_case(cls, game, case_id: str, action: str) -> dict:
         """
         玩家对卷宗作出决策，应用即时效果，将案件移入已决列表。
         """
-        case_data = JUDICIAL_CASE_POOL.get(case_id)
-        if not case_data:
+        pdata = game.player_unit.unit_data
+        try:
+            instance_id = int(case_id)
+        except (TypeError, ValueError):
             return {"error": "案件不存在"}
+
+        instance = JudicialCaseInstance.objects.filter(
+            id=instance_id,
+            game=game,
+            prefect_unit=game.player_unit,
+            prefect_review_season=game.current_season,
+            status__in=['SUBMITTED_TO_PREFECT', 'DEFERRED_TO_PREFECT'],
+        ).first()
+        if instance is None:
+            return {"error": "案件不存在"}
+
+        case_data = copy.deepcopy(instance.local_payload)
 
         option = next((o for o in case_data.get('options', []) if o['action'] == action), None)
         if not option:
             return {"error": f"无效决策选项: {action}"}
 
-        pdata = game.player_unit.unit_data
         effects = option.get('immediate_effects', {})
         applied_state = cls._apply_judicial_effects(game, pdata, case_data, effects)
+        county_review = cls._record_county_judicial_outcome(game, case_data, action, option)
+        if county_review is not None:
+            applied_state['county_review'] = county_review
 
         # 移入已决列表
         decided = pdata.get('decided_cases', [])
-        if case_id not in decided:
-            decided.append(case_id)
+        template_case_id = case_data.get('template_case_id') or instance.template_case_id or case_id
+        if template_case_id not in decided:
+            decided.append(template_case_id)
         pdata['decided_cases'] = decided
-
-        # 从待决列表移除
-        pdata['pending_judicial_cases'] = [
-            c for c in pdata.get('pending_judicial_cases', [])
-            if c['case_id'] != case_id
-        ]
 
         # 写入司法日志（府志用）
         log = pdata.get('judicial_log', [])
         log.append({
-            'case_id':     case_id,
+            'case_id':     case_data.get('case_id', case_id),
+            'instance_id': instance.id,
+            'template_case_id': template_case_id,
             'case_name':   case_data['case_name'],
             'category':    case_data['category'],
             'difficulty':  case_data['difficulty'],
             'season':      game.current_season - 1,
+            'source_unit_id': case_data.get('source_unit_id'),
+            'source_county': case_data.get('source_county', ''),
+            'source_governor_name': case_data.get('source_governor_name', ''),
+            'initial_magistrate_decision': case_data.get('initial_magistrate_decision'),
+            'initial_magistrate_reason': case_data.get('initial_magistrate_reason', ''),
             'action':      action,
             'effects':     effects,
             'applied_state': applied_state,
@@ -1612,11 +1626,20 @@ class PrefectureService:
         })
         pdata['judicial_log'] = log[-30:]
 
+        instance.prefect_decision = {
+            'season': game.current_season,
+            'action': action,
+            'effects': effects,
+            'chain_events': option.get('chain_events', []),
+        }
+        instance.status = 'PREFECT_DECIDED'
+        instance.save(update_fields=['prefect_decision', 'status', 'updated_at'])
+
         game.player_unit.unit_data = pdata
         game.player_unit.save(update_fields=['unit_data'])
 
         return {
-            'case_id':     case_id,
+            'case_id':     case_data.get('case_id', case_id),
             'case_name':   case_data['case_name'],
             'action':      action,
             'effects':     effects,

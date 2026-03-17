@@ -153,22 +153,6 @@ body {
 }
 .new-game-panel h3 { margin-bottom: 8px; color: #5c4a2a; }
 .new-game-panel p { margin-bottom: 12px; font-size: 0.95em; }
-.background-choices {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.btn-background {
-  flex: 1;
-  min-width: 140px;
-  padding: 12px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.btn-background strong { font-size: 1.05em; }
-.btn-background span { font-size: 0.8em; color: #666; }
 
 .county-type-choices {
   display: flex;
@@ -1978,6 +1962,9 @@ body {
 }
 .cdc-data-table thead th { background: #f0ece2; color: #5c4a2a; font-weight: bold; }
 .cdc-data-table tbody tr:hover { background: #faf6ee; }
+/* Judicial section inside county-detail modal */
+.cdc-judicial-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.cdc-judicial-subtitle { font-size: 0.85em; color: #8a7a5a; margin: 6px 0 4px; }
 /* Markets */
 .cdc-market-row {
   font-size: 0.9em;
@@ -2639,6 +2626,11 @@ body {
 }
 .pref-county-row:hover td { background: #faf7f0; }
 .pref-report-time { margin-top: 6px; }
+/* Judicial health badges — counties table and county detail */
+.jud-stats-cell { white-space: nowrap; }
+.jud-resolved { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.82em; background: #d4edda; color: #155724; margin-right: 2px; }
+.jud-deferred { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.82em; background: #fff3cd; color: #856404; margin-right: 2px; }
+.jud-pending  { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.82em; background: #f8d7da; color: #721c24; margin-right: 2px; }
 
 /* County detail modal */
 .pref-county-modal-content {
@@ -3368,6 +3360,49 @@ body {
 
 .annual-review-risk {
   color: #8c5b21;
+}
+
+/* ── 县级司法判决方向 ── */
+.county-verdict-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.county-verdict-option {
+  background: #fef9f0;
+  border: 1px solid #d8c9a0;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.county-verdict-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-county-verdict-option {
+  background: #fff8ec;
+  border: 1px solid #b8936a;
+  color: #5a3010;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn-county-verdict-option:hover:not(:disabled) {
+  background: #8b4513;
+  color: #fff;
+  border-color: #8b4513;
+}
+.btn-county-verdict-option:disabled { opacity: 0.5; cursor: not-allowed; }
+.county-verdict-effects {
+  font-size: 0.82em;
+  color: #6b5230;
+}
+.county-verdict-rationale {
+  margin-top: 4px;
+  font-size: 0.82em;
+  color: #7a6a50;
+  line-height: 1.4;
 }
 
 .pref-personnel-replacement {

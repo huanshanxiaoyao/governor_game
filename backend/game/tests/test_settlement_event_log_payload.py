@@ -16,7 +16,7 @@ def test_advance_season_persists_full_settlement_report_payload():
     user = get_user_model().objects.create_user(username=username, password="pw")
     county_data = CountyService.create_initial_county(county_type="fiscal_core")
     game = GameState.objects.create(user=user, current_season=1, county_data=county_data)
-    PlayerProfile.objects.create(game=game, background="HUMBLE")
+    PlayerProfile.objects.create(game=game)
 
     report = SettlementService.advance_season(game)
 

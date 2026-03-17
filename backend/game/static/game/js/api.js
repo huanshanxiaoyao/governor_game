@@ -56,14 +56,24 @@
     listGames: function () {
       return request("GET", "/api/games/");
     },
-    createGame: function (background, countyType) {
+    createGame: function (countyType) {
       return request("POST", "/api/games/", {
-        background: background,
         county_type: countyType,
       });
     },
     getGame: function (id) {
       return request("GET", "/api/games/" + id + "/");
+    },
+    getCountyJudicial: function (id) {
+      return request("GET", "/api/games/" + id + "/judicial/");
+    },
+    decideCountyJudicial: function (id, caseId, action, verdictCode) {
+      var body = { case_id: caseId, action: action };
+      if (verdictCode) body.verdict_code = verdictCode;
+      return request("POST", "/api/games/" + id + "/judicial/decide/", body);
+    },
+    getCountyJudicialDebug: function (id) {
+      return request("GET", "/api/games/" + id + "/judicial/debug/");
     },
     submitAnnualReview: function (id, payload) {
       return request("POST", "/api/games/" + id + "/annual-review/", payload);
@@ -196,8 +206,8 @@
       return request("POST", "/api/games/" + gameId + "/new-term/", {});
     },
     // Prefecture (知府)
-    createPrefecture: function (background, prefectureType) {
-      var body = { background: background };
+    createPrefecture: function (prefectureType) {
+      var body = {};
       if (prefectureType) body.prefecture_type = prefectureType;
       return request("POST", "/api/prefecture/create/", body);
     },

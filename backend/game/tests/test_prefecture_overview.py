@@ -3,7 +3,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 
-from game.models import AdminUnit, GameState
+from game.models import AdminUnit, GameState, JudicialCaseInstance
 from game.services.prefecture import PrefectureService
 
 
@@ -83,6 +83,24 @@ def _create_prefecture_game():
 @pytest.mark.django_db
 def test_prefecture_overview_includes_todos_and_water_infra():
     game = _create_prefecture_game()
+    prefecture = game.player_unit
+    counties = list(AdminUnit.objects.filter(game=game, unit_type="COUNTY", parent=prefecture).order_by("id"))
+    for index, county in enumerate(counties[:2], start=1):
+        JudicialCaseInstance.objects.create(
+            game=game,
+            county_unit=county,
+            prefect_unit=prefecture,
+            template_case_id=f"pool_{index:03d}",
+            county_review_season=11,
+            prefect_review_season=12,
+            status="SUBMITTED_TO_PREFECT",
+            local_payload={
+                "case_name": f"{county.unit_data.get('county_name', '')}案件{index}",
+                "source_county": county.unit_data.get("county_name", ""),
+            },
+            submitted_to_prefect=True,
+            submitted_season=11,
+        )
 
     overview = PrefectureService.get_prefecture_overview(game)
 
@@ -115,7 +133,7 @@ def test_prefecture_invest_status_uses_new_display_labels():
 def test_decide_judicial_case_persists_effects_to_prefecture_and_county():
     game = _create_prefecture_game()
     prefecture = game.player_unit
-    AdminUnit.objects.create(
+    county = AdminUnit.objects.create(
         game=game,
         unit_type="COUNTY",
         parent=prefecture,
@@ -130,27 +148,45 @@ def test_decide_judicial_case_persists_effects_to_prefecture_and_county():
             "disaster_this_year": None,
         },
     )
-    pdata = prefecture.unit_data
-    pdata["pending_judicial_cases"] = [
-        {
-            "case_id": "pool_001",
+    case_instance = JudicialCaseInstance.objects.create(
+        game=game,
+        county_unit=county,
+        prefect_unit=prefecture,
+        template_case_id="pool_001",
+        county_review_season=11,
+        prefect_review_season=12,
+        status="SUBMITTED_TO_PREFECT",
+        local_payload={
             "case_name": "祥符县常平仓赈粮监守自盗案",
             "difficulty": "新手",
             "category": "吏治贪腐类",
             "source_county": "祥符县",
             "assigned_season": 12,
+            "options": [
+                {"action": "核准原判", "immediate_effects": {}},
+                {"action": "驳回重审", "immediate_effects": {}},
+                    {
+                        "action": "提审改判",
+                        "immediate_effects": {
+                            "treasury": 800,
+                            "prestige": 30,
+                            "inspector_favor": 20,
+                            "magistrate_favor": -20,
+                        },
+                    },
+                ],
         },
-    ]
-    prefecture.unit_data = pdata
-    prefecture.save(update_fields=["unit_data"])
+        submitted_to_prefect=True,
+        submitted_season=11,
+    )
 
-    result = PrefectureService.decide_judicial_case(game, "pool_001", "提审改判")
+    result = PrefectureService.decide_judicial_case(game, str(case_instance.id), "提审改判")
 
     prefecture.refresh_from_db()
-    county = next(
-        unit for unit in AdminUnit.objects.filter(game=game, unit_type="COUNTY", parent=prefecture)
-        if unit.unit_data.get("county_name") == "祥符县"
-    )
+    county.refresh_from_db()
+    case_instance.refresh_from_db()
+
+    assert "error" not in result
 
     assert result["treasury"] == 2080
     assert result["applied_state"]["judicial_prestige"] == 80
@@ -160,9 +196,9 @@ def test_decide_judicial_case_persists_effects_to_prefecture_and_county():
     assert prefecture.unit_data["treasury"] == 2080
     assert prefecture.unit_data["judicial_prestige"] == 80
     assert prefecture.unit_data["inspector_favor"] == 70
-    assert prefecture.unit_data["pending_judicial_cases"] == []
     assert prefecture.unit_data["judicial_log"][-1]["applied_state"]["prefect_affinity"] == 30
     assert county.unit_data["prefect_affinity"] == 30
+    assert case_instance.status == "PREFECT_DECIDED"
 
 
 @pytest.mark.django_db

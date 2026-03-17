@@ -21,10 +21,6 @@ PREFECTURE_TYPE_CHOICES = [
 
 
 class CreateGameSerializer(serializers.Serializer):
-    background = serializers.ChoiceField(
-        choices=PlayerProfile.BACKGROUND_CHOICES,
-        help_text="出身背景: HUMBLE/SCHOLAR/OFFICIAL",
-    )
     county_type = serializers.ChoiceField(
         choices=COUNTY_TYPE_CHOICES,
         required=False,
@@ -35,11 +31,6 @@ class CreateGameSerializer(serializers.Serializer):
 
 
 class CreatePrefectureSerializer(serializers.Serializer):
-    background = serializers.ChoiceField(
-        choices=PlayerProfile.BACKGROUND_CHOICES,
-        default='OFFICIAL',
-        help_text="出身背景: HUMBLE/SCHOLAR/OFFICIAL",
-    )
     prefecture_type = serializers.ChoiceField(
         choices=PREFECTURE_TYPE_CHOICES,
         required=False,
@@ -104,17 +95,14 @@ class PrefectureAnnualReviewSerializer(serializers.Serializer):
 
 
 class PlayerProfileSerializer(serializers.ModelSerializer):
-    background_display = serializers.CharField(
-        source="get_background_display", read_only=True,
-    )
     wealth_tier = serializers.SerializerMethodField()
 
     class Meta:
         model = PlayerProfile
         fields = [
-            "background", "background_display",
             "knowledge", "skill",
-            "integrity", "competence", "popularity",
+            "integrity", "competence", "popularity", "authority",
+            "state_vs_people", "central_vs_local", "pragmatic_vs_ideal",
             "personal_wealth", "wealth_tier",
         ]
 

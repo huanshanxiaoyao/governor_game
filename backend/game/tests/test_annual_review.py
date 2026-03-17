@@ -46,7 +46,7 @@ def _make_county_game(season=11):
         current_season=season,
         county_data=county,
     )
-    PlayerProfile.objects.create(game=game, background="HUMBLE")
+    PlayerProfile.objects.create(game=game)
     return user, game
 
 

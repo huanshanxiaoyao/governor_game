@@ -3,7 +3,7 @@
   "description": "基于明代史实改编的司法案件池，供知府司法系统（二审复审与击鼓鸣冤）随机抽取使用；现混入原判正确与原判失当两类卷宗。",
   "version": "v1.1",
   "total_cases": 80,
-  "schema_ref": "docs/09_司法审判系统_知府.md §4.2",
+  "schema_ref": "docs/02c_司法系统详细设计.md",
   "category_summary": {
     "吏治贪腐类": {
       "total": 21,

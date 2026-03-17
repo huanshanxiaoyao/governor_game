@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NPC 调试面板</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+  a { color: inherit; text-decoration: none; }
+  .page { max-width: 1600px; margin: 0 auto; padding: 24px; }
+  .panel { background: #111827; border: 1px solid #243041; border-radius: 14px; padding: 18px; margin-bottom: 20px; }
+  .panel h2 { margin: 0 0 12px; font-size: 18px; }
+  .panel h3 { margin: 0 0 10px; font-size: 15px; color: #cbd5e1; }
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .toolbar select { min-width: 360px; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 10px; padding: 10px 12px; }
+  .toolbar input { min-width: 220px; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 10px; padding: 10px 12px; }
+  .toolbar button { background: #2563eb; color: #fff; border: none; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .layout { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 20px; align-items: start; }
+  .list { display: grid; gap: 10px; }
+  .npc-card { display: block; background: #0b1220; border: 1px solid #263142; border-radius: 12px; padding: 12px 14px; }
+  .npc-card.active { border-color: #60a5fa; background: #0f1d33; }
+  .npc-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .npc-name { font-size: 15px; font-weight: 700; }
+  .npc-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge { border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
+  .badge-agent { background: #102d44; color: #7dd3fc; }
+  .badge-neighbor { background: #16351f; color: #86efac; }
+  .badge-sub { background: #312e81; color: #c4b5fd; }
+  .badge-muted { background: #1e293b; color: #cbd5e1; }
+  .muted { color: #94a3b8; font-size: 13px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .summary-box { background: #0b1220; border: 1px solid #263142; border-radius: 12px; padding: 12px; }
+  .summary-box strong { display: block; color: #94a3b8; font-size: 12px; margin-bottom: 6px; }
+  .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .keyvals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+  .keyval { background: #0b1220; border: 1px solid #263142; border-radius: 10px; padding: 10px 12px; }
+  .keyval strong { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+  .filter-panel { margin-bottom: 14px; }
+  .filter-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+  .filter-meta .muted { font-size: 12px; }
+  .btn-secondary { background: #334155; color: #e2e8f0; border: none; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .hidden { display: none !important; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; color: #cbd5e1; background: #09111f; border-radius: 10px; padding: 12px; border: 1px solid #1f2a3a; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: #93c5fd; }
+  .table-list { display: grid; gap: 10px; }
+  .row-card { background: #0b1220; border: 1px solid #263142; border-radius: 10px; padding: 12px; }
+  .row-title { font-weight: 600; margin-bottom: 6px; }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .section-grid { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="panel">
+      <h2>选择存档</h2>
+      <form method="get" action="/api/npc/debug/page/" class="toolbar">
+        <select name="game_id" onchange="this.form.submit()">
+          <option value="">请选择游戏存档</option>
+          {% for item in game_options %}
+            <option value="{{ item.id }}" {% if item.id == selected_game_id %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">切换存档</button>
+      </form>
+    </div>
+
+    {% if game %}
+    <div class="panel">
+      <h2>当前存档概览</h2>
+      <div class="summary-grid">
+        <div class="summary-box"><strong>游戏</strong>#{{ game.id }}</div>
+        <div class="summary-box"><strong>当前身份</strong>{{ game.get_player_role_display }}</div>
+        <div class="summary-box"><strong>当前月份</strong>{{ game.current_season }}</div>
+        <div class="summary-box"><strong>NPC 总数</strong>{{ npc_summary.total }}</div>
+        <div class="summary-box"><strong>Agent</strong>{{ npc_summary.agent_count }}</div>
+        <div class="summary-box"><strong>邻县 AI</strong>{{ npc_summary.neighbor_count }}</div>
+        <div class="summary-box"><strong>府属县 AI</strong>{{ npc_summary.subordinate_count }}</div>
+        <div class="summary-box"><strong>默认调试局</strong>{% if game.id == 120 %}当前就是 #120{% else %}可切到 #120{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <h2>NPC 列表</h2>
+        {% if npc_items %}
+          <div class="filter-panel">
+            <div class="toolbar">
+              <select id="npc-source-filter">
+                <option value="">全部来源</option>
+                <option value="agent">Agent</option>
+                <option value="neighbor">邻县 AI</option>
+                <option value="subordinate">府属县 AI</option>
+              </select>
+              <select id="npc-role-filter">
+                <option value="">全部角色</option>
+              </select>
+              <input id="npc-search-input" type="search" placeholder="搜索姓名 / 县名 / 简介">
+              <button id="npc-filter-reset" type="button" class="btn-secondary">重置筛选</button>
+            </div>
+            <div class="filter-meta">
+              <div class="muted">按来源 / 角色 / 姓名即时过滤，不刷新页面。</div>
+              <div id="npc-filter-count" class="muted">显示 {{ npc_items|length }} / {{ npc_items|length }}</div>
+            </div>
+          </div>
+          <div id="npc-list" class="list">
+            {% for item in npc_items %}
+              <a
+                class="npc-card {% if item.npc_key == selected_npc_key %}active{% endif %}"
+                href="/api/npc/debug/page/?game_id={{ game.id }}&npc_key={{ item.npc_key }}"
+                data-npc-kind="{{ item.npc_kind }}"
+                data-role-title="{{ item.role_title }}"
+                data-search-text="{{ item.name }} {{ item.role_title }} {{ item.group_label }} {{ item.summary.county_name|default:'' }} {{ item.village_name|default:'' }} {{ item.summary.bio|default:'' }}"
+              >
+                <div class="npc-head">
+                  <div class="npc-name">{{ item.name }}</div>
+                  <span class="badge {% if item.npc_kind == 'agent' %}badge-agent{% elif item.npc_kind == 'neighbor' %}badge-neighbor{% else %}badge-sub{% endif %}">{{ item.group_label }}</span>
+                </div>
+                <div class="npc-meta">
+                  <span class="badge badge-muted">{{ item.role_title }}</span>
+                  {% if item.tier %}<span class="badge badge-muted">{{ item.tier }}</span>{% endif %}
+                  {% if item.affinity != None %}<span class="badge badge-muted">好感 {{ item.affinity }}</span>{% endif %}
+                  <span class="badge badge-muted">记忆 {{ item.memory_count }}</span>
+                </div>
+                {% if item.summary.county_name %}
+                  <div class="muted">{{ item.summary.county_name }}</div>
+                {% elif item.village_name %}
+                  <div class="muted">{{ item.village_name }}</div>
+                {% else %}
+                  <div class="muted">{{ item.summary.bio|default:"暂无简介"|truncatechars:36 }}</div>
+                {% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="muted">当前存档没有可展示的 NPC。</div>
+        {% endif %}
+      </div>
+
+      <div>
+        {% if selected_detail %}
+        <div class="panel">
+          <h2>{{ selected_detail.identity.name }} · {{ selected_detail.identity.role_title }}</h2>
+          <div class="keyvals">
+            {% for key, value in selected_detail.identity.items %}
+              <div class="keyval">
+                <strong>{{ key }}</strong>
+                <div>{{ value|default:"—" }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="panel">
+            <h2>标准化画像</h2>
+            <pre>{{ selected_detail.profile_normalized|pprint }}</pre>
+          </div>
+          <div class="panel">
+            <h2>信息来源</h2>
+            <pre>{{ selected_detail.source|pprint }}</pre>
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="panel">
+            <h2>Observation Context</h2>
+            <pre>{{ selected_detail.observation_context|pprint }}</pre>
+          </div>
+          <div class="panel">
+            <h2>Prompt Preview</h2>
+            <details open>
+              <summary>System Prompt</summary>
+              <pre>{{ selected_detail.prompt_preview.system_prompt }}</pre>
+            </details>
+            <details>
+              <summary>User Prompt</summary>
+              <pre>{{ selected_detail.prompt_preview.user_prompt }}</pre>
+            </details>
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="panel">
+            <h2>关系</h2>
+            {% if selected_detail.relationships %}
+              <div class="table-list">
+                {% for row in selected_detail.relationships %}
+                  <div class="row-card">
+                    <div class="row-title">{{ row.partner_name }} · {{ row.partner_role_title }}</div>
+                    <div class="muted">{{ row.direction }} / 好感 {{ row.affinity }}</div>
+                    <details>
+                      <summary>关系详情</summary>
+                      <pre>{{ row.data|pprint }}</pre>
+                    </details>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="muted">当前没有结构化关系数据。</div>
+            {% endif %}
+          </div>
+          <div class="panel">
+            <h2>记忆</h2>
+            {% if selected_detail.memory %}
+              <div class="table-list">
+                {% for row in selected_detail.memory %}
+                  <div class="row-card">
+                    <div class="row-title">#{{ row.index }}</div>
+                    <div>{{ row.text }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="muted">当前没有记忆。</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>运行态</h2>
+          {% if selected_detail.runtime.last_reasoning %}
+            <details open>
+              <summary>最近一次 reasoning</summary>
+              <pre>{{ selected_detail.runtime.last_reasoning }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.dialogues %}
+            <details open>
+              <summary>最近对话</summary>
+              <pre>{{ selected_detail.runtime.dialogues|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.negotiations %}
+            <details>
+              <summary>谈判记录</summary>
+              <pre>{{ selected_detail.runtime.negotiations|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.promises %}
+            <details>
+              <summary>承诺记录</summary>
+              <pre>{{ selected_detail.runtime.promises|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.events %}
+            <details>
+              <summary>事件记录</summary>
+              <pre>{{ selected_detail.runtime.events|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.judicial_cases %}
+            <details>
+              <summary>司法记录</summary>
+              <pre>{{ selected_detail.runtime.judicial_cases|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.pending_directives %}
+            <details>
+              <summary>待执行指令</summary>
+              <pre>{{ selected_detail.runtime.pending_directives|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.annual_reviews %}
+            <details>
+              <summary>年度考核</summary>
+              <pre>{{ selected_detail.runtime.annual_reviews|pprint }}</pre>
+            </details>
+          {% endif %}
+
+          {% if selected_detail.runtime.county_snapshot %}
+            <details>
+              <summary>辖区快照</summary>
+              <pre>{{ selected_detail.runtime.county_snapshot|pprint }}</pre>
+            </details>
+          {% endif %}
+        </div>
+
+        <div class="panel">
+          <h2>Raw JSON</h2>
+          <details open>
+            <summary>profile_raw</summary>
+            <pre>{{ selected_detail.profile_raw|pprint }}</pre>
+          </details>
+          {% if selected_detail.runtime.raw_state %}
+            <details>
+              <summary>raw_state</summary>
+              <pre>{{ selected_detail.runtime.raw_state|pprint }}</pre>
+            </details>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="panel">
+          <div class="muted">当前存档没有可展示的 NPC 详情。</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="panel">
+      <div class="muted">当前没有可用存档。</div>
+    </div>
+    {% endif %}
+  </div>
+  <script>
+  (function () {
+    var sourceEl = document.getElementById('npc-source-filter');
+    var roleEl = document.getElementById('npc-role-filter');
+    var searchEl = document.getElementById('npc-search-input');
+    var resetEl = document.getElementById('npc-filter-reset');
+    var countEl = document.getElementById('npc-filter-count');
+    var listEl = document.getElementById('npc-list');
+    if (!sourceEl || !roleEl || !searchEl || !resetEl || !countEl || !listEl) {
+      return;
+    }
+
+    var cards = Array.prototype.slice.call(listEl.querySelectorAll('.npc-card'));
+    var roles = [];
+    var roleSeen = Object.create(null);
+    cards.forEach(function (card) {
+      var role = (card.dataset.roleTitle || '').trim();
+      if (!role || roleSeen[role]) {
+        return;
+      }
+      roleSeen[role] = true;
+      roles.push(role);
+    });
+    roles.sort(function (a, b) { return a.localeCompare(b, 'zh-CN'); });
+    roles.forEach(function (role) {
+      var option = document.createElement('option');
+      option.value = role;
+      option.textContent = role;
+      roleEl.appendChild(option);
+    });
+
+    function applyFilters() {
+      var sourceValue = sourceEl.value;
+      var roleValue = roleEl.value;
+      var keyword = (searchEl.value || '').trim().toLowerCase();
+      var visibleCount = 0;
+
+      cards.forEach(function (card) {
+        var matchesSource = !sourceValue || card.dataset.npcKind === sourceValue;
+        var matchesRole = !roleValue || card.dataset.roleTitle === roleValue;
+        var haystack = (card.dataset.searchText || '').toLowerCase();
+        var matchesSearch = !keyword || haystack.indexOf(keyword) !== -1;
+        var visible = matchesSource && matchesRole && matchesSearch;
+        card.classList.toggle('hidden', !visible);
+        if (visible) {
+          visibleCount += 1;
+        }
+      });
+
+      countEl.textContent = '显示 ' + visibleCount + ' / ' + cards.length;
+    }
+
+    sourceEl.addEventListener('change', applyFilters);
+    roleEl.addEventListener('change', applyFilters);
+    searchEl.addEventListener('input', applyFilters);
+    resetEl.addEventListener('click', function () {
+      sourceEl.value = '';
+      roleEl.value = '';
+      searchEl.value = '';
+      applyFilters();
+    });
+    applyFilters();
+  })();
+  </script>
+</body>
+</html>

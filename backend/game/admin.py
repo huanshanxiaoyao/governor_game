@@ -10,8 +10,8 @@ class GameStateAdmin(admin.ModelAdmin):
 
 @admin.register(PlayerProfile)
 class PlayerProfileAdmin(admin.ModelAdmin):
-    list_display = ('id', 'game', 'background', 'knowledge', 'skill', 'integrity', 'competence', 'popularity')
-    list_filter = ('background',)
+    list_display = ('id', 'game', 'knowledge', 'skill', 'integrity', 'competence', 'popularity', 'authority')
+    list_filter = ()
 
 
 @admin.register(Agent)

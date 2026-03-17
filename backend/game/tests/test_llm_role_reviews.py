@@ -44,7 +44,7 @@ def _create_completed_game_with_agents():
         current_season=MAX_MONTH + 1,
         county_data=county,
     )
-    PlayerProfile.objects.create(game=game, background="HUMBLE")
+    PlayerProfile.objects.create(game=game)
     AgentService.initialize_agents(game)
     return game
 

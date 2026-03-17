@@ -459,7 +459,10 @@
         var monthlyPcs = ps.monthly_per_capita_surplus || 0;
         var trendIcon = monthlyPcs >= 10 ? "↑" : (monthlyPcs <= 0 ? "↓" : "→");
         var trendClass = monthlyPcs >= 10 ? "delta-positive" : (monthlyPcs <= 0 ? "delta-negative" : "");
-        var demandInfo = ps.demand_factor !== undefined ? "（需求系数: " + ps.demand_factor + "）" : "";
+        var demandBasis = ps.demand_basis_monthly_pcs !== undefined ? ps.demand_basis_monthly_pcs + "斤" : "";
+        var demandInfo = ps.demand_factor !== undefined
+          ? "（需求系数: " + ps.demand_factor + (demandBasis ? "，基于年化月均" + demandBasis : "") + "）"
+          : "";
         var surplusItems = [
           { label: "当前储备", value: ps.reserve.toLocaleString() + "斤" },
           { label: "月消耗", value: ps.monthly_consumption.toLocaleString() + "斤" },
@@ -712,12 +715,12 @@
       var card = h("div", "player-card",
         flavorHtml +
         '<div class="player-row">' +
-          "<span><strong>出身:</strong> " + escapeHtml(p.background_display) + "</span>" +
           "<span><strong>知识:</strong> " + p.knowledge.toFixed(1) + "</span>" +
           "<span><strong>技能:</strong> " + p.skill.toFixed(1) + "</span>" +
           "<span><strong>清名:</strong> " + p.integrity + "</span>" +
           "<span><strong>能名:</strong> " + p.competence + "</span>" +
           "<span><strong>人缘:</strong> " + p.popularity + "</span>" +
+          "<span><strong>威名:</strong> " + (p.authority || 0) + "</span>" +
           "<span><strong>家产:</strong> " + escapeHtml(wealthDisplay) + "</span>" +
         "</div>");
       plDiv.appendChild(card);

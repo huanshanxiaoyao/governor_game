@@ -176,6 +176,7 @@
         reports:           reports,
         quota:             rawData.quota || null,
         annual_review:     rawData.annual_review || null,
+        judicial:          rawData.judicial || null,
       };
     }
 
@@ -348,6 +349,48 @@
     );
   }
 
+  var VERDICT_LABELS = {
+    CONVICT_HEAVY: "重判", CONVICT_LIGHT: "轻判", ACQUIT: "无罪释放",
+    PLAINTIFF_WIN: "判原告胜", DEFENDANT_WIN: "判被告胜",
+    MEDIATION: "调解息讼", INSUFFICIENT_EVIDENCE: "证据存疑续查",
+    STRICT_ENFORCE: "严格执法", REMEDIATE: "责令补救",
+  };
+
+  function renderJudicialSection(judicial) {
+    if (!judicial) return '';
+    var stats = judicial.stats || {};
+    var decisions = judicial.recent_decisions || [];
+    if (!stats.resolved && !stats.deferred && !stats.pending && !decisions.length) return '';
+
+    var html = '<div class="cdc-section"><div class="cdc-section-title">司法处理情况</div>';
+
+    // Stats row
+    html += '<div class="cdc-judicial-stats">';
+    if (stats.resolved) html += '<span class="jud-resolved">已结案 ' + stats.resolved + '</span>';
+    if (stats.deferred) html += '<span class="jud-deferred">委托知府 ' + stats.deferred + '</span>';
+    if (stats.pending)  html += '<span class="jud-pending">待处理 ' + stats.pending + '</span>';
+    html += '</div>';
+
+    // Recent decisions
+    if (decisions.length) {
+      html += '<div class="cdc-section-title cdc-judicial-subtitle">近期判决</div>';
+      html += '<table class="cdc-data-table"><thead><tr><th>案件</th><th>类型</th><th>判决</th></tr></thead><tbody>';
+      decisions.forEach(function (d) {
+        var verdictLabel = d.verdict_label || VERDICT_LABELS[d.verdict_code] || d.verdict_code || '';
+        var statusLabel  = d.status === 'DEFERRED_TO_PREFECT' ? '<span class="jud-deferred">委托知府</span>' : '';
+        html += '<tr>' +
+          '<td>' + esc(d.case_name) + '</td>' +
+          '<td>' + esc(d.category) + '</td>' +
+          '<td>' + (verdictLabel ? esc(verdictLabel) : statusLabel || '<span class="hint">—</span>') + '</td>' +
+        '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
   function renderAnalysisSection(text) {
     return (
       '<div class="cdc-section">' +
@@ -411,6 +454,11 @@
     }
 
     if (normalized.analysis) html += renderAnalysisSection(normalized.analysis);
+
+    // 司法情况（仅府游戏）
+    if (normalized.source === "prefecture" && normalized.judicial) {
+      html += renderJudicialSection(normalized.judicial);
+    }
 
     // 历史汇报趋势（仅府游戏，需至少2条）
     if (normalized.reports && normalized.reports.length > 1) {

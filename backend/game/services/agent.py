@@ -152,8 +152,10 @@ class AgentService:
         gentry_persona = gentry_attrs.get('persona_id', '')
 
         affinity = cls.LOCAL_RELATION_PROFILES['villager_to_gentry'].get(villager_persona, 0)
-        affinity += int((float(gentry_attrs.get('personality', {}).get('agreeableness', 0.5)) - 0.5) * 20)
-        affinity += int((float(gentry_attrs.get('ideology', {}).get('people_vs_authority', 0.5)) - 0.5) * 20)
+        # high assertiveness → less agreeable → lower affinity with tenants (invert)
+        affinity += int((0.5 - float(gentry_attrs.get('personality', {}).get('assertiveness', 0.5))) * 20)
+        # high state_vs_people → less people-oriented → lower affinity (invert)
+        affinity += int((0.5 - float(gentry_attrs.get('ideology', {}).get('state_vs_people', 0.5))) * 20)
 
         if villager_persona == 'fiery_tenant_leader':
             affinity -= 10
@@ -360,37 +362,42 @@ class AgentService:
     def _describe_personality(attrs):
         p = attrs.get('personality', {})
         parts = []
-        if p.get('openness', 0.5) >= 0.7:
-            parts.append('思维开放，善于接受新事物')
-        elif p.get('openness', 0.5) <= 0.3:
-            parts.append('保守谨慎，倾向于维持现状')
-        if p.get('conscientiousness', 0.5) >= 0.7:
-            parts.append('做事严谨负责')
-        if p.get('agreeableness', 0.5) >= 0.7:
-            parts.append('待人温和宽厚')
-        elif p.get('agreeableness', 0.5) <= 0.3:
-            parts.append('性格强硬不易妥协')
+        soc = p.get('sociability', 0.5)
+        if soc >= 0.7:
+            parts.append('善于社交，注重人际关系')
+        elif soc <= 0.3:
+            parts.append('独立自主，不易受舆论左右')
+        rat = p.get('rationality', 0.5)
+        if rat >= 0.7:
+            parts.append('思虑严谨，凡事讲究条理')
+        elif rat <= 0.3:
+            parts.append('凭直觉行事，感情用事')
+        asr = p.get('assertiveness', 0.5)
+        if asr >= 0.7:
+            parts.append('性格强硬，立场坚定')
+        elif asr <= 0.3:
+            parts.append('为人温和，善于妥协')
         return '；'.join(parts) if parts else '性情平和'
 
     @staticmethod
     def _describe_ideology(attrs):
         ideo = attrs.get('ideology', {})
         parts = []
-        rv = ideo.get('reform_vs_tradition', 0.5)
-        if rv >= 0.7:
-            parts.append('倾向变法革新')
-        elif rv <= 0.3:
-            parts.append('崇尚祖制传统')
-        pa = ideo.get('people_vs_authority', 0.5)
-        if pa >= 0.7:
-            parts.append('重视民间疾苦')
-        elif pa <= 0.3:
-            parts.append('强调上级权威')
-        pi = ideo.get('pragmatic_vs_idealist', 0.5)
+        sp = ideo.get('state_vs_people', 0.5)
+        if sp >= 0.7:
+            parts.append('以社稷大局为重，强调上缴指标')
+        elif sp <= 0.3:
+            parts.append('重视黎民疾苦，优先民生')
+        cl = ideo.get('central_vs_local', 0.5)
+        if cl >= 0.7:
+            parts.append('恭顺中央，凡事请示上级')
+        elif cl <= 0.3:
+            parts.append('主张地方自主，因地制宜')
+        pi = ideo.get('pragmatic_vs_ideal', 0.5)
         if pi >= 0.7:
-            parts.append('注重实际成效')
+            parts.append('务实妥协，注重实际成效')
         elif pi <= 0.3:
-            parts.append('追求理想道义')
+            parts.append('坚守原则，追求理想道义')
         return '；'.join(parts) if parts else '立场中庸'
 
     @staticmethod
@@ -431,11 +438,16 @@ class AgentService:
         total_farmland = sum(v['farmland'] for v in c.get('villages', []))
         disaster = c.get('disaster_this_year')
         disaster_text = '无' if not disaster else f"{disaster['type']}(严重度{disaster['severity']:.0%})"
+        tax_rate = c.get('tax_rate')
+        try:
+            tax_rate_text = f"{float(tax_rate):.0%}"
+        except (TypeError, ValueError):
+            tax_rate_text = "—"
 
         return (
             f"民心: {c.get('morale', '?')}, 治安: {c.get('security', '?')}, "
             f"商业: {c.get('commercial', '?')}, 文教: {c.get('education', '?')}\n"
-            f"县库: {c.get('treasury', '?')}两, 税率: {c.get('tax_rate', '?'):.0%}\n"
+            f"县库: {c.get('treasury', '?')}两, 税率: {tax_rate_text}\n"
             f"总人口: {total_pop}, 总耕地: {total_farmland}亩\n"
             f"当前灾害: {disaster_text}"
         )

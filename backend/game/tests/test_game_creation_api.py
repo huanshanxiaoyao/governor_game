@@ -14,7 +14,6 @@ def test_create_county_game_returns_json_payload_and_persists_player_unit():
     response = client.post(
         "/api/games/",
         {
-            "background": "HUMBLE",
             "county_type": "fiscal_core",
         },
         format="json",
@@ -25,7 +24,6 @@ def test_create_county_game_returns_json_payload_and_persists_player_unit():
 
     payload = response.json()
     assert payload["id"] > 0
-    assert payload["county_data"]["player_profile_flavor"]
 
     game = GameState.objects.select_related("player_unit").get(id=payload["id"])
     assert game.player_unit is not None

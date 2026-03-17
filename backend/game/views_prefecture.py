@@ -2,6 +2,7 @@
 
 import threading
 
+from django.template.response import TemplateResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -11,6 +12,7 @@ from .models import AdminUnit, GameState
 from .services import PrefectureService
 from .services.annual_review import AnnualReviewService
 from .services.constants import month_of_year
+from .services.judicial_caseflow import JudicialCaseflowService
 
 
 def _get_prefect_game(request, game_id):
@@ -53,25 +55,18 @@ class PrefectureCreateView(APIView):
             player_role='PREFECT',
         )
 
-        # 创建玩家档案
+        # 创建玩家档案（统一起点，无出身背景差异）
         from .models import PlayerProfile
-        background = ser.validated_data.get('background', 'OFFICIAL')
-        defaults = PlayerProfile.BACKGROUND_DEFAULTS[background]
-        WEALTH_START = {
-            'HUMBLE':  _random.uniform(30, 80),
-            'SCHOLAR': _random.uniform(80, 150),
-            'OFFICIAL': _random.uniform(200, 400),
-        }
         PlayerProfile.objects.create(
             game=game,
-            background=background,
-            knowledge=defaults['knowledge'],
-            skill=defaults['skill'],
-            personal_wealth=round(WEALTH_START.get(background, 100), 1),
+            knowledge=3.0,
+            skill=3.0,
+            personal_wealth=round(_random.uniform(10, 30), 1),
         )
 
         # 初始化府域
         PrefectureService.create_prefecture_game(game, prefecture_type=prefecture_type)
+        JudicialCaseflowService.schedule_generation(game.id)
 
         return Response(
             PrefectureService.get_prefecture_overview(game),
@@ -351,6 +346,45 @@ class PrefectureJudicialView(APIView):
         if err:
             return err
         return Response(PrefectureService.get_judicial_cases(game))
+
+
+class PrefectureJudicialDebugView(APIView):
+    """
+    GET /api/prefecture/<game_id>/judicial/debug/
+    返回最近一次卷宗抽取与知县初审的后台调试数据。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+        return Response(PrefectureService.get_judicial_debug_data(game))
+
+
+class PrefectureJudicialDebugPageView(APIView):
+    """
+    GET /api/prefecture/<game_id>/judicial/debug/page/
+    返回司法后台调试页面，展示实例化卷宗与 AI 知县初审结果。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+
+        debug_data = PrefectureService.get_judicial_debug_data(game)
+        judicial_cases = PrefectureService.get_judicial_cases(game)
+        context = {
+            "game": game,
+            "debug_data": debug_data,
+            "generation": debug_data.get("generation") or {},
+            "cases": debug_data.get("cases") or [],
+            "status_summary": debug_data.get("status_summary") or {},
+            "pending_cases": judicial_cases.get("pending_cases") or [],
+        }
+        return TemplateResponse(request, "game/prefecture_judicial_debug.html", context)
 
 
 class PrefectureJudicialDecideView(APIView):

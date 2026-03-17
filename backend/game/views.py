@@ -1,4 +1,6 @@
 from django.contrib.auth import authenticate, login, logout
+from django.db import OperationalError, ProgrammingError
+from django.template.response import TemplateResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -40,10 +42,12 @@ from .services.annual_review import AnnualReviewService
 from .services.bribery import BriberyService
 from .services.career_track import CareerTrackService
 from .services.constants import MAX_MONTH
-from .services.magistrate_service import MagistrateService
 from .services.new_term import NewTermService, TERMINAL_REASONS
 from .services.promotion_event import PromotionEventService
 from .services.state import load_county_state, save_player_state
+from .services.judicial_caseflow import JudicialCaseflowService
+from .services.npc_debug import NPCDebugService
+from .services.prefecture import PrefectureService
 
 
 def _blocked_by_takeover(game):
@@ -66,7 +70,88 @@ def _check_game_playable(game):
             {"error": "任期已届满，请先续任", "term_complete": True},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+def _judicial_debug_template_context(game, game_options=None, selected_game_id=None):
+    debug_data = JudicialCaseflowService.get_debug_payload(game)
+    pending_cases = []
+    county_cases = []
+    if game.player_role == "PREFECT" and game.player_unit_id:
+        pending_cases = PrefectureService.get_judicial_cases(game).get("pending_cases") or []
+    else:
+        county_cases = JudicialCaseflowService.get_county_payload(game).get("cases") or []
+
+    return {
+        "game": game,
+        "debug_data": debug_data,
+        "generation": debug_data.get("generation") or {},
+        "cases": debug_data.get("cases") or [],
+        "status_summary": debug_data.get("status_summary") or {},
+        "pending_cases": pending_cases,
+        "county_cases": county_cases,
+        "game_options": game_options or [],
+        "selected_game_id": str(selected_game_id or game.id),
+    }
+
+
+def _judicial_error_response(exc):
+    message = str(exc) or "司法系统暂不可用"
+    if isinstance(exc, (OperationalError, ProgrammingError)):
+        message = "司法系统数据库未初始化，请先执行迁移。"
+    return Response({"error": message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     return None
+
+
+def _ensure_staff(request):
+    if getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
+        return None
+    return Response({"error": "仅后台管理员可访问该调试页面"}, status=status.HTTP_403_FORBIDDEN)
+
+
+def _debug_game_label(game):
+    if game.player_role == "PREFECT":
+        title = (game.player_unit.unit_data or {}).get("prefecture_name") if game.player_unit_id else "知府局"
+        role_label = "知府"
+    else:
+        title = load_county_state(game).get("county_name", "县局")
+        role_label = "知县/知州"
+    return f"#{game.id} · {role_label} · {title} · 第{game.current_season}月"
+
+
+def _npc_debug_template_context(game, game_options=None, selected_game_id=None, selected_npc_key=None):
+    npc_items = NPCDebugService.list_npcs(game)
+    resolved_key = selected_npc_key
+    if resolved_key:
+        try:
+            detail = NPCDebugService.get_npc_detail(game, resolved_key)
+        except (TypeError, ValueError):
+            detail = None
+        if detail is None:
+            resolved_key = None
+    if not resolved_key and npc_items:
+        resolved_key = npc_items[0]["npc_key"]
+    if resolved_key:
+        try:
+            detail = NPCDebugService.get_npc_detail(game, resolved_key)
+        except (TypeError, ValueError):
+            detail = None
+    else:
+        detail = None
+
+    return {
+        "game": game,
+        "game_options": game_options or [],
+        "selected_game_id": str(selected_game_id or game.id),
+        "npc_items": npc_items,
+        "selected_npc_key": resolved_key or "",
+        "selected_detail": detail,
+        "npc_summary": {
+            "total": len(npc_items),
+            "agent_count": sum(1 for item in npc_items if item["npc_kind"] == "agent"),
+            "neighbor_count": sum(1 for item in npc_items if item["npc_kind"] == "neighbor"),
+            "subordinate_count": sum(1 for item in npc_items if item["npc_kind"] == "subordinate"),
+        },
+    }
 
 
 class LoginView(APIView):
@@ -108,7 +193,6 @@ class GameListCreateView(APIView):
         serializer = CreateGameSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        background = serializer.validated_data["background"]
         county_type = serializer.validated_data.get("county_type")
 
         # Create game with initial county data
@@ -131,30 +215,19 @@ class GameListCreateView(APIView):
             'peasant_grain_reserve': county_data.get('peasant_grain_reserve', 0),
         }
 
-        # Generate player ideology flavor before persistence so county_data/unit_data start consistent.
-        flavor = MagistrateService.generate_player_flavor(background)
-        county_data['player_profile_flavor'] = flavor
-
         game = GameState.objects.create(
             user=request.user,
             current_season=1,
             county_data=county_data,
         )
 
-        # Create player profile with background-specific defaults
+        # Create player profile (uniform starting point, no background differentiation)
         import random as _random
-        defaults = PlayerProfile.BACKGROUND_DEFAULTS[background]
-        WEALTH_START = {
-            'HUMBLE':  (_random.uniform(10, 30)),
-            'SCHOLAR': (_random.uniform(40, 80)),
-            'OFFICIAL': (_random.uniform(120, 200)),
-        }
         PlayerProfile.objects.create(
             game=game,
-            background=background,
-            knowledge=defaults["knowledge"],
-            skill=defaults["skill"],
-            personal_wealth=round(WEALTH_START.get(background, 20), 1),
+            knowledge=3.0,
+            skill=3.0,
+            personal_wealth=round(_random.uniform(10, 30), 1),
         )
 
         # 创建玩家控制的行政单位（县级）
@@ -175,6 +248,8 @@ class GameListCreateView(APIView):
 
         # Initialize officialdom hierarchy (emperor, factions, officials)
         OfficialdomService.initialize_officialdom(game)
+
+        JudicialCaseflowService.schedule_generation(game.id)
 
         detail = GameDetailSerializer(game)
         return Response(detail.data, status=status.HTTP_201_CREATED)
@@ -219,6 +294,238 @@ class AnnualReviewSubmitView(APIView):
         if "error" in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+
+class CountyJudicialView(APIView):
+    """
+    GET /api/games/{id}/judicial/ — 县级司法 tab 数据
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            return Response(JudicialCaseflowService.get_county_payload(game))
+        except Exception as exc:
+            return _judicial_error_response(exc)
+
+
+class CountyJudicialDecideView(APIView):
+    """
+    POST /api/games/{id}/judicial/decide/ — 处理县级司法案件
+    Body: { "case_id": int, "action": str }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        case_id = request.data.get("case_id")
+        action = (request.data.get("action") or "").strip()
+        verdict_code = (request.data.get("verdict_code") or "").strip() or None
+        if not case_id or not action:
+            return Response({"error": "case_id 和 action 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            case_id = int(case_id)
+        except (TypeError, ValueError):
+            return Response({"error": "case_id 必须为整数"}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = JudicialCaseflowService.decide_county_case(game, case_id, action, verdict_code=verdict_code)
+        if "error" in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class CountyJudicialDebugView(APIView):
+    """
+    GET /api/games/{id}/judicial/debug/ — 查看本局实例化卷宗调试数据
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            return Response(JudicialCaseflowService.get_debug_payload(game))
+        except Exception as exc:
+            return _judicial_error_response(exc)
+
+
+class CountyJudicialDebugPageView(APIView):
+    """
+    GET /api/games/{id}/judicial/debug/page/ — 查看本局实例化卷宗调试页面
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            return TemplateResponse(request, "game/prefecture_judicial_debug.html", _judicial_debug_template_context(game))
+        except Exception as exc:
+            return _judicial_error_response(exc)
+
+
+class JudicialDebugPageView(APIView):
+    """
+    GET /api/judicial/debug/page/ — 统一司法调试页，可直接选择游戏存档
+    Query: ?game_id=<id>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        games = list(GameState.objects.filter(user=request.user).select_related("player_unit").order_by("-updated_at"))
+        selected_game = None
+        requested_id = request.GET.get("game_id")
+        if requested_id:
+            try:
+                selected_game = next((game for game in games if game.id == int(requested_id)), None)
+            except (TypeError, ValueError):
+                selected_game = None
+        if selected_game is None and games:
+            selected_game = games[0]
+
+        game_options = []
+        for game in games:
+            if game.player_role == "PREFECT":
+                title = (game.player_unit.unit_data or {}).get("prefecture_name") if game.player_unit_id else "知府局"
+                role_label = "知府"
+            else:
+                title = load_county_state(game).get("county_name", "县局")
+                role_label = "知县/知州"
+            game_options.append({
+                "id": str(game.id),
+                "label": f"#{game.id} · {role_label} · {title} · 第{game.current_season}月",
+            })
+
+        if selected_game is None:
+            return TemplateResponse(request, "game/prefecture_judicial_debug.html", {
+                "game": None,
+                "game_options": game_options,
+                "selected_game_id": "",
+                "generation": {},
+                "cases": [],
+                "status_summary": {},
+                "pending_cases": [],
+                "county_cases": [],
+            })
+
+        try:
+            context = _judicial_debug_template_context(
+                selected_game,
+                game_options=game_options,
+                selected_game_id=selected_game.id,
+            )
+            return TemplateResponse(request, "game/prefecture_judicial_debug.html", context)
+        except Exception as exc:
+            return _judicial_error_response(exc)
+
+
+class NPCDebugListView(APIView):
+    """
+    GET /api/games/{id}/npc-debug/ — 某局 NPC 调试索引
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        denied = _ensure_staff(request)
+        if denied:
+            return denied
+
+        game = GameState.objects.filter(id=game_id).first()
+        if game is None:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "game_id": game.id,
+            "items": NPCDebugService.list_npcs(game),
+        })
+
+
+class NPCDebugDetailView(APIView):
+    """
+    GET /api/games/{id}/npc-debug/detail/?npc_key=agent:1 — 某个 NPC 的完整调试详情
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        denied = _ensure_staff(request)
+        if denied:
+            return denied
+
+        npc_key = request.GET.get("npc_key", "")
+        if not npc_key:
+            return Response({"error": "缺少 npc_key"}, status=status.HTTP_400_BAD_REQUEST)
+
+        game = GameState.objects.filter(id=game_id).first()
+        if game is None:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            detail = NPCDebugService.get_npc_detail(game, npc_key)
+        except (TypeError, ValueError):
+            detail = None
+        if detail is None:
+            return Response({"error": "NPC不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(detail)
+
+
+class NPCDebugPageView(APIView):
+    """
+    GET /api/npc/debug/page/ — 统一 NPC 调试页，可选择任意存档与 NPC
+    Query: ?game_id=<id>&npc_key=<kind:id>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        denied = _ensure_staff(request)
+        if denied:
+            return denied
+
+        games = list(GameState.objects.filter().select_related("player_unit").order_by("-updated_at"))
+        selected_game = None
+        requested_id = request.GET.get("game_id")
+        requested_npc_key = request.GET.get("npc_key", "")
+
+        if requested_id:
+            try:
+                selected_game = next((game for game in games if game.id == int(requested_id)), None)
+            except (TypeError, ValueError):
+                selected_game = None
+        if selected_game is None and games:
+            selected_game = next((game for game in games if game.id == 120), None) or games[0]
+
+        game_options = [{"id": str(game.id), "label": _debug_game_label(game)} for game in games]
+
+        if selected_game is None:
+            return TemplateResponse(request, "game/npc_debug.html", {
+                "game": None,
+                "game_options": game_options,
+                "selected_game_id": "",
+                "selected_npc_key": "",
+                "npc_items": [],
+                "selected_detail": None,
+                "npc_summary": {},
+            })
+
+        context = _npc_debug_template_context(
+            selected_game,
+            game_options=game_options,
+            selected_game_id=selected_game.id,
+            selected_npc_key=requested_npc_key,
+        )
+        return TemplateResponse(request, "game/npc_debug.html", context)
 
 
 class InvestView(APIView):
@@ -360,6 +667,14 @@ class RespondBribeView(APIView):
                 county['rejected_bribes'] = {}
             county['rejected_bribes'][key] = True
             msg = f"拒绝{matched['gentry_name']}的行贿，将依法处置。"
+
+        # 清名变化：接受贿赂−5，拒绝贿赂+1
+        if player_profile:
+            if accept:
+                player_profile.integrity = max(0, player_profile.integrity - 5)
+            else:
+                player_profile.integrity = min(100, player_profile.integrity + 1)
+            player_profile.save(update_fields=['integrity'])
 
         # Remove from pending list
         county["pending_bribes"] = [

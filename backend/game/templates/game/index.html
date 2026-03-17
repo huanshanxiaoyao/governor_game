@@ -47,23 +47,8 @@
         <span>府域统辖·三年任期</span>
       </button>
     </div>
-    <p style="margin-top: 14px;">2）选择出身背景：</p>
-    <div class="background-choices">
-      <button class="btn btn-background" data-bg="HUMBLE">
-        <strong>寒门子弟</strong>
-        <span>知识3 / 技能3</span>
-      </button>
-      <button class="btn btn-background" data-bg="SCHOLAR">
-        <strong>书香门第</strong>
-        <span>知识5 / 技能3</span>
-      </button>
-      <button class="btn btn-background" data-bg="OFFICIAL">
-        <strong>官宦之后</strong>
-        <span>知识4 / 技能5</span>
-      </button>
-    </div>
     <div id="county-type-section" class="hidden">
-      <p style="margin-top: 14px;">3）选择治理县域类型：</p>
+      <p style="margin-top: 14px;">2）选择治理县域类型：</p>
       <div class="county-type-choices">
         <button class="btn btn-county-type" data-county-type="fiscal_core">
           <strong>财赋核心型</strong>
@@ -84,7 +69,7 @@
       </div>
     </div>
     <div id="prefecture-type-section" class="hidden">
-      <p style="margin-top: 14px;">3）选择府域类型：</p>
+      <p style="margin-top: 14px;">2）选择府域类型：</p>
       <div class="county-type-choices">
         <button class="btn btn-prefecture-type" data-prefecture-type="fiscal_heavy">
           <strong>财赋重府</strong>
@@ -106,7 +91,7 @@
     </div>
     <div class="new-game-actions">
       <button id="btn-start-game" class="btn btn-primary" disabled>开始新游戏</button>
-      <span id="new-game-selection-hint" class="hint">请先选择角色与出身</span>
+      <span id="new-game-selection-hint" class="hint">请先选择角色</span>
     </div>
   </div>
 
@@ -144,6 +129,7 @@
     <button class="tab-btn active" data-tab="tab-dashboard">县情总览</button>
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
+    <button id="county-judicial-tab-btn" class="tab-btn hidden" data-tab="tab-judicial">司法</button>
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
     <button class="tab-btn" data-tab="tab-staff">幕僚</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
@@ -271,6 +257,13 @@
           <button id="modal-cancel" class="btn btn-small">取消</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Tab: Judicial (司法) -->
+  <div id="tab-judicial" class="tab-content hidden">
+    <div id="county-judicial-content">
+      <p class="hint">当前不在县级司法处理月份。</p>
     </div>
   </div>
 

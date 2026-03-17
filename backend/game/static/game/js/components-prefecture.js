@@ -231,7 +231,7 @@
       '<thead><tr>' +
         '<th>县/州</th><th>知县</th><th>类型</th>';
     indicators.forEach(function (k) { html += '<th>' + k + '</th>'; });
-    html += '<th>年度配额</th><th>操作</th></tr></thead><tbody>';
+    html += '<th>年度配额</th><th>司法</th><th>操作</th></tr></thead><tbody>';
 
     counties.forEach(function (c) {
       var latest = c.latest_report;
@@ -246,6 +246,13 @@
         html += '<td>' + (val ? tierBadge(val) + trendArrow(trend[k] || "→") : '<span class="hint">—</span>') + '</td>';
       });
       html += '<td>' + (c.quota || 0) + '两</td>';
+      // 司法健康度：已结/拖延/待审
+      var js = c.judicial_stats || {};
+      var jParts = [];
+      if (js.resolved) jParts.push('<span class="jud-resolved">结' + js.resolved + '</span>');
+      if (js.deferred) jParts.push('<span class="jud-deferred">拖' + js.deferred + '</span>');
+      if (js.pending)  jParts.push('<span class="jud-pending">待' + js.pending + '</span>');
+      html += '<td class="jud-stats-cell">' + (jParts.length ? jParts.join(' ') : '<span class="hint">—</span>') + '</td>';
       html += '<td><button class="btn btn-small btn-county-detail" data-unit-id="' + c.unit_id + '">详情</button></td>';
       html += '</tr>';
     });
@@ -303,6 +310,14 @@
       html += '<span>商业 ' + (snapshot.commercial || 0) + '</span>';
       html += '<span>文教 ' + (snapshot.education || 0) + '</span>';
       html += '</div>';
+
+      if (snapshot.judicial_summary && snapshot.judicial_summary.case_count) {
+        html += '<div class="pref-personnel-block">';
+        html += '<div class="pref-section-title">司法复核摘要</div>';
+        html += '<div>本年复核 ' + (snapshot.judicial_summary.case_count || 0) + ' 案，维持 ' + (snapshot.judicial_summary.upheld_count || 0) + '，退回 ' + (snapshot.judicial_summary.remand_count || 0) + '，推翻 ' + (snapshot.judicial_summary.overturned_count || 0) + '。</div>';
+        html += '<div>司法信号：操守 ' + (snapshot.judicial_summary.integrity_signal || 0) + '，才干 ' + (snapshot.judicial_summary.competence_signal || 0) + '。</div>';
+        html += '</div>';
+      }
 
       if (selfStatement.achievements) {
         html += '<div class="pref-personnel-block">';

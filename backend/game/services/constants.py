@@ -426,13 +426,6 @@ ARCHETYPE_WEALTH_GOAL = {
     'CORRUPT':  (0.38, 0.55),
 }
 
-# 年度养廉银（两/年），按出身背景
-STIPEND_BY_BACKGROUND = {
-    'HUMBLE': 12,
-    'SCHOLAR': 18,
-    'OFFICIAL': 24,
-}
-
 
 def generate_governor_profile(style, archetype=None):
     """根据知县风格（和可选的施政类型）生成三层属性，返回 dict。

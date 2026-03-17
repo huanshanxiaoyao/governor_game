@@ -115,6 +115,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # AI Negotiation — set True to enable LLM-driven negotiation for neighbor counties
 # (adds ~2 LLM calls per annexation/hidden-land event; keep False when many AI counties run)
 AI_NEGOTIATION_ENABLED = os.getenv('AI_NEGOTIATION_ENABLED', '').lower() in ('true', '1', 'yes')
+JUDICIAL_MAGISTRATE_LLM_ENABLED = os.getenv('JUDICIAL_MAGISTRATE_LLM_ENABLED', 'true').lower() in ('true', '1', 'yes')
+JUDICIAL_MAGISTRATE_LLM_TIMEOUT = float(os.getenv('JUDICIAL_MAGISTRATE_LLM_TIMEOUT', '8'))
+JUDICIAL_MAGISTRATE_LLM_MAX_RETRIES = int(os.getenv('JUDICIAL_MAGISTRATE_LLM_MAX_RETRIES', '1'))
 
 # LLM Providers
 LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')

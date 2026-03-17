@@ -21,7 +21,7 @@ def _create_game_with_disaster(month):
         "relieved": False,
     }
     game = GameState.objects.create(user=user, current_season=month, county_data=county)
-    PlayerProfile.objects.create(game=game, background="HUMBLE")
+    PlayerProfile.objects.create(game=game)
     return game
 
 

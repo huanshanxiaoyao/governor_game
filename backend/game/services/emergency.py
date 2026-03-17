@@ -648,6 +648,14 @@ class EmergencyService:
         cls.refresh_state(county)
         save_player_state(game, county)
 
+        # 威名效果：强征地主余粮成功 → 威名+5
+        try:
+            player = game.player
+            player.authority = min(100, player.authority + 5)
+            player.save(update_fields=['authority'])
+        except Exception:
+            pass
+
         debug_on = bool(emergency.get("debug_reveal_hidden_events"))
         hidden_note = (
             f"（调试：上告压力+{severity}，次月触发）"

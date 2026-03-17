@@ -28,6 +28,15 @@ _PRESSURE_LATE = '谈判即将结束，准备给出最终答复。'
 _PRESSURE_FINAL = '这是最后一轮，你必须在 final_decision 中给出明确决定，不能为 null。'
 
 
+def _authority_tone(authority: int) -> str:
+    """Option C: 威名定性描述，注入谈判 prompt 供 LLM 参考。"""
+    if authority >= 76:
+        return '\n【关于县令】此人在本地以铁腕著称，强制执行几乎是其惯常手段。\n'
+    if authority >= 60:
+        return '\n【关于县令】此人素有雷厉风行之名，必要时不惜动用官府强制手段。\n'
+    return ''
+
+
 def _round_pressure(current_round, max_rounds):
     """Return pressure text based on negotiation progress."""
     remaining_pct = (max_rounds - current_round) / max_rounds
@@ -172,6 +181,10 @@ class NegotiationService:
         ctx['max_rounds'] = session.max_rounds
         ctx['round_pressure'] = _round_pressure(session.current_round, session.max_rounds)
         ctx['village_name'] = agent.attributes.get('village_name', '')
+        try:
+            ctx['authority_hint'] = _authority_tone(game.player.authority)
+        except Exception:
+            ctx['authority_hint'] = ''
 
         if session.event_type == 'ANNEXATION':
             result = cls._negotiate_annexation(ctx, game, session)
@@ -766,6 +779,10 @@ class NegotiationService:
         sync_county_gentry_land_ratio(county)
         save_player_state(game, county)
 
+        # 威名效果：玩家赢（停止兼并）时，地主有概率向知府投诉
+        if decision == 'stop_annexation':
+            cls._check_gentry_complaint(game, county, agent)
+
         desc = (f'{village_name}地主{agent.name}兼并谈判结束：'
                 f'{"继续兼并" if decision == "proceed_annexation" else "停止兼并"}'
                 f'{f"，兼并耕地{annexed_land}亩" if annexed_land > 0 else ""}'
@@ -836,6 +853,16 @@ class NegotiationService:
 
         sync_county_gentry_land_ratio(county)
         save_player_state(game, county)
+
+        # 威名效果：强制清丈成功 → 威名+1；地主有概率向知府投诉
+        if decision != 'declare_all':
+            try:
+                player = game.player
+                player.authority = min(100, player.authority + 1)
+                player.save(update_fields=['authority'])
+            except Exception:
+                pass
+            cls._check_gentry_complaint(game, county, agent)
 
         method = '主动申报' if decision == 'declare_all' else '强制清丈'
         desc = (f'{village_name}地主{agent.name}隐匿土地交涉结束：'
@@ -912,6 +939,61 @@ class NegotiationService:
                 'decision': decision,
                 'contribution': contribution,
                 'treasury_after': round(county.get('treasury', 0), 1),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Authority (威名) — Gentry Complaint
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _check_gentry_complaint(cls, game, county, agent):
+        """有概率触发地主向知府打报告（隐性事件）。
+
+        触发条件：玩家威名 ≥ 60，地主声望.authority ≥ 55。
+        概率：base 10% + 每点威名超出60加0.5%；地主抵抗意志高则再加0-10%。
+        后果：county['prefect_complaints'] +1，写入隐性 EventLog。
+        """
+        try:
+            player_authority = game.player.authority
+        except Exception:
+            return
+
+        if player_authority < 60:
+            return
+
+        gentry_authority = int(
+            (agent.attributes.get('reputation') or {}).get('authority', 0)
+        )
+        if gentry_authority < 55:
+            return
+
+        base_prob = 0.10 + (player_authority - 60) * 0.005
+        gentry_factor = max(0, (gentry_authority - 55) / 45) * 0.10
+        prob = min(0.40, base_prob + gentry_factor)
+
+        if random.random() >= prob:
+            return
+
+        county['prefect_complaints'] = county.get('prefect_complaints', 0) + 1
+        save_player_state(game, county)
+
+        logger.info(
+            "威名事件：地主%s向知府投诉（p=%.0f%%，当前累计=%d）",
+            agent.name, prob * 100, county['prefect_complaints'],
+        )
+        EventLog.objects.create(
+            game=game,
+            season=game.current_season,
+            event_type='gentry_complaint',
+            category='GENTRY_COMPLAINT',
+            description=f'地主{agent.name}不满县令强硬手段，已悄然向知府陈情告状',
+            data={
+                'agent_name': agent.name,
+                'player_authority': player_authority,
+                'gentry_authority': gentry_authority,
+                'prob': round(prob, 3),
+                'cumulative_complaints': county['prefect_complaints'],
             },
         )
 

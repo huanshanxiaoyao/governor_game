@@ -151,8 +151,9 @@ class MetricsMixin:
 
     @classmethod
     def _update_commercial(cls, county, month, report, prefecture_ctx=None):
-        """月度商业更新：盈余→需求系数→GMV→商税→粮食消耗
+        """月度商业更新：粮食消耗→扣后余粮→需求系数→GMV→商税
         prefecture_ctx: optional dict with road_level for inter-county commerce bonus.
+        需求系数基于扣除本月消耗后的余粮，确保展示与计算口径一致。
         """
         ensure_county_ledgers(county)
         total_pop = sum(
@@ -164,47 +165,50 @@ class MetricsMixin:
         # 统一口径：到下次秋收（九月）剩余月数视角
         moy = month_of_year(month)
         months_to_harvest = (9 - moy) % 12 or 12
-        remaining_consumption = months_to_harvest * base_monthly_consumption
-        per_capita_surplus = (
-            (county.get("peasant_grain_reserve", 0) - remaining_consumption)
+
+        # 过度消费阈值检查用扣前余粮（判断"此时是否富裕到放开消费"）
+        reserve_before = county.get("peasant_grain_reserve", 0)
+        pre_per_capita_surplus = (
+            (reserve_before - months_to_harvest * base_monthly_consumption)
             / max(total_pop, 1)
         )
-        monthly_pcs = per_capita_surplus / months_to_harvest
-
-        # 需求系数：用年化余粮（per_capita_surplus / 12）而非月数视角。
-        # months_to_harvest 随时间缩短会人为抬高 monthly_pcs（正月8倍，八月接近1倍），
-        # 导致 demand_factor 从正月起就锁定在 2.0 上限，使商税丧失季节性变化。
-        # 年化折算 = per_capita_surplus / 12：将"到秋收前总余粮"折成稳定的年均月率，
-        # 消除分母缩短效应；过度消费仍保留月数视角（近秋收时村民确实更放开消费）。
-        monthly_pcs_for_demand = per_capita_surplus / 12
-        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs_for_demand / 20))
+        pre_monthly_pcs = pre_per_capita_surplus / months_to_harvest
 
         # 过度消费机制：当月均余粮 > 阈值时，消耗按二次方增加
         monthly_consumption = base_monthly_consumption
         consumption_multiplier = 1.0
-        reserve_before = county.get("peasant_grain_reserve", 0)
         emergency = county.get("emergency") or {}
         halve_consumption = bool(emergency.get("halve_consumption_this_month"))
         if reserve_before < 0 or halve_consumption:
-            # 粮荒状态下口粮配给减半（触发条件: 当前余粮为负）
+            # 粮荒状态下口粮配给减半
             consumption_multiplier = 0.5
             monthly_consumption = base_monthly_consumption * consumption_multiplier
-        elif monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
-            ratio = monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD
+        elif pre_monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
+            ratio = pre_monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD
             excess_mult = 1 + ratio * ratio * 0.1
             consumption_multiplier = excess_mult
             monthly_consumption = base_monthly_consumption * consumption_multiplier
 
-        # 扣除粮食消耗
-        county["peasant_grain_reserve"] = county.get("peasant_grain_reserve", 0) - monthly_consumption
+        # 1. 先扣粮食消耗
+        county["peasant_grain_reserve"] = reserve_before - monthly_consumption
 
-        # 4. 即时计算各集市 GMV（跨县驿道提升贸易量）
+        # 2. 基于扣后余粮计算需求系数
+        # 用年化（/12）而非到秋收月数（/months_to_harvest）作分母：
+        # months_to_harvest 随时间缩短会人为抬高系数（正月余粮分摊8个月 vs 八月仅1个月），
+        # 年化折算消除该分母缩短效应，使商税有稳定的季节性变化。
+        post_reserve = county["peasant_grain_reserve"]
+        post_surplus_total = post_reserve - months_to_harvest * base_monthly_consumption
+        post_per_capita_surplus = post_surplus_total / max(total_pop, 1)
+        monthly_pcs_for_demand = post_per_capita_surplus / 12
+        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs_for_demand / 50))
+
+        # 3. 即时计算各集市 GMV（跨县驿道提升贸易量）
         road_mult = 1.0 + (prefecture_ctx or {}).get("road_level", 0) * ROAD_COMMERCE_BONUS_PER_LEVEL
         for market in county["markets"]:
             market["gmv"] = round(
                 market["merchants"] * county["commercial"] * demand_factor * road_mult, 1)
 
-        # 5. 月度商业税征收（地方固定留存60%，独立于 remit_ratio）
+        # 4. 月度商业税征收（地方固定留存60%，独立于 remit_ratio）
         commercial_tax_rate = county.get("commercial_tax_rate", 0.03)
         total_gmv = sum(m["gmv"] for m in county["markets"])
         monthly_commercial_tax = total_gmv * commercial_tax_rate
@@ -218,19 +222,16 @@ class MetricsMixin:
         fy["commercial_retained"] = fy.get("commercial_retained", 0) + commercial_retained
         county["fiscal_year"] = fy
 
-        # 6. 存储盈余信息供前端展示
-        # monthly_pcs（pre-consumption）用于触发过度消费机制，但展示时需用扣除后储备重新计算，
-        # 避免出现"月均余粮正值"与"储备远小于月消耗"之间的矛盾。
-        post_reserve = county["peasant_grain_reserve"]
-        post_surplus_total = post_reserve - months_to_harvest * base_monthly_consumption
+        # 5. 存储盈余信息供前端展示（全部基于扣后储备，口径统一）
         display_monthly_pcs = post_surplus_total / max(total_pop, 1) / months_to_harvest
 
         county["peasant_surplus"] = {
             "reserve": round(post_reserve),
             "months_to_harvest": months_to_harvest,
-            "per_capita_surplus": round(per_capita_surplus, 1),
+            "per_capita_surplus": round(post_per_capita_surplus, 1),
             "monthly_per_capita_surplus": round(display_monthly_pcs, 1),
             "demand_factor": round(demand_factor, 2),
+            "demand_basis_monthly_pcs": round(monthly_pcs_for_demand, 1),
             "monthly_consumption": round(monthly_consumption),
             "baseline_monthly_consumption": round(base_monthly_consumption),
             "consumption_multiplier": round(consumption_multiplier, 2),
@@ -240,7 +241,7 @@ class MetricsMixin:
         if total_gmv >= 1:
             report["events"].append(
                 f"集市月贸易额: {total_gmv:.0f}两 "
-                f"(需求系数: {demand_factor:.2f}, 月均余粮: {monthly_pcs:.1f}斤)")
+                f"(需求系数: {demand_factor:.2f}, 年化月均余粮: {monthly_pcs_for_demand:.1f}斤)")
 
         if monthly_commercial_tax >= 0.5:
             report["events"].append(

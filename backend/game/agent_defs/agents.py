@@ -7,87 +7,43 @@ MVP_AGENTS = [
         "role_title": "师爷",
         "tier": "FULL",
         "attributes": {
-            # 基础属性
+            # 核心能力
             "intelligence": 8,
             "charisma": 6,
             "loyalty": 7,
 
-            # 性格三维
+            # 性格三维：sociability(合群—孤僻) / rationality(理性—感性) / assertiveness(沉默—张扬)
             "personality": {
-                "openness": 0.8,       # 开放性 — 善于接受新事物
-                "conscientiousness": 0.9,  # 尽责性 — 做事严谨
-                "agreeableness": 0.6,  # 宜人性 — 温和但不软弱
+                "sociability": 0.3,     # 偏孤僻：不善应酬，独立判断
+                "rationality": 0.2,     # 偏感性：凭直觉洞察人心
+                "assertiveness": 0.4,   # 偏沉默：低调布局，不轻易表态
             },
 
-            # 意识形态
+            # 政治理念：state_vs_people / central_vs_local / pragmatic_vs_ideal
             "ideology": {
-                "reform_vs_tradition": 0.6,   # 偏改革
-                "people_vs_authority": 0.5,    # 中立
-                "pragmatic_vs_idealist": 0.8,  # 务实
+                "state_vs_people": 0.4,    # 偏黎民：关注民间疾苦
+                "central_vs_local": 0.5,   # 中立
+                "pragmatic_vs_ideal": 0.8, # 偏务实：注重实际成效
             },
 
-            # 社会声望
+            # 声望四维：integrity(清名) / competence(能名) / popularity(人缘) / authority(威名)
             "reputation": {
-                "scholarly": 80,   # 学识
-                "political": 50,   # 官场人脉
-                "popular": 40,     # 民间声望
+                "integrity": 75,    # 清名高：为人谨慎不贪
+                "competence": 80,   # 能名高：精通刑名钱谷
+                "popularity": 40,   # 人缘中：不善交际
+                "authority": 20,    # 威名低：幕僚身份，不以势压人
             },
 
-            # 目标
             "goals": [
                 "辅佐县令治理好一方",
                 "积累政绩以求日后出仕",
             ],
 
-            # 简介 & 背景
             "bio": "沈清远，年三十五，绍兴师爷世家出身。科举不第后转投幕僚之道，精通刑名钱谷。为人机敏谨慎，善于察言观色，是县令最可倚仗的左膀右臂。",
             "backstory": "自幼聪慧过人，十六岁中秀才，后屡试不第。其父为知名师爷，临终前将毕生所学倾囊相授。游历各地任幕僚十余年，见多识广，深谙官场之道。此番受聘入县衙，望能一展所长。",
 
-            # 记忆（初始为空）
             "memory": [],
-
-            # 对玩家好感度
             "player_affinity": 60,
-        },
-    },
-    {
-        "name": "赵廷章",
-        "role": "PREFECT",
-        "role_title": "知府",
-        "tier": "FULL",
-        "attributes": {
-            "intelligence": 7,
-            "charisma": 8,
-            "loyalty": 4,
-
-            "personality": {
-                "openness": 0.4,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.3,
-            },
-
-            "ideology": {
-                "reform_vs_tradition": 0.3,
-                "people_vs_authority": 0.2,
-                "pragmatic_vs_idealist": 0.7,
-            },
-
-            "reputation": {
-                "scholarly": 60,
-                "political": 90,
-                "popular": 30,
-            },
-
-            "goals": [
-                "维护辖区稳定，确保税收上缴",
-                "在朝中获得更大的政治资本",
-            ],
-
-            "bio": "赵廷章，年四十八，进士出身，官场老手。为人精明强干但城府极深，重权术轻民事。作为县令的顶头上司，既是靠山也是压力来源。",
-            "backstory": "出身官宦世家，二十五岁高中进士，仕途一路顺遂。曾任京中翰林编修，后外放地方。在政绩考核上极为敏感，对下属既有提携之意，也有利用之心。近年朝中风向变动，正需要一个能干的县令为其增添政绩。",
-
-            "memory": [],
-            "player_affinity": 40,
         },
     },
     {
@@ -101,21 +57,22 @@ MVP_AGENTS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.4,
-                "conscientiousness": 0.9,
-                "agreeableness": 0.5,
+                "sociability": 0.5,     # 中立：不冷不热
+                "rationality": 0.7,     # 偏理性：做事有条有理
+                "assertiveness": 0.3,   # 偏沉默：循规蹈矩，不张扬
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.4,
-                "people_vs_authority": 0.4,
-                "pragmatic_vs_idealist": 0.7,
+                "state_vs_people": 0.5,    # 中立
+                "central_vs_local": 0.6,   # 偏集权：习惯按规矩办事
+                "pragmatic_vs_ideal": 0.7, # 偏务实：谨慎保守
             },
 
             "reputation": {
-                "scholarly": 45,
-                "political": 55,
-                "popular": 35,
+                "integrity": 55,    # 清名中：无大过
+                "competence": 55,   # 能名中：熟稳公务
+                "popularity": 45,   # 人缘中：不功不过
+                "authority": 30,    # 威名低：副手身份，不强硬
             },
 
             "goals": [
@@ -141,21 +98,22 @@ MVP_AGENTS = [
             "loyalty": 8,
 
             "personality": {
-                "openness": 0.7,
-                "conscientiousness": 0.8,
-                "agreeableness": 0.8,
+                "sociability": 0.2,     # 偏孤僻：独立，不受舆论左右
+                "rationality": 0.3,     # 偏感性：凭良知和情感判断
+                "assertiveness": 0.5,   # 中立：平和但有原则
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.5,
-                "people_vs_authority": 0.8,
-                "pragmatic_vs_idealist": 0.3,
+                "state_vs_people": 0.2,    # 重黎民：以百姓福祉为先
+                "central_vs_local": 0.4,   # 偏地方：重视乡土自治
+                "pragmatic_vs_ideal": 0.3, # 偏理想：坚守道义原则
             },
 
             "reputation": {
-                "scholarly": 70,
-                "political": 30,
-                "popular": 80,
+                "integrity": 80,    # 清名高：一生清白
+                "competence": 50,   # 能名中：学识渊博但非官场老手
+                "popularity": 85,   # 人缘高：深受百姓爱戴
+                "authority": 15,    # 威名低：以德服人，不靠威压
             },
 
             "goals": [
@@ -181,21 +139,22 @@ MVP_AGENTS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.3,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.5,
+                "sociability": 0.6,     # 偏合群：爱和乡里打交道
+                "rationality": 0.5,     # 中立
+                "assertiveness": 0.6,   # 偏张扬：说话直，不藏着掖着
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.4,
-                "people_vs_authority": 0.7,
-                "pragmatic_vs_idealist": 0.5,
+                "state_vs_people": 0.2,    # 重黎民：只关心老百姓过得好不好
+                "central_vs_local": 0.3,   # 偏地方：对上头政策本能持疑
+                "pragmatic_vs_ideal": 0.5, # 中立：实际问题实际解决
             },
 
             "reputation": {
-                "scholarly": 10,
-                "political": 20,
-                "popular": 70,
+                "integrity": 60,    # 清名中：老实人，不贪
+                "competence": 30,   # 能名低：粗人，只懂庄稼事
+                "popularity": 70,   # 人缘高：在村民中有威望
+                "authority": 45,    # 威名中：敢说话，说话有人听
             },
 
             "goals": [
@@ -225,21 +184,22 @@ GENTRY_PERSONAS = [
             "loyalty": 5,
 
             "personality": {
-                "openness": 0.5,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.5,
+                "sociability": 0.5,     # 中立：与人往来但不主动
+                "rationality": 0.4,     # 偏理性：处事有算计
+                "assertiveness": 0.4,   # 偏沉默：不轻易树敌
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.4,
-                "people_vs_authority": 0.4,
-                "pragmatic_vs_idealist": 0.6,
+                "state_vs_people": 0.6,    # 偏社稷：重视稳定秩序
+                "central_vs_local": 0.5,   # 中立
+                "pragmatic_vs_ideal": 0.6, # 偏务实：中庸之道
             },
 
             "reputation": {
-                "scholarly": 50,
-                "political": 40,
-                "popular": 45,
+                "integrity": 50,    # 清名中：无大贪，有小算
+                "competence": 55,   # 能名中：经营有序
+                "popularity": 50,   # 人缘中：威望靠宗族而非人望
+                "authority": 55,    # 威名中：根基深，不轻易挑战
             },
 
             "goals": [
@@ -266,21 +226,22 @@ GENTRY_PERSONAS = [
             "loyalty": 5,
 
             "personality": {
-                "openness": 0.3,
-                "conscientiousness": 0.8,
-                "agreeableness": 0.5,
+                "sociability": 0.6,     # 偏孤僻：不喜应酬，只顾自家事
+                "rationality": 0.2,     # 偏理性：斤斤计较，每分必算
+                "assertiveness": 0.2,   # 偏沉默：不张扬，守成为上
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.3,
-                "people_vs_authority": 0.4,
-                "pragmatic_vs_idealist": 0.7,
+                "state_vs_people": 0.5,    # 中立：只关心自己
+                "central_vs_local": 0.6,   # 偏集权：听话才安全
+                "pragmatic_vs_ideal": 0.7, # 偏务实：实际利益第一
             },
 
             "reputation": {
-                "scholarly": 30,
-                "political": 35,
-                "popular": 35,
+                "integrity": 45,    # 清名中偏低：不贪大，但也不慷慨
+                "competence": 40,   # 能名中：持家有术，但格局小
+                "popularity": 35,   # 人缘低：吝啬之名在外
+                "authority": 25,    # 威名低：无势力可借
             },
 
             "goals": [
@@ -289,7 +250,7 @@ GENTRY_PERSONAS = [
             ],
 
             "bio": "{name}，年四十八，是{village_name}中最会持家的大户之一。为人谨小慎微，一文钱掰两半花。虽不大方，却也不至于刻薄到断人生路。",
-            "backstory": "{name}家祖上靠节俭攒下家业，他将此发扬光大。从不冒险扩张，宁可少赚也不愿亏本。家中粮仓常年满储，是附近有名的守成派。面对新县令的各项政策，他第一反应永远是“要花多少钱”。",
+            "backstory": "{name}家祖上靠节俭攒下家业，他将此发扬光大。从不冒险扩张，宁可少赚也不愿亏本。家中粮仓常年满储，是附近有名的守成派。面对新县令的各项政策，他第一反应永远是\"要花多少钱\"。",
 
             "memory": [],
             "player_affinity": 35,
@@ -307,21 +268,22 @@ GENTRY_PERSONAS = [
             "loyalty": 3,
 
             "personality": {
-                "openness": 0.3,
-                "conscientiousness": 0.6,
-                "agreeableness": 0.2,
+                "sociability": 0.4,     # 偏合群：广结人脉为己用
+                "rationality": 0.2,     # 偏理性：冷静算计，不被情绪左右
+                "assertiveness": 0.7,   # 偏张扬：喜欢彰显实力
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.2,
-                "people_vs_authority": 0.3,
-                "pragmatic_vs_idealist": 0.9,
+                "state_vs_people": 0.7,    # 偏社稷/权贵：借势压人
+                "central_vs_local": 0.7,   # 偏集权：与上层勾连获益
+                "pragmatic_vs_ideal": 0.9, # 极务实：一切以利益为准
             },
 
             "reputation": {
-                "scholarly": 40,
-                "political": 60,
-                "popular": 20,
+                "integrity": 20,    # 清名低：手段不干净
+                "competence": 65,   # 能名高：实际能力强
+                "popularity": 20,   # 人缘低：令人畏而不亲
+                "authority": 75,    # 威名高：敢顶官府，佃户敢怒不敢言
             },
 
             "goals": [
@@ -348,21 +310,22 @@ GENTRY_PERSONAS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.8,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.7,
+                "sociability": 0.3,     # 偏合群：乐于与各类人交流
+                "rationality": 0.5,     # 中立：理性与情感兼顾
+                "assertiveness": 0.5,   # 中立：有想法但不强迫人
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.7,
-                "people_vs_authority": 0.6,
-                "pragmatic_vs_idealist": 0.4,
+                "state_vs_people": 0.3,    # 偏黎民：以民为重
+                "central_vs_local": 0.4,   # 偏地方：重视乡土教化
+                "pragmatic_vs_ideal": 0.4, # 偏理想：坚守办学理念
             },
 
             "reputation": {
-                "scholarly": 70,
-                "political": 40,
-                "popular": 60,
+                "integrity": 70,    # 清名高：廉洁自守
+                "competence": 55,   # 能名中：学识强，经商弱
+                "popularity": 65,   # 人缘高：村中颇受好评
+                "authority": 20,    # 威名低：以德服人，不用强
             },
 
             "goals": [
@@ -389,21 +352,22 @@ GENTRY_PERSONAS = [
             "loyalty": 3,
 
             "personality": {
-                "openness": 0.4,
-                "conscientiousness": 0.6,
-                "agreeableness": 0.3,
+                "sociability": 0.2,     # 高合群：应酬是看家本领
+                "rationality": 0.2,     # 偏理性：冷静评估每个关系的价值
+                "assertiveness": 0.6,   # 偏张扬：喜欢在人前露面
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.3,
-                "people_vs_authority": 0.2,
-                "pragmatic_vs_idealist": 0.8,
+                "state_vs_people": 0.7,    # 偏社稷/权贵：跟着当权者走
+                "central_vs_local": 0.8,   # 强集权：上层关系是资产
+                "pragmatic_vs_ideal": 0.9, # 极务实：没有立场，只有利益
             },
 
             "reputation": {
-                "scholarly": 35,
-                "political": 75,
-                "popular": 25,
+                "integrity": 25,    # 清名低：攀附之名人尽皆知
+                "competence": 60,   # 能名中：手腕灵活
+                "popularity": 30,   # 人缘低：被视为墙头草
+                "authority": 65,    # 威名高：背后有人撑腰
             },
 
             "goals": [
@@ -430,21 +394,22 @@ GENTRY_PERSONAS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.5,
-                "conscientiousness": 0.6,
-                "agreeableness": 0.6,
+                "sociability": 0.4,     # 偏合群：和气生财
+                "rationality": 0.4,     # 偏理性：务实但不冷漠
+                "assertiveness": 0.5,   # 中立：该说话时说，不强出头
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.5,
-                "people_vs_authority": 0.6,
-                "pragmatic_vs_idealist": 0.7,
+                "state_vs_people": 0.4,    # 偏黎民：小地方讲人情
+                "central_vs_local": 0.5,   # 中立
+                "pragmatic_vs_ideal": 0.7, # 偏务实：实际利益优先
             },
 
             "reputation": {
-                "scholarly": 20,
-                "political": 25,
-                "popular": 55,
+                "integrity": 55,    # 清名中：口碑还行
+                "competence": 40,   # 能名中偏低：格局不大
+                "popularity": 55,   # 人缘中：与佃户关系尚可
+                "authority": 30,    # 威名低：底气不足
             },
 
             "goals": [
@@ -475,21 +440,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.3,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.6,
+                "sociability": 0.4,     # 偏合群：在村中人缘好
+                "rationality": 0.6,     # 偏感性：凭多年经验和直觉
+                "assertiveness": 0.3,   # 偏沉默：不多言，但关键时刻会开口
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.4,
-                "people_vs_authority": 0.7,
-                "pragmatic_vs_idealist": 0.5,
+                "state_vs_people": 0.2,    # 重黎民：只关心一家老小吃饱
+                "central_vs_local": 0.4,   # 偏地方：对官府本能保持距离
+                "pragmatic_vs_ideal": 0.5, # 中立：实际但也有底线
             },
 
             "reputation": {
-                "scholarly": 10,
-                "political": 10,
-                "popular": 65,
+                "integrity": 65,    # 清名中高：老实本分
+                "competence": 30,   # 能名低：只懂种地
+                "popularity": 70,   # 人缘高：村中老好人
+                "authority": 25,    # 威名低：温和，不以势压人
             },
 
             "goals": [
@@ -516,21 +482,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 5,
 
             "personality": {
-                "openness": 0.5,
-                "conscientiousness": 0.8,
-                "agreeableness": 0.4,
+                "sociability": 0.3,     # 偏合群：在市场和人群中游刃有余
+                "rationality": 0.3,     # 偏理性：善于算账，冷静判断
+                "assertiveness": 0.6,   # 偏张扬：直爽，不怕得罪人
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.5,
-                "people_vs_authority": 0.6,
-                "pragmatic_vs_idealist": 0.8,
+                "state_vs_people": 0.3,    # 偏黎民：关注实际民生
+                "central_vs_local": 0.4,   # 偏地方：重视市场自由
+                "pragmatic_vs_ideal": 0.8, # 偏务实：要的是实惠
             },
 
             "reputation": {
-                "scholarly": 15,
-                "political": 15,
-                "popular": 60,
+                "integrity": 50,    # 清名中：公道但不圣洁
+                "competence": 50,   # 能名中：经济头脑强
+                "popularity": 60,   # 人缘中高：村中"活账本"
+                "authority": 35,    # 威名中低：有底气说话但无强制力
             },
 
             "goals": [
@@ -538,7 +505,7 @@ VILLAGER_PERSONAS = [
                 "为村里争取更多实惠",
             ],
 
-            "bio": "{name}，年三十七，是{village_name}里精明能算的庄户。善于盘账，对粮价涨跌了如指掌，是村中公认的“活账本”。",
+            "bio": "{name}，年三十七，是{village_name}里精明能算的庄户。善于盘账，对粮价涨跌了如指掌，是村中公认的\"活账本\"。",
             "backstory": "{name}年轻时在镇上铺面做过伙计，耳濡目染学了一身精打细算的本事。回村后常帮乡邻算账理财。村中但凡涉及钱粮之事，大家都愿找他商量。性格直爽，不怕得罪人。",
 
             "memory": [],
@@ -557,21 +524,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 5,
 
             "personality": {
-                "openness": 0.4,
-                "conscientiousness": 0.5,
-                "agreeableness": 0.3,
+                "sociability": 0.2,     # 高合群：天然的组织者
+                "rationality": 0.8,     # 偏感性：激情驱动，容易冲动
+                "assertiveness": 0.8,   # 偏张扬：敢说敢当，出头鸟
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.5,
-                "people_vs_authority": 0.9,
-                "pragmatic_vs_idealist": 0.4,
+                "state_vs_people": 0.1,    # 强黎民：强烈反对压迫
+                "central_vs_local": 0.2,   # 强地方/反权威：天然不信官府
+                "pragmatic_vs_ideal": 0.4, # 偏理想：原则重于妥协
             },
 
             "reputation": {
-                "scholarly": 5,
-                "political": 10,
-                "popular": 70,
+                "integrity": 55,    # 清名中：讲义气，不为私利
+                "competence": 30,   # 能名低：蛮力有余，谋略不足
+                "popularity": 75,   # 人缘高：是佃农心中的英雄
+                "authority": 60,    # 威名中高：敢和地主硬顶
             },
 
             "goals": [
@@ -598,21 +566,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 6,
 
             "personality": {
-                "openness": 0.8,
-                "conscientiousness": 0.7,
-                "agreeableness": 0.7,
+                "sociability": 0.3,     # 偏合群：喜欢交流新思想
+                "rationality": 0.5,     # 中立：理性与理想并存
+                "assertiveness": 0.4,   # 偏沉默：有想法但表达含蓄
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.7,
-                "people_vs_authority": 0.7,
-                "pragmatic_vs_idealist": 0.3,
+                "state_vs_people": 0.2,    # 重黎民：以教育改善民生
+                "central_vs_local": 0.3,   # 偏地方：希望乡村自强
+                "pragmatic_vs_ideal": 0.3, # 偏理想：坚持教育理念
             },
 
             "reputation": {
-                "scholarly": 35,
-                "political": 15,
-                "popular": 55,
+                "integrity": 60,    # 清名中高：读书人的本分
+                "competence": 45,   # 能名中：识字但缺乏历练
+                "popularity": 55,   # 人缘中：新旧之间，两边都说得上话
+                "authority": 20,    # 威名低：年轻，底气不足
             },
 
             "goals": [
@@ -639,21 +608,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 5,
 
             "personality": {
-                "openness": 0.2,
-                "conscientiousness": 0.8,
-                "agreeableness": 0.6,
+                "sociability": 0.7,     # 偏孤僻：谨慎，不轻易亲近人
+                "rationality": 0.5,     # 中立：谨慎但非纯理性
+                "assertiveness": 0.2,   # 强沉默：敢怒不敢言
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.3,
-                "people_vs_authority": 0.6,
-                "pragmatic_vs_idealist": 0.6,
+                "state_vs_people": 0.3,    # 偏黎民：心向自己和家人
+                "central_vs_local": 0.5,   # 中立：既怕官，也不信地主
+                "pragmatic_vs_ideal": 0.6, # 偏务实：安稳比什么都重要
             },
 
             "reputation": {
-                "scholarly": 10,
-                "political": 10,
-                "popular": 50,
+                "integrity": 60,    # 清名中：老实不惹事
+                "competence": 35,   # 能名低：无显著能力
+                "popularity": 50,   # 人缘中：默默无闻
+                "authority": 15,    # 威名低：最沉默的那类人
             },
 
             "goals": [
@@ -680,21 +650,22 @@ VILLAGER_PERSONAS = [
             "loyalty": 7,
 
             "personality": {
-                "openness": 0.5,
-                "conscientiousness": 0.8,
-                "agreeableness": 0.5,
+                "sociability": 0.5,     # 中立：能与人相处但不主动
+                "rationality": 0.6,     # 偏感性：过去的创伤驱动判断
+                "assertiveness": 0.5,   # 中立：平时低调，涉及安全时会说话
             },
 
             "ideology": {
-                "reform_vs_tradition": 0.4,
-                "people_vs_authority": 0.8,
-                "pragmatic_vs_idealist": 0.6,
+                "state_vs_people": 0.2,    # 重黎民：家人平安是第一位
+                "central_vs_local": 0.4,   # 偏地方：希望官府管好治安
+                "pragmatic_vs_ideal": 0.6, # 偏务实：要的是实际安全
             },
 
             "reputation": {
-                "scholarly": 10,
-                "political": 10,
-                "popular": 65,
+                "integrity": 65,    # 清名中高：勤劳本分
+                "competence": 40,   # 能名中：能干但无特别才能
+                "popularity": 65,   # 人缘中高：踏实可靠，邻里信任
+                "authority": 45,    # 威名中：有担当，敢于提出诉求
             },
 
             "goals": [

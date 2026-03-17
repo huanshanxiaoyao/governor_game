@@ -116,10 +116,39 @@ class AIGovernorService:
             # 规则引擎没有 analysis，用简短描述
             neighbor.last_reasoning = f"（{month_name(season)}：规则引擎自动决策）"
 
+        # Gap 2: AI 强制摊派检查（紧急缺粮 + 知县决意时执行）
+        levy_events = cls._ai_force_levy(county, profile)
+        events.extend(levy_events)
+
         # 追加记忆
         cls._append_memory(county, season, events)
 
         return events
+
+    @classmethod
+    def build_debug_context(cls, neighbor, season=None):
+        """构建当前 AI 知县的调试上下文，不写入持久化状态。"""
+        county = neighbor.county_data or {}
+        if season is None:
+            season = county.get("current_season", 1)
+
+        profile = county.get("governor_profile")
+        if not profile:
+            archetype = county.get("governor_profile", {}).get("archetype")
+            profile = generate_governor_profile(neighbor.governor_style, archetype=archetype)
+
+        return cls._build_context(neighbor, county, season, profile)
+
+    @classmethod
+    def build_debug_prompt(cls, neighbor, season=None):
+        """渲染 AI 知县当前月度决策 prompt，便于后台调试查看。"""
+        ctx = cls.build_debug_context(neighbor, season=season)
+        system_prompt, user_prompt = PromptRegistry.render('ai_governor_decision', **ctx)
+        return {
+            "context": ctx,
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+        }
 
     # ==================== Profile 管理 ====================
 
@@ -140,6 +169,9 @@ class AIGovernorService:
                 "archetype": getattr(neighbor, "governor_archetype", "MIDDLING"),
                 "county_name": getattr(neighbor, "county_name", ""),
             }
+        # 威名初始化（默认40，与 PlayerProfile.authority 对齐）
+        if 'governor_authority' not in county:
+            county['governor_authority'] = 40
         return profile
 
     # ==================== LLM 决策 ====================
@@ -587,6 +619,95 @@ class AIGovernorService:
                    f"花费{actual_cost}两，预计{comp_text}完成")
 
         return [evt]
+
+    # ==================== 强制摊派（紧急缺粮时） ====================
+
+    @classmethod
+    def _ai_force_levy(cls, county, profile):
+        """AI知县：紧急缺粮状态下决定是否强征地主余粮。
+
+        条件：emergency.active 且地主账本有可征余粮。
+        决策：welfare导向高的知县更倾向于强征以保民；廉洁分低的（CORRUPT）倾向于袖手旁观。
+        效果：余粮转入民仓，威名+5，记录乡绅投诉压力。
+        """
+        from .emergency import EmergencyService
+        from .ledger import ensure_county_ledgers
+
+        ensure_county_ledgers(county)
+        EmergencyService.ensure_state(county)
+
+        emergency = county.get('emergency', {})
+        if not emergency.get('active'):
+            return []
+
+        # 计算可征余粮
+        total_available = 0.0
+        for v in county.get('villages', []):
+            g = v.get('gentry_ledger', {})
+            total_available += max(0.0, float(g.get('grain_surplus', 0.0)))
+
+        if total_available <= 10:
+            return []
+
+        # 决策：是否强征
+        goals = profile.get('goals', {})
+        welfare_w = goals.get('welfare', 0.2)
+        archetype = county.get('governor_meta', {}).get('archetype', 'MIDDLING')
+
+        # 廉洁分越高 → 越愿意强征（为民），腐败知县更可能纵容
+        integrity_score = county.get('governor_integrity', 50) / 100.0
+        archetype_bias = {'VIRTUOUS': 0.25, 'MIDDLING': 0.0, 'CORRUPT': -0.20}.get(archetype, 0.0)
+        shortage = float(emergency.get('shortage', 0.0))
+        baseline = max(1.0, float(emergency.get('baseline_monthly_consumption', 1.0)))
+        urgency = min(0.30, shortage / baseline * 0.3)  # 越缺越紧
+
+        decision_score = welfare_w * 0.5 + integrity_score * 0.2 + archetype_bias + urgency + random.uniform(-0.1, 0.1)
+        if decision_score < 0.30:
+            return []  # 不强征
+
+        # 执行强征：征收缺口量，上限为可征余粮的70%
+        target = min(shortage * 1.2, total_available * 0.70)
+        target = round(max(10.0, target), 1)
+
+        collected = 0.0
+        for v in county.get('villages', []):
+            if collected >= target:
+                break
+            g = v.get('gentry_ledger', {})
+            reserve = max(0.0, float(g.get('grain_surplus', 0.0)))
+            if reserve <= 0:
+                continue
+            take = min(reserve, target - collected)
+            g['grain_surplus'] = round(reserve - take, 1)
+            collected += take
+
+        collected = round(collected, 1)
+        if collected <= 0:
+            return []
+
+        county['peasant_grain_reserve'] = float(county.get('peasant_grain_reserve', 0.0)) + collected
+
+        morale_gain = round(min(15.0, 5.0 + collected / max(baseline, 1.0) * 2.0), 1)
+        county['morale'] = min(100.0, float(county.get('morale', 50.0)) + morale_gain)
+
+        # 威名+5
+        county['governor_authority'] = min(100, county.get('governor_authority', 40) + 5)
+
+        # 乡绅投诉压力（后续可选：传至知府）
+        severity = round(min(2.0, collected / max(baseline, 1.0)), 2)
+        emergency.setdefault('complaints', []).append({
+            'status': 'pending',
+            'source': 'ai_force_levy',
+            'severity': severity,
+            'detail': f"AI知县强征地主余粮{round(collected)}斤引发乡绅不满",
+        })
+        county['ai_gentry_complaints'] = county.get('ai_gentry_complaints', 0) + 1
+
+        governor_name = county.get('governor_meta', {}).get('name', '知县')
+        return [
+            f"【强制摊派】{governor_name}强征地主余粮{round(collected)}斤入民仓，"
+            f"民心+{morale_gain}，威名升至{county['governor_authority']}"
+        ]
 
     # ==================== 规则引擎（兜底决策） ====================
 

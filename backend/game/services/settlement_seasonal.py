@@ -12,7 +12,6 @@ from .constants import (
     PREF_GRANARY_POP_LOSS_MULT,
     CORVEE_PER_CAPITA,
     QUOTA_BASE_COLLECTION_EFFICIENCY,
-    STIPEND_BY_BACKGROUND,
     calculate_infra_maint,
     month_of_year,
     month_name,
@@ -25,7 +24,7 @@ from .ledger import (
     sync_legacy_from_ledgers,
 )
 from .career_track import CareerTrackService
-from .state import load_county_state
+from .state import load_county_state, save_player_state
 
 
 class SeasonalMixin:
@@ -186,15 +185,30 @@ class SeasonalMixin:
             player = game.player
         except Exception:
             return
-        stipend = STIPEND_BY_BACKGROUND.get(player.background, 15)
+        stipend = 18  # 年度养廉银固定额（两/年）
         multiplier = CareerTrackService.get_stipend_multiplier(load_county_state(game))
         if multiplier != 1.0:
             stipend = round(stipend * multiplier, 1)
         player.personal_wealth = round((player.personal_wealth or 0) + stipend, 1)
-        player.save(update_fields=['personal_wealth'])
+
+        # 威名年度自然衰减 -1（威名需靠持续强硬行为维持）
+        old_authority = player.authority
+        player.authority = max(0, player.authority - 1)
+
+        player.save(update_fields=['personal_wealth', 'authority'])
         report['events'].append(
             f"知县年度养廉银{stipend}两入账，当前家产{player.personal_wealth}两"
         )
+        if player.authority < old_authority:
+            report['events'].append(
+                f"威名自然回落，当前威名{player.authority}"
+            )
+
+        # 重置本年度知府投诉计数
+        county = load_county_state(game)
+        if county.get('prefect_complaints', 0) > 0:
+            county['prefect_complaints'] = 0
+            save_player_state(game, county)
 
     @classmethod
     def _update_quota_completion(cls, county, agri_remitted, report, relief_deduction=0.0):

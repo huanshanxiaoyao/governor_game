@@ -71,6 +71,18 @@ class SettlementService(
             cls._set_annual_quota(county, month, report)
             if game is not None:
                 cls._credit_annual_stipend(game, report)
+            else:
+                # AI县：威名年度自然衰减 -1
+                if 'governor_authority' in county:
+                    old_auth = county['governor_authority']
+                    county['governor_authority'] = max(0, old_auth - 1)
+                    if county['governor_authority'] < old_auth:
+                        report['events'].append(
+                            f"威名自然回落，当前威名{county['governor_authority']}"
+                        )
+                # 重置本年度乡绅投诉计数
+                if county.get('ai_gentry_complaints', 0) > 0:
+                    county['ai_gentry_complaints'] = 0
 
         # 2. [二月] Environment drift (开春)
         if moy == 2:
@@ -426,6 +438,26 @@ class SettlementService(
                 report['events'].append(
                     f"【隐匿土地】修建水利时发现{v['name']}有隐田{discovered}亩，"
                     f"已登记在册")
+
+                # Gap 1: 威名+1（强制清查隐田）
+                county['governor_authority'] = min(100, county.get('governor_authority', 40) + 1)
+                governor_name = county.get('governor_meta', {}).get('name', '知县')
+                report['events'].append(
+                    f"【威名】{governor_name}强行清查隐田，威名升至{county['governor_authority']}"
+                )
+
+                # Gap 3: 乡绅投诉检查（威名高 + 地主势力强时有概率向知府陈情）
+                authority = county['governor_authority']
+                if authority >= 60:
+                    gentry_pct = v.get('gentry_land_pct', 0.3)
+                    base_prob = 0.10 + (authority - 60) * 0.005
+                    gentry_factor = max(0.0, (gentry_pct - 0.35) / 0.65) * 0.10
+                    comp_prob = min(0.40, base_prob + gentry_factor)
+                    if random.random() < comp_prob:
+                        county['ai_gentry_complaints'] = county.get('ai_gentry_complaints', 0) + 1
+                        report['events'].append(
+                            f"【乡绅陈情】{v['name']}地主不满强行普查，悄然向知府陈情投诉"
+                        )
 
             break  # One discovery per month
 

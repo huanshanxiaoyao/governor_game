@@ -239,12 +239,14 @@ class BriberyService:
                     accepted = cls.ai_accept_bribe(county, profile, bribe['amount'], 'hidden_land')
                     if accepted:
                         cls.accept_bribe(county, village['name'], 'hidden_land', bribe['amount'])
+                        county['governor_integrity'] = max(0, county.get('governor_integrity', 50) - 5)
                         report['events'].append(
                             f"【受贿免查】{bribe['gentry_name']}行贿{bribe['amount']}两，"
                             f"知县收受，隐田未被追究"
                         )
                         hidden_bribed = True
                     else:
+                        county['governor_integrity'] = min(100, county.get('governor_integrity', 50) + 1)
                         report['events'].append(
                             f"【拒绝行贿】{bribe['gentry_name']}行贿{bribe['amount']}两被知县拒绝"
                         )
@@ -256,12 +258,14 @@ class BriberyService:
                 accepted = cls.ai_accept_bribe(county, profile, bribe['amount'], 'annexation')
                 if accepted:
                     cls.accept_bribe(county, village['name'], 'annexation', bribe['amount'])
+                    county['governor_integrity'] = max(0, county.get('governor_integrity', 50) - 5)
                     report['events'].append(
                         f"【受贿免查】{bribe['gentry_name']}行贿{bribe['amount']}两，"
                         f"知县收受，兼并行为未受干预"
                     )
                     annexation_bribed = True
                 else:
+                    county['governor_integrity'] = min(100, county.get('governor_integrity', 50) + 1)
                     report['events'].append(
                         f"【拒绝行贿】{bribe['gentry_name']}行贿{bribe['amount']}两被知县拒绝"
                     )
