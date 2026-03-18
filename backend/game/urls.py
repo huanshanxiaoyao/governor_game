@@ -15,6 +15,7 @@ urlpatterns = [
     path("games/<int:game_id>/judicial/debug/", views.CountyJudicialDebugView.as_view(), name="game-judicial-debug"),
     path("games/<int:game_id>/judicial/debug/page/", views.CountyJudicialDebugPageView.as_view(), name="game-judicial-debug-page"),
     path("games/<int:game_id>/annual-review/", views.AnnualReviewSubmitView.as_view(), name="game-annual-review"),
+    path("games/<int:game_id>/annual-review/draft/", views.AnnualReviewDraftView.as_view(), name="game-annual-review-draft"),
     path("games/<int:game_id>/invest/", views.InvestView.as_view(), name="game-invest"),
     path("games/<int:game_id>/land-survey/", views.RequestLandSurveyView.as_view(), name="game-land-survey"),
     path("games/<int:game_id>/check-bribes/", views.CheckBribesView.as_view(), name="game-check-bribes"),
@@ -45,12 +46,16 @@ urlpatterns = [
     path("games/<int:game_id>/emergency/borrow-neighbor/", views.EmergencyBorrowNeighborView.as_view(), name="emergency-borrow-neighbor"),
     path("games/<int:game_id>/emergency/gentry-relief/", views.EmergencyGentryReliefView.as_view(), name="emergency-gentry-relief"),
     path("games/<int:game_id>/emergency/force-levy/", views.EmergencyForceLevyView.as_view(), name="emergency-force-levy"),
+    path("games/<int:game_id>/emergency/buy-grain/", views.EmergencyBuyGrainView.as_view(), name="emergency-buy-grain"),
     path("games/<int:game_id>/emergency/debug-toggle/", views.EmergencyDebugToggleView.as_view(), name="emergency-debug-toggle"),
     # Officialdom
     path("games/<int:game_id>/officialdom/", views.OfficialdomView.as_view(), name="game-officialdom"),
     path("games/<int:game_id>/career/", views.CareerView.as_view(), name="game-career"),
     path("games/<int:game_id>/promotion-action/", views.PromotionActionView.as_view(), name="game-promotion-action"),
     path("games/<int:game_id>/new-term/", views.NewTermView.as_view(), name="game-new-term"),
+    path("games/<int:game_id>/rumors/", views.CountyRumorsView.as_view(), name="game-rumors"),
+    # Prefecture overview (知县视角的府情+府志)
+    path("games/<int:game_id>/prefecture-overview/", views.PrefectureOverviewForCountyView.as_view(), name="county-prefecture-overview"),
     # Neighbor counties
     path("games/<int:game_id>/neighbors/precompute/", views.NeighborPrecomputeView.as_view(), name="neighbor-precompute"),
     path("games/<int:game_id>/neighbors/", views.NeighborListView.as_view(), name="neighbor-list"),

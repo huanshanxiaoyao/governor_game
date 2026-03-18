@@ -187,6 +187,7 @@ class EventLog(models.Model):
         ('SETTLEMENT', '结算'),
         ('ANNEXATION', '兼并'),
         ('PROMISE', '承诺'),
+        ('PREFECT', '知府'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='event_logs')

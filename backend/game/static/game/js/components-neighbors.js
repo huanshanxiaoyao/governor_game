@@ -210,8 +210,139 @@
     modal.classList.remove("hidden");
   }
 
+  // ==================== 本府概览卡片 ====================
+
+  function renderPrefectureCard(data) {
+    var container = el("prefecture-overview-card");
+    if (!container) return;
+
+    if (!data) {
+      container.innerHTML = '';
+      return;
+    }
+
+    var qp = data.quota_progress || {};
+    var dirs = data.pending_directives || [];
+    var latestDir = dirs.length > 0 ? dirs[dirs.length - 1] : null;
+
+    var dirHtml = '';
+    if (latestDir) {
+      dirHtml =
+        '<div class="pref-directive">' +
+          '<span class="pref-directive-type">【来文·' + escapeHtml(latestDir.directive_type || '') + '】</span> ' +
+          escapeHtml((latestDir.text || '').substring(0, 50)) + (latestDir.text && latestDir.text.length > 50 ? '…' : '') +
+        '</div>';
+    }
+
+    var inspectHtml = data.inspection_pending
+      ? '<span class="pref-inspect-badge">巡查待进行</span>'
+      : '';
+
+    var quotaBar = '';
+    var pct = qp.completion_pct || 0;
+    var statusColor = pct >= (qp.expected_pct || 50) - 5 ? '#27ae60' : (pct < (qp.expected_pct || 50) - 20 ? '#c0392b' : '#c0702a');
+    quotaBar =
+      '<div class="pref-quota-bar-wrap">' +
+        '<div class="pref-quota-bar" style="width:' + Math.min(100, pct) + '%;background:' + statusColor + ';"></div>' +
+      '</div>' +
+      '<div class="pref-quota-text">' +
+        '年度农赋：' + escapeHtml(String(qp.agri_remitted || 0)) + ' / ' + escapeHtml(String(qp.agri_quota || 0)) + ' 两 (' +
+        escapeHtml(String(pct)) + '%)&ensp;<span style="color:' + statusColor + ';">' + escapeHtml(qp.status || '') + '</span>' +
+      '</div>';
+
+    container.innerHTML =
+      '<div class="prefecture-overview-card">' +
+        '<div class="pref-card-header">' +
+          '<span class="pref-name">' + escapeHtml(data.prefecture_name || '本府') + '</span>' +
+          '<span class="pref-official">' + escapeHtml(data.prefect_name || '') + ' ' + escapeHtml(data.prefect_title || '知府') + '</span>' +
+          '<span class="pref-affinity-tag" style="background:' + escapeHtml(data.affinity_color || '#6b5d45') + ';">' +
+            escapeHtml(data.affinity_label || '尚可') +
+          '</span>' +
+          inspectHtml +
+        '</div>' +
+        quotaBar +
+        dirHtml +
+        '<button class="pref-gazette-btn" id="open-prefecture-gazette-btn">查看府志</button>' +
+      '</div>';
+  }
+
+  function openPrefectureGazette(data) {
+    var modal = el("prefecture-gazette-modal");
+    var body = el("prefecture-gazette-body");
+    var titleEl = el("prefecture-gazette-title");
+    if (!modal || !body) return;
+
+    if (titleEl) titleEl.textContent = (data.prefecture_name || '本府') + ' 府志';
+
+    var CATEGORY_COLORS = {
+      'PREFECT': '#2e86c1',
+      'SETTLEMENT': '#6b5d45',
+      'INVESTMENT': '#27ae60',
+      'DISASTER': '#c0392b',
+      'TAX': '#8e44ad',
+      'NEGOTIATION': '#c0702a',
+      'ANNEXATION': '#7b241c',
+      'PROMISE': '#1a7a4a',
+      'SYSTEM': '#888',
+    };
+
+    var entries = data.gazette_entries || [];
+    var html = '';
+
+    // 府情摘要
+    var qp = data.quota_progress || {};
+    html +=
+      '<div class="nd-section">' +
+        '<h4>府情</h4>' +
+        '<div class="nd-governor-card">' +
+          '<div><strong>知府：</strong>' + escapeHtml(data.prefect_name || '') + ' （' + escapeHtml(data.prefect_title || '') + '）</div>' +
+          '<div><strong>上司态度：</strong><span style="color:' + escapeHtml(data.affinity_color || '#6b5d45') + ';">' + escapeHtml(data.affinity_label || '') + '</span></div>' +
+          (data.bio ? '<div style="margin-top:4px;color:#5c4a2a;font-size:0.9em;">' + escapeHtml(data.bio) + '</div>' : '') +
+          '<div style="margin-top:6px;"><strong>年度农赋：</strong>' + escapeHtml(String(qp.agri_remitted || 0)) + '/' + escapeHtml(String(qp.agri_quota || 0)) + ' 两 — ' + escapeHtml(qp.status || '') + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // 待处理指令
+    var dirs = data.pending_directives || [];
+    if (dirs.length > 0) {
+      html += '<div class="nd-section"><h4>待处理知府来文</h4>';
+      dirs.forEach(function (d) {
+        html +=
+          '<div class="nd-governor-card" style="margin-bottom:6px;">' +
+            '<div><strong>【' + escapeHtml(d.directive_type || '') + '】</strong>&ensp;第' + escapeHtml(String(d.month || '-')) + '月</div>' +
+            '<div style="margin-top:4px;">' + escapeHtml(d.text || '') + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    // 府志事件流
+    html += '<div class="nd-section"><h4>府志·事件记录</h4>';
+    if (entries.length === 0) {
+      html += '<p class="hint">暂无记录</p>';
+    } else {
+      entries.forEach(function (e) {
+        var color = CATEGORY_COLORS[e.category] || '#6b5d45';
+        html +=
+          '<div class="event-log-item">' +
+            '<div class="event-log-header">' +
+              '<span class="event-log-category" style="background:' + color + ';">' + escapeHtml(e.category_display || e.category) + '</span>' +
+              '<span class="event-log-season">第' + escapeHtml(String(e.year || '-')) + '年 ' + escapeHtml(String(e.month || e.season || '-')) + '月</span>' +
+            '</div>' +
+            '<div class="event-log-desc">' + escapeHtml(e.description || '') + '</div>' +
+          '</div>';
+      });
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
+    modal.classList.remove("hidden");
+  }
+
   // Export
   C.renderNeighborsList = renderNeighborsList;
   C.openNeighborDetail = openNeighborDetail;
   C.openNeighborTermReport = openNeighborTermReport;
+  C.renderPrefectureCard = renderPrefectureCard;
+  C.openPrefectureGazette = openPrefectureGazette;
 })();

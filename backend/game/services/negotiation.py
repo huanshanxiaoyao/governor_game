@@ -214,6 +214,10 @@ class NegotiationService:
                 if session.current_round >= session.max_rounds and session.max_rounds > 0:
                     session.current_round = session.max_rounds - 1
                     session.save(update_fields=['current_round'])
+                # 记录代理人曾失败，若玩家亲自谈成可获得能名+1
+                if not session.context_data.get('delegate_failed_once'):
+                    session.context_data['delegate_failed_once'] = True
+                    session.save(update_fields=['context_data'])
 
         # 4. Save agent response
         DialogueMessage.objects.create(
@@ -243,6 +247,21 @@ class NegotiationService:
             fallback_outcome = cls._fallback_resolution(session, result)
             cls.resolve_session(session, fallback_outcome)
             result['final_decision'] = fallback_outcome.get('final_decision')
+
+        # 委托失败后玩家亲自谈成 → 能名+1
+        _SUCCESS_DECISIONS = {'stop_annexation', 'accept', 'declare_all'}
+        if (resolved
+                and speaker_role == 'PLAYER'
+                and session.context_data.get('delegate_failed_once')
+                and result.get('final_decision') in _SUCCESS_DECISIONS):
+            try:
+                from ..models import PlayerProfile
+                _profile = PlayerProfile.objects.filter(game=game).first()
+                if _profile:
+                    _profile.competence = min(100, _profile.competence + 1)
+                    _profile.save(update_fields=['competence', 'updated_at'])
+            except Exception:
+                pass
 
         response = {
             'agent_name': agent.name,

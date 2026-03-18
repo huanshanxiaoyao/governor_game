@@ -684,6 +684,265 @@ VILLAGER_PERSONAS = [
 ]
 
 
+_REMOVED_PREFECT_PROFILES = [
+    {
+        "profile_id": "strict_quota_enforcer",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 7,
+            "charisma": 6,
+            "loyalty": 8,
+
+            "personality": {
+                "sociability": 0.5,     # 中立：公事公办，不喜私交
+                "rationality": 0.8,     # 偏理性：用数字说话，重实绩
+                "assertiveness": 0.8,   # 偏强硬：催科不手软，命令清晰
+            },
+
+            "ideology": {
+                "state_vs_people": 0.8,    # 偏社稷：指标第一，民生其次
+                "central_vs_local": 0.8,   # 强集权：上级命令必须贯彻
+                "pragmatic_vs_ideal": 0.7, # 偏务实：结果导向
+            },
+
+            "reputation": {
+                "integrity": 60,    # 清名中：不算清廉，但不至于枉法
+                "competence": 75,   # 能名高：确实把指标完成得好
+                "popularity": 30,   # 人缘低：下属怕他但不喜欢他
+                "authority": 80,    # 威名高：令行禁止，说一不二
+            },
+
+            "goals": [
+                "确保全府税赋指标足额上缴，维持仕途平稳",
+                "以严格督导树立府衙权威，使下属知敬畏",
+            ],
+
+            "bio": "{name}，知府。治府以严著称，下达配额从不留情面。在其任内，全府上缴从未出过大的亏空，但下辖知县颇多腹诽。",
+            "backstory": "{name}出身于吏员世家，深知官场以实绩论英雄。历任地方多年，养成了用数字衡量一切的习惯。对下属宽则出纰漏，严则有成效，是他始终信奉的道理。",
+
+            "memory": [],
+            "player_affinity": 50,
+            "evaluation_notes": [],
+        },
+    },
+    {
+        "profile_id": "pragmatic_administrator",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 8,
+            "charisma": 7,
+            "loyalty": 6,
+
+            "personality": {
+                "sociability": 0.6,     # 偏合群：善于协调各方
+                "rationality": 0.7,     # 偏理性：讲实效
+                "assertiveness": 0.5,   # 中立：刚柔并济
+            },
+
+            "ideology": {
+                "state_vs_people": 0.6,    # 略偏社稷：指标与民生兼顾
+                "central_vs_local": 0.6,   # 略偏集权：守规矩但有弹性
+                "pragmatic_vs_ideal": 0.8, # 偏务实：解决问题为先
+            },
+
+            "reputation": {
+                "integrity": 65,    # 清名中高：不贪大，偶有灰色
+                "competence": 80,   # 能名高：处事老练，协调有术
+                "popularity": 55,   # 人缘中：下属觉得还算讲理
+                "authority": 65,    # 威名中高：有威但不令人生畏
+            },
+
+            "goals": [
+                "平衡上级指标与地方实情，做一任得过且过的好官",
+                "在任内结交几位可用的下属，为日后铺路",
+            ],
+
+            "bio": "{name}，知府。为官多年，深谙官场之道。既能向上级交差，也能让下属有余地，是典型的能吏。",
+            "backstory": "{name}做过地方知县，深知下情。升任知府后，处事愈发圆融，既不让上头失望，也不把下面逼死。有人说他世故，他自己觉得叫现实。",
+
+            "memory": [],
+            "player_affinity": 55,
+            "evaluation_notes": [],
+        },
+    },
+    {
+        "profile_id": "virtuous_benevolent",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 7,
+            "charisma": 8,
+            "loyalty": 7,
+
+            "personality": {
+                "sociability": 0.4,     # 偏合群：亲民，愿意听各方声音
+                "rationality": 0.4,     # 偏感性：凭良知和信念行事
+                "assertiveness": 0.4,   # 偏温和：以理服人，不喜强迫
+            },
+
+            "ideology": {
+                "state_vs_people": 0.3,    # 重黎民：宁可指标差一些，不能饿死人
+                "central_vs_local": 0.4,   # 偏地方：愿意为下属争取宽限
+                "pragmatic_vs_ideal": 0.3, # 偏理想：坚守道义底线
+            },
+
+            "reputation": {
+                "integrity": 85,    # 清名高：廉洁自守，口碑极好
+                "competence": 65,   # 能名中：好人但有时优柔寡断
+                "popularity": 75,   # 人缘高：下属喜欢他
+                "authority": 45,    # 威名中低：仁慈有时被当软弱
+            },
+
+            "goals": [
+                "在职权范围内尽量减轻百姓负担",
+                "为几位有为的下属创造晋升机会",
+            ],
+
+            "bio": "{name}，知府。以仁政著称，在任多年民间口碑甚佳。对下属宽和，遇有灾情必力争赈恤，有时因此与上级生出龃龉。",
+            "backstory": "{name}少年苦读，深受儒家仁政熏陶。为官以来始终以民为先，虽几次因此遭到弹劾，却未曾改变初衷。看重有才干又爱民的知县，愿意为其遮风挡雨。",
+
+            "memory": [],
+            "player_affinity": 55,
+            "evaluation_notes": [],
+        },
+    },
+    {
+        "profile_id": "corrupt_transactional",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 7,
+            "charisma": 7,
+            "loyalty": 4,
+
+            "personality": {
+                "sociability": 0.3,     # 高合群：逢场作戏，八面玲珑
+                "rationality": 0.2,     # 偏理性：冷静算计每一笔账
+                "assertiveness": 0.6,   # 偏强硬：必要时翻脸不认人
+            },
+
+            "ideology": {
+                "state_vs_people": 0.6,    # 偏社稷：指标能完成，其余随缘
+                "central_vs_local": 0.7,   # 偏集权：抱紧上级大腿
+                "pragmatic_vs_ideal": 0.9, # 极务实：无原则，只有利益
+            },
+
+            "reputation": {
+                "integrity": 20,    # 清名低：贪腐之名早已在外
+                "competence": 60,   # 能名中：能办事，但要给好处
+                "popularity": 35,   # 人缘低：下属畏其权力，非真心拥戴
+                "authority": 70,    # 威名高：手段强硬，敢于打压异己
+            },
+
+            "goals": [
+                "在任内捞足油水，为日后致仕留足本钱",
+                "维持表面政绩，不让上面找到把柄",
+            ],
+
+            "bio": "{name}，知府。表面道貌岸然，实则贪腐成性。只要下属识趣孝敬，考核便网开一面；若不识好歹，则必遭穿小鞋。",
+            "backstory": "{name}早年清廉，后来在官场摸爬滚打，逐渐认清了钱能通神的道理。如今已是老油条，一手抓指标、一手抓灰色收入，两不误。",
+
+            "memory": [],
+            "player_affinity": 45,
+            "evaluation_notes": [],
+        },
+    },
+    {
+        "profile_id": "conservative_ritualist",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 6,
+            "charisma": 5,
+            "loyalty": 8,
+
+            "personality": {
+                "sociability": 0.5,     # 中立：按规矩来，不冷不热
+                "rationality": 0.7,     # 偏理性：照章办事，不越雷池
+                "assertiveness": 0.3,   # 偏温和：不求出挑，平稳度过
+            },
+
+            "ideology": {
+                "state_vs_people": 0.6,    # 略偏社稷：遵从上级
+                "central_vs_local": 0.9,   # 强集权：规矩就是规矩
+                "pragmatic_vs_ideal": 0.6, # 偏务实：不折腾，守成为要
+            },
+
+            "reputation": {
+                "integrity": 70,    # 清名中高：不贪，但也不廉洁到出众
+                "competence": 50,   # 能名中：平庸守成
+                "popularity": 50,   # 人缘中：无功无过
+                "authority": 55,    # 威名中：规矩的权威，非个人威望
+            },
+
+            "goals": [
+                "按部就班完成任期，不出差错安全着陆",
+                "维护府衙礼法秩序，不允许下属越规",
+            ],
+
+            "bio": "{name}，知府。循规蹈矩，一板一眼。既不苛刻，也不宽松，一切按祖宗成法来。下属觉得他可预期，但也缺乏变通。",
+            "backstory": "{name}读书时最敬重礼法二字，为官以来从未逾矩，也从未有过大的功绩。在他眼里，老老实实按规矩办事就是最大的德行。",
+
+            "memory": [],
+            "player_affinity": 50,
+            "evaluation_notes": [],
+        },
+    },
+    {
+        "profile_id": "ambitious_careerist",
+        "role": "PREFECT",
+        "role_title": "知府",
+        "tier": "FULL",
+        "attributes": {
+            "intelligence": 9,
+            "charisma": 8,
+            "loyalty": 5,
+
+            "personality": {
+                "sociability": 0.3,     # 高合群：极善经营人脉
+                "rationality": 0.7,     # 偏理性：算盘打得精
+                "assertiveness": 0.7,   # 偏强硬：为了晋升不惜施压
+            },
+
+            "ideology": {
+                "state_vs_people": 0.7,    # 偏社稷：政绩数字高于一切
+                "central_vs_local": 0.7,   # 偏集权：紧跟上意
+                "pragmatic_vs_ideal": 0.8, # 偏务实：一切为升官服务
+            },
+
+            "reputation": {
+                "integrity": 45,    # 清名中低：有些灰色地带，但不明目张胆
+                "competence": 85,   # 能名高：确实精明能干
+                "popularity": 40,   # 人缘中低：下属敬而远之
+                "authority": 75,    # 威名高：强势，敢于拍板
+            },
+
+            "goals": [
+                "将全府政绩打造成晋升巡抚的跳板",
+                "培植几个能出成绩的知县，为己所用",
+            ],
+
+            "bio": "{name}，知府。仕途心极重，一举一动都在为升迁铺路。极其重视可量化的政绩数字，对有潜力的下属愿意提携，对拖后腿者毫不留情。",
+            "backstory": "{name}自幼立志做到阁臣，科举成绩优异，入仕后步步为营。地方任职对他不过是积累政绩的一站，他的目光已越过府城，投向省城乃至京师。",
+
+            "memory": [],
+            "player_affinity": 50,
+            "evaluation_notes": [],
+        },
+    },
+]
+
+PREFECT_SURNAMES = ["赵", "钱", "孙", "李", "周", "吴", "郑", "王", "冯", "陈", "褚", "卫", "蒋", "沈", "韩", "杨"]
+PREFECT_GIVEN_NAMES = ["廷章", "景明", "文远", "守正", "承德", "绍谦", "昌隆", "克己", "维新", "宗礼", "秉义", "尚贤", "世安", "正卿", "怀仁", "允中"]
+
+
 GENTRY_GIVEN_NAMES = [
     "伯年", "景和", "德成", "文昌", "廷瑞", "守中", "世隆", "允厚",
     "承业", "宗贤", "维礼", "仲安", "国祯", "克让", "绍先", "载丰",

@@ -52,7 +52,10 @@
       if (entry.self_statement_meta && entry.self_statement_meta.audit_flags && entry.self_statement_meta.audit_flags.length) {
         html += '<div class="hint annual-review-risk">当前版本自陈可能被上级质疑：' + escapeHtml(entry.self_statement_meta.audit_flags.join("、")) + '</div>';
       }
-      html += '<div class="annual-review-actions"><button id="btn-submit-annual-review" class="btn btn-primary btn-small">' + ((entry.self_statement ? "更新" : "提交") + '年度自陈') + '</button></div>';
+      html += '<div class="annual-review-actions">';
+      html += '<button id="btn-ai-draft-annual-review" class="btn btn-small">让师爷代写草稿</button> ';
+      html += '<button id="btn-submit-annual-review" class="btn btn-primary btn-small">' + ((entry.self_statement ? "更新" : "提交") + '年度自陈') + '</button>';
+      html += '</div>';
     } else {
       if (entry.self_statement) {
         html += '<div class="annual-review-block"><div class="annual-review-subtitle">已呈年度自陈</div>';
@@ -339,6 +342,15 @@
       display.textContent = Math.round(g.county_data.tax_rate * 100) + "%";
     }
 
+    // 田赋税率仅八、九月可调
+    var moy = ((g.current_season - 1) % 12) + 1;
+    var taxEditable = (moy === 8 || moy === 9);
+    var taxColEl = slider && slider.closest('.tax-col');
+    if (taxColEl) taxColEl.classList.toggle('tax-disabled', !taxEditable);
+    if (slider) slider.disabled = !taxEditable;
+    var btnSetTax = el("btn-set-tax");
+    if (btnSetTax) btnSetTax.disabled = !taxEditable;
+
     // Update commercial tax slider
     var cSlider = el("commercial-tax-slider");
     var cDisplay = el("commercial-tax-display");
@@ -455,25 +467,40 @@
         var ps = c.peasant_surplus;
         var surplusTitle = h("h4", "section-title", "农民粮食盈余");
         surplusDiv.appendChild(surplusTitle);
-        var surplusRow = h("div", "env-row");
+
+        // 农民总人口
+        var totalPeasantPop = (c.villages || []).reduce(function (sum, v) {
+          return sum + (v.population || 0);
+        }, 0);
+
         var monthlyPcs = ps.monthly_per_capita_surplus || 0;
         var trendIcon = monthlyPcs >= 10 ? "↑" : (monthlyPcs <= 0 ? "↓" : "→");
         var trendClass = monthlyPcs >= 10 ? "delta-positive" : (monthlyPcs <= 0 ? "delta-negative" : "");
-        var demandBasis = ps.demand_basis_monthly_pcs !== undefined ? ps.demand_basis_monthly_pcs + "斤" : "";
-        var demandInfo = ps.demand_factor !== undefined
-          ? "（需求系数: " + ps.demand_factor + (demandBasis ? "，基于年化月均" + demandBasis : "") + "）"
-          : "";
-        var surplusItems = [
+
+        // 第一行：基础数据
+        var row1 = h("div", "env-row");
+        var row1Items = [
           { label: "当前储备", value: ps.reserve.toLocaleString() + "斤" },
+          { label: "农民人口", value: totalPeasantPop.toLocaleString() + "人" },
           { label: "月消耗", value: ps.monthly_consumption.toLocaleString() + "斤" },
           { label: "距秋收", value: ps.months_to_harvest + "月" },
-          { label: "月均余粮", value: '<span class="' + trendClass + '">' + monthlyPcs + "斤 " + trendIcon + "</span>" + demandInfo },
         ];
-        surplusItems.forEach(function (it) {
-          var span = h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value);
-          surplusRow.appendChild(span);
+        row1Items.forEach(function (it) {
+          row1.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
         });
-        surplusDiv.appendChild(surplusRow);
+        surplusDiv.appendChild(row1);
+
+        // 第二行：衍生指标
+        var row2 = h("div", "env-row");
+        var row2Items = [
+          { label: "月均余粮", value: '<span class="' + trendClass + '">' + monthlyPcs + "斤/人 " + trendIcon + "</span>" },
+          { label: "需求系数", value: ps.demand_factor !== undefined ? ps.demand_factor : "—" },
+          { label: "消耗系数", value: ps.consumption_multiplier !== undefined ? ps.consumption_multiplier : "—" },
+        ];
+        row2Items.forEach(function (it) {
+          row2.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
+        });
+        surplusDiv.appendChild(row2);
       }
     }
 
@@ -694,38 +721,6 @@
       });
     }
 
-    // Player profile
-    var plDiv = el("player-info");
-    plDiv.innerHTML = "";
-    if (g.player) {
-      var p = g.player;
-      var plTitle = h("h4", "section-title", "知县档案");
-      plDiv.appendChild(plTitle);
-
-      var flavor = c.player_profile_flavor || {};
-      var flavorHtml = "";
-      if (flavor.core_belief) {
-        flavorHtml = '<div class="player-flavor">' +
-          '<span class="player-flavor-belief">「' + escapeHtml(flavor.core_belief) + '」</span>' +
-          (flavor.governing_style ? ' <span class="player-flavor-style">' + escapeHtml(flavor.governing_style) + '</span>' : '') +
-          '</div>';
-      }
-
-      var wealthDisplay = (p.wealth_tier || "清贫") + "（" + Math.round(p.personal_wealth || 0) + "两）";
-      var card = h("div", "player-card",
-        flavorHtml +
-        '<div class="player-row">' +
-          "<span><strong>知识:</strong> " + p.knowledge.toFixed(1) + "</span>" +
-          "<span><strong>技能:</strong> " + p.skill.toFixed(1) + "</span>" +
-          "<span><strong>清名:</strong> " + p.integrity + "</span>" +
-          "<span><strong>能名:</strong> " + p.competence + "</span>" +
-          "<span><strong>人缘:</strong> " + p.popularity + "</span>" +
-          "<span><strong>威名:</strong> " + (p.authority || 0) + "</span>" +
-          "<span><strong>家产:</strong> " + escapeHtml(wealthDisplay) + "</span>" +
-        "</div>");
-      plDiv.appendChild(card);
-    }
-
     renderAnnualReviewPanel();
 
     // Active promises
@@ -733,6 +728,53 @@
 
     // Negotiation count indicator
     loadActiveNegotiations();
+
+    // 侧栏知县档案
+    renderSidebarArchive(g, c);
+  }
+
+  function renderSidebarArchive(g, c) {
+    var container = el("player-archive-sidebar");
+    if (!container) return;
+    container.innerHTML = "";
+    if (!g || !g.player) return;
+
+    var p = g.player;
+    var flavor = (c && c.player_profile_flavor) || {};
+
+    var quoteHtml = "";
+    if (flavor.core_belief) {
+      quoteHtml =
+        '<div class="sidebar-archive-quote">「' + escapeHtml(flavor.core_belief) + '」' +
+        (flavor.governing_style ? '&ensp;<em>' + escapeHtml(flavor.governing_style) + '</em>' : '') +
+        '</div>';
+    }
+
+    var wealthDisplay = (p.wealth_tier || "清贫") + "（" + Math.round(p.personal_wealth || 0) + "两）";
+
+    function stat(label, value) {
+      return '<div class="sidebar-archive-stat">' +
+        '<span class="sidebar-archive-stat-label">' + label + '</span>' +
+        '<span class="sidebar-archive-stat-value">' + escapeHtml(String(value)) + '</span>' +
+        '</div>';
+    }
+
+    container.innerHTML =
+      '<div class="sidebar-archive-card">' +
+        '<div class="sidebar-archive-title">知县档案</div>' +
+        quoteHtml +
+        '<div class="sidebar-archive-stats">' +
+          stat("知识", p.knowledge.toFixed(1)) +
+          stat("技能", p.skill.toFixed(1)) +
+          stat("清名", p.integrity) +
+          stat("能名", p.competence) +
+          stat("人缘", p.popularity) +
+          stat("威名", p.authority || 0) +
+        '</div>' +
+        '<div style="margin-top:6px;font-size:0.8em;color:#8a7a5a;">' +
+          '家产：' + escapeHtml(wealthDisplay) +
+        '</div>' +
+      '</div>';
   }
 
   function loadActiveNegotiations() {
@@ -1712,9 +1754,85 @@
     root.appendChild(villageSec);
   }
 
+  // ── 知县档案（仕途轨迹子面板内）──────────────────────────────────────────
+  function renderPlayerArchive(g, c) {
+    var container = el("career-player-archive");
+    if (!container) return;
+    container.innerHTML = "";
+    if (!g || !g.player) return;
+
+    var p = g.player;
+    var flavor = (c && c.player_profile_flavor) || {};
+
+    var flavorHtml = "";
+    if (flavor.core_belief) {
+      flavorHtml =
+        '<div class="archive-quote">「' + escapeHtml(flavor.core_belief) + '」' +
+        (flavor.governing_style
+          ? ' <span class="archive-style">' + escapeHtml(flavor.governing_style) + '</span>'
+          : '') +
+        '</div>';
+    }
+
+    var wealthDisplay = (p.wealth_tier || "清贫") + "（" + Math.round(p.personal_wealth || 0) + "两）";
+    var statsHtml =
+      '<div class="archive-stats">' +
+        _archiveStat("知识", p.knowledge.toFixed(1)) +
+        _archiveStat("技能", p.skill.toFixed(1)) +
+        _archiveStat("清名", p.integrity) +
+        _archiveStat("能名", p.competence) +
+        _archiveStat("人缘", p.popularity) +
+        _archiveStat("威名", p.authority || 0) +
+        _archiveStat("家产", escapeHtml(wealthDisplay)) +
+      '</div>';
+
+    container.innerHTML =
+      '<div class="archive-card">' +
+        '<div class="archive-title">知县档案</div>' +
+        flavorHtml +
+        statsHtml +
+      '</div>';
+  }
+
+  function _archiveStat(label, value) {
+    return '<div class="archive-stat"><span class="archive-stat-label">' +
+      label + '</span><span class="archive-stat-value">' + value + '</span></div>';
+  }
+
+  // ── 流言板 ────────────────────────────────────────────────────────────────
+  var RUMOR_CATEGORY_CLASS = {"邻县": "rumor-cat-neighbor", "民间": "rumor-cat-folk", "舆情": "rumor-cat-public"};
+
+  function renderRumorsBoard(data) {
+    var container = el("rumors-board");
+    if (!container) return;
+    container.innerHTML = "";
+
+    var rumors = (data && data.rumors) || [];
+    if (rumors.length === 0) return;
+
+    var title = h("h4", "section-title", "流言板");
+    container.appendChild(title);
+
+    var board = document.createElement("div");
+    board.className = "rumors-list";
+    rumors.forEach(function (r) {
+      var catCls = RUMOR_CATEGORY_CLASS[r.category] || "rumor-cat-folk";
+      var item = document.createElement("div");
+      item.className = "rumor-item";
+      item.innerHTML =
+        '<span class="rumor-cat ' + catCls + '">' + escapeHtml(r.category) + '</span>' +
+        '<span class="rumor-text">' + escapeHtml(r.text) + '</span>' +
+        '<span class="rumor-source">— ' + escapeHtml(r.source) + '</span>';
+      board.appendChild(item);
+    });
+    container.appendChild(board);
+  }
+
   // Export
   C.renderRiotBanner = renderRiotBanner;
   C.renderHeader = renderHeader;
+  C.renderPlayerArchive = renderPlayerArchive;
+  C.renderRumorsBoard = renderRumorsBoard;
   C.renderDashboard = renderDashboard;
   C.loadActivePromises = loadActivePromises;
   C.loadActiveNegotiations = loadActiveNegotiations;

@@ -47,6 +47,7 @@ from .services.promotion_event import PromotionEventService
 from .services.state import load_county_state, save_player_state
 from .services.judicial_caseflow import JudicialCaseflowService
 from .services.npc_debug import NPCDebugService
+from .services.rumors import RumorsService
 from .services.prefecture import PrefectureService
 
 
@@ -783,6 +784,14 @@ class TaxRateView(APIView):
         if blocked is not None:
             return blocked
 
+        # 田赋税率仅八、九月可调
+        month_of_year = ((game.current_season - 1) % 12) + 1
+        if month_of_year not in (8, 9):
+            return Response(
+                {"error": "田赋税率仅可在八月、九月调整"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = TaxRateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -1338,6 +1347,111 @@ class StartIrrigationNegotiationView(APIView):
         )
 
 
+class PrefectureOverviewForCountyView(APIView):
+    """
+    GET /api/games/{id}/prefecture-overview/  — 知县视角下的府情和府志
+
+    返回 AI 知府的基本信息（府情）和本局 EventLog（府志），
+    供邻县 Tab 的「本府概览」卡片使用。
+    """
+    permission_classes = [IsAuthenticated]
+
+    _AFFINITY_LABELS = [
+        (80, "极为赏识", "#1a7a4a"),
+        (65, "颇为赏识", "#27ae60"),
+        (50, "尚可",     "#6b5d45"),
+        (35, "颇有微词", "#c0702a"),
+        (20, "甚为不满", "#c0392b"),
+        (0,  "深恶痛绝", "#7b241c"),
+    ]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        from .models import Agent, EventLog as EL
+        from .services.constants import month_of_year, year_of
+
+        prefect = Agent.objects.filter(game=game, role='PREFECT').first()
+        county = game.get_unit_data()
+
+        # 府情
+        if prefect:
+            attrs = prefect.attributes
+            prefecture_name = attrs.get('prefecture', '本府')
+            prefect_name = prefect.name
+            prefect_title = prefect.role_title or f'{prefecture_name}知府'
+            affinity = attrs.get('player_affinity', county.get('prefect_affinity', 50))
+        else:
+            prefecture_name = county.get('prefecture_name', '本府')
+            prefect_name = county.get('prefect_name', '知府')
+            prefect_title = f'{prefecture_name}知府'
+            attrs = {}
+            affinity = county.get('prefect_affinity', 50)
+
+        affinity_label, affinity_color = "尚可", "#6b5d45"
+        for threshold, label, color in self._AFFINITY_LABELS:
+            if affinity >= threshold:
+                affinity_label, affinity_color = label, color
+                break
+
+        quota = county.get('annual_quota', {})
+        fy = county.get('fiscal_year', {})
+        agri_quota = quota.get('agri', quota.get('total', 0) * 0.7) if quota.get('total') else 0
+        agri_remitted = fy.get('agri_remitted', 0)
+        completion_pct = round(agri_remitted / agri_quota * 100) if agri_quota > 0 else 0
+        moy = month_of_year(game.current_season)
+        expected_pct = round(moy / 12 * 100)
+        if completion_pct >= expected_pct - 5:
+            quota_status = '进度正常'
+        elif completion_pct < expected_pct - 20:
+            quota_status = '严重滞后'
+        else:
+            quota_status = '略有滞后'
+
+        # 待处理指令（未回复）
+        all_dirs = county.get('prefect_directives', [])
+        pending_dirs = [d for d in all_dirs if not d.get('responded', False)]
+
+        # 府志：只取知府相关事件（PREFECT 类别），最近 60 条，按时间倒序
+        CATEGORY_DISPLAY = {'PREFECT': '知府'}
+        logs = EL.objects.filter(game=game, category='PREFECT').order_by('-season', '-created_at')[:60]
+        gazette_entries = [
+            {
+                'season': e.season,
+                'year': year_of(e.season),
+                'month': month_of_year(e.season),
+                'category': e.category,
+                'category_display': CATEGORY_DISPLAY.get(e.category, e.category),
+                'event_type': e.event_type,
+                'description': e.description,
+            }
+            for e in logs
+        ]
+
+        return Response({
+            'prefecture_name': prefecture_name,
+            'prefect_name': prefect_name,
+            'prefect_title': prefect_title,
+            'affinity': affinity,
+            'affinity_label': affinity_label,
+            'affinity_color': affinity_color,
+            'bio': attrs.get('bio', ''),
+            'inspection_pending': county.get('prefect_inspection_pending', False),
+            'quota_progress': {
+                'agri_quota': round(agri_quota),
+                'agri_remitted': round(agri_remitted),
+                'completion_pct': completion_pct,
+                'expected_pct': expected_pct,
+                'status': quota_status,
+            },
+            'pending_directives': pending_dirs,
+            'gazette_entries': gazette_entries,
+        })
+
+
 class NeighborListView(APIView):
     """
     GET /api/games/{id}/neighbors/  — list neighbor counties
@@ -1752,3 +1866,66 @@ class NewTermView(APIView):
             "transfer_info": result.get("transfer_info"),
             "game": GameDetailSerializer(game).data,
         })
+
+
+class CountyRumorsView(APIView):
+    """
+    GET /api/games/{id}/rumors/  — 流言板（民间舆情）
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        if game.player_role != "COUNTY_MAGISTRATE":
+            return Response({"error": "仅知县模式支持流言板"}, status=status.HTTP_400_BAD_REQUEST)
+
+        rumors = RumorsService.get_county_rumors(game)
+        return Response({"rumors": rumors})
+
+
+class EmergencyBuyGrainView(APIView):
+    """POST /api/games/{id}/emergency/buy-grain/"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _blocked_by_takeover(game)
+        if blocked is not None:
+            return blocked
+
+        serializer = EmergencyGrainAmountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = EmergencyService.buy_grain_from_treasury(
+            game,
+            amount_jin=serializer.validated_data["amount"],
+        )
+        if not result.get("success"):
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class AnnualReviewDraftView(APIView):
+    """POST /api/games/{id}/annual-review/draft/  — 师爷代写年度自陈草稿"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        if game.player_role != "COUNTY_MAGISTRATE":
+            return Response({"error": "仅知县模式支持师爷代写"}, status=status.HTTP_400_BAD_REQUEST)
+
+        draft = AnnualReviewService.generate_player_review_draft(game)
+        return Response({"draft": draft})

@@ -342,6 +342,11 @@ class AgentService:
         if agent.role in ('ADVISOR', 'DEPUTY'):
             game_knowledge = cls._build_game_knowledge(game)
 
+        # 知府对话使用专属上下文（模糊县情）
+        if agent.role == 'PREFECT':
+            from .ai_prefect import PrefectAIService
+            return PrefectAIService.build_chat_context(agent, game)
+
         return {
             'agent_name': agent.name,
             'role_title': agent.role_title,
@@ -528,7 +533,12 @@ class AgentService:
     @classmethod
     def _chat_full(cls, ctx, game, agent):
         """FULL agent: LLM JSON对话"""
-        template_name = 'advisor_chat_json' if agent.role == 'ADVISOR' else 'agent_full_chat_json'
+        if agent.role == 'ADVISOR':
+            template_name = 'advisor_chat_json'
+        elif agent.role == 'PREFECT':
+            template_name = 'prefect_chat_json'
+        else:
+            template_name = 'agent_full_chat_json'
         system_prompt, user_prompt = PromptRegistry.render(
             template_name, **ctx,
         )

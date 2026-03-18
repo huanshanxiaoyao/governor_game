@@ -117,6 +117,11 @@ class CountyService:
 
             # 配额完成情况（秋季结算后更新）
             "quota_completion": {},
+
+            # 知府 NPC 交互
+            "prefect_affinity": 50,       # 知府对玩家的好感度（与 Agent.attributes 同步）
+            "prefect_directives": [],     # 知府来文队列（最多5条）
+            "prefect_inspection_pending": False,  # 知府是否派人巡查
         }
 
         # 生成村庄

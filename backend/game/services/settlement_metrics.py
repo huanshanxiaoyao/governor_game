@@ -174,7 +174,7 @@ class MetricsMixin:
         )
         pre_monthly_pcs = pre_per_capita_surplus / months_to_harvest
 
-        # 过度消费机制：当月均余粮 > 阈值时，消耗按二次方增加
+        # 消耗机制：短缺→渐进配给；充裕→过度消费
         monthly_consumption = base_monthly_consumption
         consumption_multiplier = 1.0
         emergency = county.get("emergency") or {}
@@ -182,6 +182,11 @@ class MetricsMixin:
         if reserve_before < 0 or halve_consumption:
             # 粮荒状态下口粮配给减半
             consumption_multiplier = 0.5
+            monthly_consumption = base_monthly_consumption * consumption_multiplier
+        elif pre_monthly_pcs < 0:
+            # 预计缺粮（储备不足以撑到秋收）：自发渐进配给
+            # 每缺 30 斤/(人·月) 降低约 1 个乘数点；最低 0.5
+            consumption_multiplier = max(0.5, 1.0 + pre_monthly_pcs / 30)
             monthly_consumption = base_monthly_consumption * consumption_multiplier
         elif pre_monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
             ratio = pre_monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD

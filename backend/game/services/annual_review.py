@@ -156,6 +156,7 @@ class AnnualReviewService:
                     cycle=cycle,
                     season=next_season,
                     reviewer_name="本府知府",
+                    game=game,
                 )
                 cycle["prefect_review"] = review
                 cycle["state"] = "prefect_reviewed"
@@ -182,6 +183,20 @@ class AnnualReviewService:
                     f"【省府复核】巡抚复核本年考评，最终评为{final['final_grade']}。"
                 )
                 result["governor_recheck"] = final
+
+                # 能名随年度绩效变化：优/良+3，中不变，差-3
+                try:
+                    from ..models import PlayerProfile
+                    _grade = final["final_grade"]
+                    _delta = 3 if _grade in ("优", "良") else (-3 if _grade == "差" else 0)
+                    if _delta:
+                        _profile = PlayerProfile.objects.filter(game=game).first()
+                        if _profile:
+                            _profile.competence = max(0, min(100, _profile.competence + _delta))
+                            _profile.save(update_fields=["competence", "updated_at"])
+                except Exception:
+                    pass
+
                 if final["final_grade"] == "差":
                     EmergencyService.ensure_state(county)
                     county["emergency"]["player_status"] = "DISMISSED"
@@ -759,7 +774,7 @@ class AnnualReviewService:
         return penalty, flags
 
     @classmethod
-    def _build_prefect_review(cls, county: dict, cycle: dict, season: int, reviewer_name: str) -> dict:
+    def _build_prefect_review(cls, county: dict, cycle: dict, season: int, reviewer_name: str, game=None) -> dict:
         snapshot = cls._build_objective_snapshot(county, season)
         cycle["objective_snapshot"] = snapshot
         candor_penalty = int((cycle.get("self_statement_meta") or {}).get("candor_penalty", 0))
@@ -770,24 +785,61 @@ class AnnualReviewService:
         complaint_penalty = 5 * min(3, complaints)
         adjusted_score = max(0.0, adjusted_score - complaint_penalty)
 
-        grade = cls._grade_from_score(adjusted_score)
+        algorithmic_grade = cls._grade_from_score(adjusted_score)
 
         # 3条以上投诉强制降一档
         if complaints >= 3:
             grade_order = list(reversed(cls.GRADES))  # 差→优
-            idx = grade_order.index(grade) if grade in grade_order else 0
+            idx = grade_order.index(algorithmic_grade) if algorithmic_grade in grade_order else 0
             if idx > 0:
-                grade = grade_order[idx - 1]
+                algorithmic_grade = grade_order[idx - 1]
+
+        # AI知府人格化评语 + 主观调分
+        evaluation_letter = None
+        subjective_delta = 0
+        final_grade = algorithmic_grade
+
+        if game is not None:
+            try:
+                from .ai_prefect import PrefectAIService
+                review_year = year_of(season)
+                llm_result = PrefectAIService.generate_annual_evaluation(
+                    game=game,
+                    county=county,
+                    objective_score=adjusted_score,
+                    algorithmic_grade=algorithmic_grade,
+                    year=review_year,
+                )
+                evaluation_letter = llm_result.get('evaluation_letter')
+                subjective_delta = llm_result.get('subjective_delta', 0)
+                final_grade = llm_result.get('final_grade', algorithmic_grade)
+            except Exception as e:
+                import logging
+                logging.getLogger('game').warning("知府年度考核 LLM 调用失败（非致命）: %s", e)
+
+        # 知府 Agent 名字
+        if game is not None:
+            try:
+                from ..models import Agent
+                prefect = Agent.objects.filter(game=game, role='PREFECT').first()
+                if prefect:
+                    reviewer_name = prefect.name
+            except Exception:
+                pass
 
         strengths = cls._build_strengths(snapshot)
         weaknesses = cls._build_weaknesses(snapshot, cycle.get("self_statement_meta") or {})
         if complaints > 0:
             weaknesses = weaknesses + [f"本年度收到{complaints}份乡绅陈情，知府认为治境强硬有余、怀柔不足"]
         focus = cls._build_focus(snapshot)
+
         return {
-            "grade": grade,
+            "grade": final_grade,
+            "algorithmic_grade": algorithmic_grade,
             "score": round(adjusted_score, 1),
+            "subjective_delta": subjective_delta,
             "complaint_penalty": complaint_penalty,
+            "evaluation_letter": evaluation_letter,
             "strengths": strengths,
             "weaknesses": weaknesses,
             "focus": focus,
@@ -982,6 +1034,55 @@ class AnnualReviewService:
         if score >= 55:
             return "中"
         return "差"
+
+    @classmethod
+    def generate_player_review_draft(cls, game) -> dict:
+        """调用 LLM 为玩家生成年度自陈草稿，供玩家在前端修改后提交。"""
+        from llm.client import LLMClient
+        from llm.prompts import PromptRegistry
+
+        county = load_county_state(game)
+        season = game.current_season
+        snapshot = cls._build_objective_snapshot(county, season)
+
+        incident_flags = snapshot.get("incident_flags") or []
+        incident_section = ""
+        if incident_flags:
+            incident_section = "【本年重大事件】" + "、".join(incident_flags) + "\n"
+
+        system_prompt, user_prompt = PromptRegistry.render(
+            "annual_review_player_draft",
+            county_name=county.get("county_name", "本县"),
+            morale=float(snapshot.get("morale", 50)),
+            security=float(snapshot.get("security", 50)),
+            commercial=float(snapshot.get("commercial", 50)),
+            education=float(snapshot.get("education", 50)),
+            quota_pct=float(snapshot.get("quota_completion_pct", 0)),
+            annual_quota=float(snapshot.get("annual_quota", 0)),
+            annual_collected=float(snapshot.get("annual_collected", 0)),
+            treasury=float(snapshot.get("treasury", 0)),
+            incident_section=incident_section,
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        client = LLMClient(timeout=30.0, max_retries=2)
+        try:
+            result = client.chat_json(messages, temperature=0.7, max_tokens=600)
+        except Exception as exc:
+            # LLM 失败时回退到规则草稿
+            cycle_stub = {}
+            return cls._build_ai_self_statement(county, cycle_stub, snapshot)
+
+        required = {"achievements", "unfinished", "faults", "plan"}
+        if not isinstance(result, dict) or not required.issubset(result.keys()):
+            cycle_stub = {}
+            return cls._build_ai_self_statement(county, cycle_stub, snapshot)
+
+        return {k: str(result[k]) for k in required}
 
     @staticmethod
     def _is_blankish(text: Optional[str]) -> bool:

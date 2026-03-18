@@ -135,12 +135,44 @@ class JudicialCaseflowService:
                 status__in=["PENDING_MAGISTRATE_ROUND_1", "PENDING_MAGISTRATE_ROUND_2"],
             ).order_by("id")
             cases = [cls._serialize_county_case(item) for item in queryset]
+
+        # 已审案件：当前任期内所有已处理案件（供归档展示）
+        reviewed_cases: List[dict] = []
+        if game.player_unit_id:
+            reviewed_queryset = JudicialCaseInstance.objects.filter(
+                game=game,
+                county_unit=game.player_unit,
+            ).exclude(
+                status__in=["PENDING_MAGISTRATE_ROUND_1", "PENDING_MAGISTRATE_ROUND_2"],
+            ).order_by("-county_review_season", "id")
+            reviewed_cases = [cls._serialize_reviewed_case(item) for item in reviewed_queryset]
+
         return {
             "available": available,
             "current_season": season,
             "generation": cls._serialize_generation_state(state),
             "pending_count": len(cases),
             "cases": cases,
+            "reviewed_cases": reviewed_cases,
+        }
+
+    @classmethod
+    def _serialize_reviewed_case(cls, instance: JudicialCaseInstance) -> dict:
+        """归档展示用：仅返回案件摘要，不含完整卷宗。"""
+        payload = instance.local_payload or {}
+        latest_magistrate = (instance.magistrate_rounds or [])[-1] if instance.magistrate_rounds else {}
+        return {
+            "instance_id": instance.id,
+            "case_name": payload.get("case_name", ""),
+            "category": payload.get("category", ""),
+            "difficulty": payload.get("difficulty", ""),
+            "county_review_season": instance.county_review_season,
+            "status": instance.status,
+            "magistrate_action": latest_magistrate.get("action_label", ""),
+            "verdict_label": latest_magistrate.get("verdict_label", ""),
+            "verdict_code": latest_magistrate.get("verdict_code", ""),
+            "dossier_text": payload.get("dossier_text", ""),
+            "verdict_options": payload.get("verdict_options") or [],
         }
 
     @classmethod

@@ -343,11 +343,28 @@
 
   // ==================== Relationships ====================
 
+  // 人脉 tab 只展示本县/本府 NPC、直线上级、内阁成员、皇帝
+  var CONTACTS_VISIBLE_ROLES = {
+    ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true,   // 本县
+    PREFECT: true,                                                 // 直线上级（知府）
+    PROVINCIAL_GOVERNOR: true, GOVERNOR_GENERAL: true,            // 上级链
+    EMPEROR: true,                                                 // 皇帝
+    CABINET_CHIEF: true, CABINET_MEMBER: true,                    // 内阁
+  };
+
   function renderRelationships(agents) {
     var container = el("relationships-list");
     container.innerHTML = "";
 
     if (!agents || agents.length === 0) {
+      container.innerHTML = '<p class="hint">暂无人脉数据</p>';
+      return;
+    }
+
+    // 过滤：仅显示本县 NPC、直线上级、内阁成员、皇帝
+    var visible = agents.filter(function (a) { return !!CONTACTS_VISIBLE_ROLES[a.role]; });
+
+    if (visible.length === 0) {
       container.innerHTML = '<p class="hint">暂无人脉数据</p>';
       return;
     }
@@ -359,7 +376,7 @@
       negoByAgent[s.agent_name] = s;
     });
 
-    agents.forEach(function (a) {
+    visible.forEach(function (a) {
       var card = h("div", "relationship-card");
       card.id = "agent-card-" + a.name;
 
@@ -407,6 +424,12 @@
       card.innerHTML = html;
       container.appendChild(card);
     });
+
+    // 社交关系人物（暂未实现）
+    var placeholder = h("div", "relationship-section-placeholder",
+      '<p class="hint" style="margin-top:16px;font-style:italic;">有显示社交关系的人物（功能暂未实现）</p>'
+    );
+    container.appendChild(placeholder);
   }
 
   // ==================== Agent Profile Modal ====================

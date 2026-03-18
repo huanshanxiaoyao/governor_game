@@ -131,7 +131,6 @@
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button id="county-judicial-tab-btn" class="tab-btn hidden" data-tab="tab-judicial">司法</button>
     <button class="tab-btn" data-tab="tab-relationships">人脉</button>
-    <button class="tab-btn" data-tab="tab-staff">幕僚</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-officialdom">官场</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
@@ -141,18 +140,27 @@
   <div id="tab-dashboard" class="tab-content active">
     <div id="negotiation-banner" class="negotiation-banner hidden"></div>
     <div id="negotiation-count-info"></div>
-    <div id="stats-grid" class="stats-grid"></div>
-    <div id="info-row" class="info-row"></div>
-    <div id="environment-info"></div>
-    <div id="surplus-info"></div>
-    <div id="quota-info"></div>
-    <div id="disaster-alert" class="disaster-alert hidden"></div>
-    <div id="investments-list"></div>
-    <div id="irrigation-negotiate-section" class="hidden"></div>
-    <div id="markets-info"></div>
-    <div id="player-info"></div>
-    <div id="annual-review-section"></div>
-    <div id="promises-info"></div>
+    <div class="dashboard-layout">
+      <!-- 主列 -->
+      <div class="dashboard-main">
+        <div id="stats-grid" class="stats-grid"></div>
+        <div id="info-row" class="info-row"></div>
+        <div id="quota-info"></div>
+        <div id="disaster-alert" class="disaster-alert hidden"></div>
+        <div id="investments-list"></div>
+        <div id="irrigation-negotiate-section" class="hidden"></div>
+        <div id="markets-info"></div>
+        <div id="rumors-board"></div>
+        <div id="annual-review-section"></div>
+        <div id="promises-info"></div>
+      </div>
+      <!-- 侧栏 -->
+      <div class="dashboard-sidebar">
+        <div id="player-archive-sidebar"></div>
+        <div id="environment-info"></div>
+        <div id="surplus-info"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Tab: Villages -->
@@ -191,19 +199,23 @@
   <div id="tab-actions" class="tab-content hidden">
     <div class="action-section">
       <h3>税率调整</h3>
-      <div class="tax-control">
-        <input type="range" id="tax-slider" min="9" max="15" step="1" value="12">
-        <span id="tax-display">12%</span>
-        <button id="btn-set-tax" class="btn btn-primary btn-small">确认调整</button>
-      </div>
-    </div>
-
-    <div class="action-section">
-      <h3>商税税率</h3>
-      <div class="tax-control">
-        <input type="range" id="commercial-tax-slider" min="1" max="5" step="0.5" value="3">
-        <span id="commercial-tax-display">3%</span>
-        <button id="btn-set-commercial-tax" class="btn btn-primary btn-small">确认调整</button>
+      <div class="tax-two-col">
+        <div class="tax-col">
+          <div class="tax-col-label">田赋税率 <span class="tax-season-hint">（仅八、九月可调）</span></div>
+          <div class="tax-control">
+            <input type="range" id="tax-slider" min="9" max="15" step="1" value="12">
+            <span id="tax-display">12%</span>
+            <button id="btn-set-tax" class="btn btn-primary btn-small">确认调整</button>
+          </div>
+        </div>
+        <div class="tax-col">
+          <div class="tax-col-label">商税税率</div>
+          <div class="tax-control">
+            <input type="range" id="commercial-tax-slider" min="1" max="5" step="0.5" value="3">
+            <span id="commercial-tax-display">3%</span>
+            <button id="btn-set-commercial-tax" class="btn btn-primary btn-small">确认调整</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -240,6 +252,11 @@
         <input type="number" id="emergency-force-amount" min="1" step="1" placeholder="强制征调总量（斤）">
         <button id="btn-emergency-force" class="btn btn-primary btn-small">强制调用地主余粮</button>
       </div>
+      <div class="tax-control relief-control">
+        <input type="number" id="emergency-buy-amount" min="1" step="1" placeholder="购粮数量（斤）">
+        <button id="btn-emergency-buy-grain" class="btn btn-small">动用县库资金买粮</button>
+        <span class="hint" id="emergency-buy-grain-hint">灾时溢价：每两银买70斤</span>
+      </div>
     </div>
 
     <div class="action-section">
@@ -274,32 +291,45 @@
     </div>
   </div>
 
-  <!-- Tab: Staff (幕僚) -->
-  <div id="tab-staff" class="tab-content hidden">
-    <div id="staff-content">
-      <p class="hint">加载中...</p>
-    </div>
-  </div>
-
   <!-- Tab: Neighbors (邻县) -->
   <div id="tab-neighbors" class="tab-content hidden">
     <div id="neighbors-list">
       <p class="hint">加载中...</p>
+    </div>
+    <!-- 本府概览卡片（邻县列表下方） -->
+    <div id="prefecture-overview-card"></div>
+  </div>
+
+  <!-- 府志详情 Modal -->
+  <div id="prefecture-gazette-modal" class="modal hidden">
+    <div class="modal-content prefecture-gazette-content">
+      <div class="neighbor-detail-header">
+        <h4 id="prefecture-gazette-title">本府府志</h4>
+        <button id="prefecture-gazette-close" class="btn btn-small">关闭</button>
+      </div>
+      <div id="prefecture-gazette-body" class="neighbor-detail-body"></div>
     </div>
   </div>
 
   <!-- Tab: Officialdom (官场) -->
   <div id="tab-officialdom" class="tab-content hidden">
     <div class="offdom-subtab-bar">
-      <button class="offdom-subtab-btn active" data-subtab="offdom-national">全国行政体系</button>
+      <button class="offdom-subtab-btn active" data-subtab="offdom-staff">幕僚</button>
+      <button class="offdom-subtab-btn" data-subtab="offdom-national">全国行政体系</button>
       <button class="offdom-subtab-btn" data-subtab="offdom-career">仕途轨迹</button>
     </div>
-    <div id="offdom-national">
+    <div id="offdom-staff">
+      <div id="staff-content">
+        <p class="hint">加载中...</p>
+      </div>
+    </div>
+    <div id="offdom-national" class="hidden">
       <div id="officialdom-content">
         <p class="hint">加载中...</p>
       </div>
     </div>
     <div id="offdom-career" class="hidden">
+      <div id="career-player-archive"></div>
       <div id="career-content">
         <p class="hint">加载中...</p>
       </div>

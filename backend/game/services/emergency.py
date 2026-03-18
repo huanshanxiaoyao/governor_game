@@ -6,7 +6,7 @@ import random
 from typing import Dict, List, Optional, Tuple
 
 from ..models import Agent, EventLog, NeighborCounty
-from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG
+from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG, EMERGENCY_BUY_GRAIN_RATE
 from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
 from .state import load_county_state, save_player_state
 
@@ -690,6 +690,76 @@ class EmergencyService:
             "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
             "complaint_severity": severity if debug_on else None,
             "levy_breakdown": levy_breakdown,
+            "message": msg,
+        }
+
+    @classmethod
+    def buy_grain_from_treasury(cls, game, amount_jin: float) -> Dict:
+        """使用县库资金紧急采购粮食（灾时溢价：每两只能买70斤）。"""
+        county = load_county_state(game)
+        cls.ensure_state(county)
+
+        block_reason = cls.governance_block_reason(county)
+        if block_reason:
+            return {"success": False, "error": block_reason}
+
+        if amount_jin <= 0:
+            return {"success": False, "error": "购粮数量须大于0"}
+
+        cost = amount_jin / EMERGENCY_BUY_GRAIN_RATE  # 灾时粮价：每两买70斤
+        treasury = float(county.get("treasury", 0.0))
+        if cost > treasury:
+            max_affordable = treasury * EMERGENCY_BUY_GRAIN_RATE
+            return {
+                "success": False,
+                "error": (
+                    f"县库资金不足，当前库银{treasury:.1f}两，"
+                    f"最多可买{round(max_affordable)}斤（每两{EMERGENCY_BUY_GRAIN_RATE}斤）"
+                ),
+            }
+
+        county["treasury"] = round(treasury - cost, 2)
+        county["peasant_grain_reserve"] = round(
+            float(county.get("peasant_grain_reserve", 0.0)) + amount_jin, 1
+        )
+
+        # 平息民心：紧急购粮略提振（小幅，体现知县爱民之举）
+        morale_gain = min(5.0, amount_jin / 10000)
+        county["morale"] = min(100, county.get("morale", 50) + morale_gain)
+
+        refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
+        cls.refresh_state(county)
+        save_player_state(game, county)
+
+        msg = (
+            f"动用县库{cost:.1f}两，紧急购粮{round(amount_jin)}斤"
+            f"（灾时粮价：每两{EMERGENCY_BUY_GRAIN_RATE}斤），"
+            f"民心+{morale_gain:.1f}"
+        )
+
+        EventLog.objects.create(
+            game=game,
+            season=game.current_season,
+            event_type="buy_grain_treasury",
+            category="EMERGENCY",
+            description=msg,
+            data={
+                "amount_jin": round(amount_jin),
+                "cost_liang": round(cost, 2),
+                "rate": EMERGENCY_BUY_GRAIN_RATE,
+                "morale_gain": round(morale_gain, 1),
+                "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
+                "treasury_after": round(county.get("treasury", 0.0), 2),
+            },
+        )
+
+        return {
+            "success": True,
+            "amount_jin": round(amount_jin),
+            "cost_liang": round(cost, 2),
+            "morale_gain": round(morale_gain, 1),
+            "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
+            "treasury_after": round(county.get("treasury", 0.0), 2),
             "message": msg,
         }
 

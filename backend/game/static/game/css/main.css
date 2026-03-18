@@ -247,6 +247,86 @@ body {
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
+/* === Dashboard Two-Column Layout === */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.dashboard-main {
+  min-width: 0; /* 防止内容撑破 grid */
+}
+.dashboard-sidebar {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 知县档案侧栏卡片 */
+.sidebar-archive-card {
+  background: #fffdf7;
+  border: 1px solid #c8b98a;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.sidebar-archive-title {
+  font-size: 0.85em;
+  font-weight: bold;
+  color: #8a7a5a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ede7d9;
+}
+.sidebar-archive-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+.sidebar-archive-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82em;
+  color: #5c4a2a;
+  padding: 2px 0;
+}
+.sidebar-archive-stat-label { color: #8a7a5a; }
+.sidebar-archive-stat-value { font-weight: bold; color: #3d2e10; }
+.sidebar-archive-quote {
+  font-size: 0.8em;
+  color: #8a7a5a;
+  font-style: italic;
+  margin-bottom: 8px;
+  line-height: 1.4;
+  border-left: 2px solid #c8b98a;
+  padding-left: 8px;
+}
+
+/* 侧栏内 环境 / 粮食盈余：字号略紧凑 */
+.dashboard-sidebar .section-title {
+  font-size: 0.88em;
+}
+.dashboard-sidebar .env-row {
+  flex-direction: column;
+  gap: 4px;
+}
+.dashboard-sidebar .env-item {
+  font-size: 0.82em;
+}
+
+@media (max-width: 960px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-sidebar {
+    position: static;
+  }
+}
+
 /* === Stats Grid === */
 .stats-grid {
   display: grid;
@@ -483,6 +563,30 @@ body {
   color: #5c4a2a;
   margin-bottom: 10px;
 }
+.tax-two-col {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.tax-col {
+  flex: 1;
+  min-width: 220px;
+}
+.tax-col-label {
+  font-size: 0.9em;
+  color: #5c4a2a;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.tax-season-hint {
+  font-weight: normal;
+  color: #9a8060;
+  font-size: 0.88em;
+}
+.tax-col.tax-disabled .tax-control {
+  opacity: 0.5;
+  pointer-events: none;
+}
 .tax-control {
   display: flex;
   align-items: center;
@@ -493,7 +597,12 @@ body {
 }
 #tax-slider {
   flex: 1;
-  max-width: 300px;
+  max-width: 200px;
+  accent-color: #6b8f4a;
+}
+#commercial-tax-slider {
+  flex: 1;
+  max-width: 200px;
   accent-color: #6b8f4a;
 }
 #tax-display {
@@ -1666,6 +1775,103 @@ body {
   border-top: 1px dashed #ede7d9;
   padding-top: 6px;
   margin-top: 4px;
+}
+
+/* === Prefecture Overview Card (本府概览) === */
+.prefecture-overview-card {
+  border: 2px solid #8a7a5a;
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #fdf9f0 0%, #f5efe0 100%);
+}
+.pref-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.pref-name {
+  font-weight: bold;
+  font-size: 1.15em;
+  color: #3d2e10;
+}
+.pref-official {
+  font-size: 0.9em;
+  color: #5c4a2a;
+}
+.pref-affinity-tag {
+  display: inline-block;
+  font-size: 0.8em;
+  padding: 2px 10px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: bold;
+}
+.pref-inspect-badge {
+  display: inline-block;
+  font-size: 0.78em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #c0702a;
+  color: #fff;
+  font-weight: bold;
+  animation: pulse-warn 1.5s infinite;
+}
+@keyframes pulse-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.pref-quota-bar-wrap {
+  height: 6px;
+  background: #ede7d9;
+  border-radius: 3px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+.pref-quota-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s;
+}
+.pref-quota-text {
+  font-size: 0.85em;
+  color: #5c4a2a;
+  margin-bottom: 8px;
+}
+.pref-directive {
+  font-size: 0.88em;
+  color: #3d2e10;
+  background: #ede7d9;
+  border-left: 3px solid #8a7a5a;
+  padding: 6px 10px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 8px;
+}
+.pref-directive-type {
+  font-weight: bold;
+  color: #2e86c1;
+}
+.pref-gazette-btn {
+  font-size: 0.85em;
+  padding: 4px 14px;
+  background: #8a7a5a;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pref-gazette-btn:hover {
+  background: #6b5d45;
+}
+.prefecture-gazette-content {
+  width: 660px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 /* === Neighbor Detail Modal === */
@@ -3405,6 +3611,35 @@ body {
   line-height: 1.4;
 }
 
+/* ── 已审案件归档 ── */
+.judicial-archive-card {
+  opacity: 0.88;
+  border-left: 3px solid #b8a070;
+}
+.judicial-archive-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.judicial-archive-verdict {
+  flex: 1;
+  text-align: right;
+  font-size: 0.85em;
+  min-width: 80px;
+}
+.btn-tiny {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  background: #f0e8d8;
+  border: 1px solid #c8aa78;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #5c4a2a;
+  white-space: nowrap;
+}
+.btn-tiny:hover { background: #e0d0b0; }
+
 .pref-personnel-replacement {
   margin-top: 8px;
   color: #7a2f21;
@@ -3935,4 +4170,96 @@ body {
   font-size: 1em;
   color: #3a280e;
   margin-right: 6px;
+}
+
+/* ── 知县档案卡（仕途轨迹子面板） ─────────────────────────────────────────── */
+.archive-card {
+  background: #fdf6e8;
+  border: 1px solid #d8c088;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.archive-title {
+  font-size: 0.82em;
+  font-weight: 700;
+  color: #7a5c20;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.archive-quote {
+  font-size: 0.9em;
+  color: #5a3a10;
+  font-style: italic;
+  margin-bottom: 8px;
+  border-left: 3px solid #d8b060;
+  padding-left: 8px;
+}
+.archive-style {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 0.85em;
+  color: #8a7a5a;
+  background: #f0e4c0;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.archive-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.archive-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.archive-stat-label {
+  font-size: 0.8em;
+  color: #8a7050;
+}
+.archive-stat-value {
+  font-size: 0.88em;
+  font-weight: 600;
+  color: #3a200a;
+}
+
+/* ── 流言板 ───────────────────────────────────────────────────────────────── */
+.rumors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rumor-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: #fdf8ef;
+  border: 1px solid #e8d8a8;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 0.87em;
+  line-height: 1.5;
+}
+.rumor-cat {
+  flex-shrink: 0;
+  font-size: 0.75em;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+.rumor-cat-neighbor { background: #ddeeff; color: #2060a0; }
+.rumor-cat-folk     { background: #ddf5dd; color: #206020; }
+.rumor-cat-public   { background: #fff0cc; color: #906000; }
+.rumor-text {
+  flex: 1;
+  color: #3a280e;
+}
+.rumor-source {
+  flex-shrink: 0;
+  font-size: 0.78em;
+  color: #9a8060;
+  white-space: nowrap;
 }

@@ -132,6 +132,9 @@
     emergencyForceLevy: function (id, amount) {
       return request("POST", "/api/games/" + id + "/emergency/force-levy/", { amount: amount });
     },
+    emergencyBuyGrain: function (id, amountJin) {
+      return request("POST", "/api/games/" + id + "/emergency/buy-grain/", { amount: amountJin });
+    },
     emergencySetDebugReveal: function (id, enabled) {
       return request("POST", "/api/games/" + id + "/emergency/debug-toggle/", { enabled: enabled });
     },
@@ -178,6 +181,10 @@
       var qs = promiseStatus ? "?status=" + encodeURIComponent(promiseStatus) : "";
       return request("GET", "/api/games/" + gameId + "/promises/" + qs);
     },
+    // Prefecture overview (知县视角)
+    getPrefectureOverviewForCounty: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/prefecture-overview/");
+    },
     // Neighbors
     getNeighbors: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/neighbors/");
@@ -204,6 +211,12 @@
     },
     startNewTerm: function (gameId) {
       return request("POST", "/api/games/" + gameId + "/new-term/", {});
+    },
+    getCountyRumors: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/rumors/");
+    },
+    getAnnualReviewDraft: function (gameId) {
+      return request("POST", "/api/games/" + gameId + "/annual-review/draft/", {});
     },
     // Prefecture (知府)
     createPrefecture: function (prefectureType) {

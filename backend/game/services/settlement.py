@@ -173,6 +173,14 @@ class SettlementService(
         # Player-only post-settlement
         cls._process_land_surveys(county, report)
 
+        # AI知府月度行动（知县游戏）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .ai_prefect import PrefectAIService
+                PrefectAIService.run_monthly_turn(game, county, month, report)
+            except Exception as e:
+                logger.warning("知府月度行动失败（非致命）: %s", e)
+
         # Check promises
         from .promise import PromiseService
         try:

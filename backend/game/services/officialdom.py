@@ -467,37 +467,63 @@ class OfficialdomService:
     @classmethod
     def _link_existing_prefect(cls, game, pool, factions, used_ids,
                                province=None, prefecture=None):
-        """为现有知府(赵廷章)追加历史原型和官场属性"""
-        prefect = Agent.objects.filter(game=game, role='PREFECT').first()
-        if not prefect:
-            return
+        """创建或补全玩家所在府的知府 Agent（role='PREFECT'）。
+
+        知府以历史人物为原型，属性由 _build_agent_attributes 生成。
+        若 Agent 已存在则补全省/府归属字段；否则新建。
+        额外追加 AI 知府专用字段：evaluation_notes, player_affinity。
+        """
+        from .officialdom_constants import OFFICIAL_SURNAMES, OFFICIAL_GIVEN_NAMES
 
         person = cls._pick_character(pool, ['文臣'], used_ids)
         if not person:
+            person = cls._pick_character(pool, ['文臣', '文臣/武将'], used_ids)
+        if not person:
+            logger.warning("人物池不足，无法生成知府 Agent")
             return
 
-        prefect.source_name = person['姓名']
+        faction_name = random.choice([f.name for f in factions]) if factions else None
+        attrs = cls._build_agent_attributes(
+            person, 'PREFECTURE', 4, faction_name,
+            province=province,
+            prefecture=prefecture,
+        )
+        # AI 知府专用字段
+        attrs['evaluation_notes'] = []
+        attrs['player_affinity'] = 45 + random.randint(0, 15)  # 初始好感50±
 
-        attrs = prefect.attributes
-        attrs['hometown'] = person.get('籍贯', '不详')
-        attrs['org'] = 'PREFECTURE'
-        attrs['rank'] = 4
-        attrs['source_person_id'] = person['ID']
-        attrs['deeds'] = person.get('主要事迹', '')
-        attrs['political_views'] = person.get('政治观点', '')
-        attrs['assessment_tendency'] = 'balance'
-        if province:
-            attrs['province'] = province
-        if prefecture:
-            attrs['prefecture'] = prefecture
-
-        if factions:
-            attrs['faction_name'] = random.choice(
-                [f.name for f in factions]
+        prefect = Agent.objects.filter(game=game, role='PREFECT').first()
+        if prefect:
+            # 已存在（旧存档兼容）：仅补全缺失字段
+            prefect.source_name = person['姓名']
+            existing = prefect.attributes
+            for k, v in attrs.items():
+                if k not in existing:
+                    existing[k] = v
+            if province:
+                existing['province'] = province
+            if prefecture:
+                existing['prefecture'] = prefecture
+            if 'evaluation_notes' not in existing:
+                existing['evaluation_notes'] = []
+            prefect.attributes = existing
+            prefect.save(update_fields=['source_name', 'attributes'])
+        else:
+            # 新建知府 Agent
+            used_names = set(
+                Agent.objects.filter(game=game).values_list('name', flat=True)
             )
-
-        prefect.attributes = attrs
-        prefect.save(update_fields=['source_name', 'attributes'])
+            game_name = cls._anonymize_name(used_names)
+            Agent.objects.create(
+                game=game,
+                name=game_name,
+                source_name=person['姓名'],
+                role='PREFECT',
+                role_title=f'{prefecture or "本府"}知府',
+                tier='FULL',
+                attributes=attrs,
+            )
+            logger.info("知府 Agent 创建完成: %s (原型: %s)", game_name, person['姓名'])
 
     @classmethod
     def _set_hierarchy(cls, game, officials):

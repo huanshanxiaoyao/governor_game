@@ -40,6 +40,7 @@ from .magistrate_service import MagistrateService
 from .emergency import EmergencyService
 from .prefecture import PrefectureService, score_to_tier, TIER_THRESHOLDS, REPORT_MONTHS
 from .ai_negotiation import AIGovernorNegotiationService, is_ai_negotiation_enabled
+from .ai_prefect import PrefectAIService
 from .bribery import BriberyService
 from .career_track import CareerTrackService
 from .promotion_event import PromotionEventService
@@ -89,6 +90,7 @@ __all__ = [
     "REPORT_MONTHS",
     "AIGovernorNegotiationService",
     "is_ai_negotiation_enabled",
+    "PrefectAIService",
     "BriberyService",
     "load_player_state",
     "load_county_state",

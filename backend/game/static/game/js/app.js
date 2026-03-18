@@ -31,100 +31,170 @@
   function updateCountyJudicialTabVisibility(game) {
     var btn = el("county-judicial-tab-btn");
     if (!btn) return;
-    var visible = !!game && game.player_role !== "PREFECT" && isCountyJudicialMonth(game.current_season || 0);
+    // 知县模式下始终显示司法 tab（已审案件任期内保留归档）
+    var visible = !!game && game.player_role !== "PREFECT";
     btn.classList.toggle("hidden", !visible);
   }
 
   function _effectsLabel(eff) {
     if (!eff) return '';
     var parts = [];
-    var map = { morale: '民心', security: '治安', gentry_favor: '乡绅', treasury: '县库', reputation: '声誉', commercial: '商业', education: '文教' };
+    // 只展示已落地属性：民心、治安、县库；声誉/士绅暂无前端展示入口，不显示
+    var map = { morale: '民心', security: '治安', treasury: '县库', commercial: '商业', education: '文教' };
     Object.keys(map).forEach(function (k) {
       if (eff[k]) parts.push(map[k] + (eff[k] > 0 ? '+' : '') + eff[k]);
     });
     return parts.length ? parts.join(' ') : '无即时效果';
   }
 
+  var STATUS_LABEL = {
+    SUBMITTED_TO_PREFECT: '已上呈知府',
+    DEFERRED_TO_PREFECT: '委托知府裁定',
+    PREFECT_DECIDED: '知府已裁定',
+    WITHDRAWN_THIS_QUARTER: '本季暂缓',
+    RETURNED_FOR_REVIEW: '打回重审',
+  };
+
   function renderCountyJudicialTab(data) {
     var container = el("county-judicial-content");
     if (!container) return;
-    if (!data || !data.available) {
-      container.innerHTML = '<p class="hint">当前不在县级司法处理月份。</p>';
-      return;
+
+    var html = '';
+
+    // 待审案件区
+    if (data && data.available) {
+      html += '<div class="action-section"><h3>待审案件</h3>' +
+        '<p class="hint">本轮待审 ' + (data.pending_count || 0) + ' 案；卷宗实例化进度 ' +
+        ((data.generation || {}).generated_windows || 0) + '/' + ((data.generation || {}).total_windows || 0) + '。</p></div>';
+      var cases = data.cases || [];
+      if (!cases.length) {
+        html += '<p class="hint">本轮暂无待审案件。</p>';
+      } else {
+        for (var i = 0; i < cases.length; i++) {
+          html += _renderPendingCase(cases[i]);
+        }
+      }
+    } else {
+      html += '<p class="hint" style="margin-bottom:12px;">当前不在司法处理月份（二、五、八、冬月）。</p>';
     }
-    var html = '<div class="action-section"><h3>县级司法</h3>' +
-      '<p class="hint">本轮待审 ' + (data.pending_count || 0) + ' 案；卷宗实例化进度 ' +
-      ((data.generation || {}).generated_windows || 0) + '/' + ((data.generation || {}).total_windows || 0) + '。</p></div>';
-    var cases = data.cases || [];
-    if (!cases.length) {
-      container.innerHTML = html + '<p class="hint">本轮暂无待审案件。</p>';
-      return;
+
+    // 已审案件归档
+    var reviewed = (data && data.reviewed_cases) || [];
+    if (reviewed.length) {
+      html += '<div class="action-section" style="margin-top:20px;">' +
+        '<h3>已审案件归档（' + reviewed.length + '）</h3></div>';
+      for (var j = 0; j < reviewed.length; j++) {
+        html += _renderReviewedCase(reviewed[j], j);
+      }
     }
-    for (var i = 0; i < cases.length; i++) {
-      var c = cases[i];
-      var diffClass = c.difficulty === '新手' ? 'difficulty-easy' : c.difficulty === '进阶' ? 'difficulty-medium' : 'difficulty-hard';
-      html += '<div class="pref-personnel-card">';
-      // 标题行
-      html += '<div class="pref-personnel-header">' +
-        '<div><strong>' + (c.case_name || '') + '</strong>' +
-        ' <span class="judicial-badge ' + diffClass + '">' + (c.difficulty || '') + '</span>' +
-        ' · 第' + (c.current_round || 1) + '轮</div>' +
-        '<div>' + (c.category || '') + '</div></div>';
-      // 县丞意见
-      var ao = c.assistant_opinion || {};
-      html += '<div class="pref-personnel-block">' +
-        '<div><strong>县丞意见：</strong>' + (ao.opinion_label || '—') + '</div>' +
-        '<div class="hint">' + (ao.reason || '') + '</div></div>';
-      // 卷宗正文
-      html += '<div class="pref-personnel-block">' +
-        '<div><strong>卷宗正文：</strong></div>' +
-        '<div class="judicial-dossier-text" style="white-space:pre-wrap">' + (c.dossier_text || '') + '</div></div>';
-      // 附件证物
-      if (c.attachments && c.attachments.length) {
-        html += '<div class="pref-personnel-block"><div><strong>附件证物：</strong></div><ul style="margin:4px 0 0 16px">';
-        c.attachments.forEach(function (a) { html += '<li class="hint">' + a + '</li>'; });
-        html += '</ul></div>';
-      }
-      // 案件疑点
-      var sm = c.suspicion_markers || {};
-      var allSuspicions = (sm.critical || []).concat(sm.secondary || []);
-      if (allSuspicions.length) {
-        html += '<div class="pref-personnel-block judicial-suspicion"><div class="judicial-suspicion-label"><strong>关键疑点：</strong></div><ul class="judicial-suspicion-list critical" style="margin:4px 0 0 16px">';
-        allSuspicions.forEach(function (s) { html += '<li>' + s + '</li>'; });
-        html += '</ul></div>';
-      }
-      // 判决方向（核心）
-      var opts = c.verdict_options || [];
-      if (opts.length) {
-        html += '<div class="pref-personnel-block"><div><strong>判决方向：</strong></div><div class="county-verdict-options">';
-        opts.forEach(function (opt) {
-          var recMark = (ao.opinion === opt.verdict_code) ? ' ★县丞推荐' : '';
-          html += '<div class="county-verdict-option">' +
-            '<div class="county-verdict-top">' +
-            '<button class="btn btn-small btn-county-verdict-option" ' +
-            'data-case-id="' + c.instance_id + '" ' +
-            'data-verdict-code="' + opt.verdict_code + '">' +
-            opt.verdict_label + recMark +
-            '</button>' +
-            '<span class="county-verdict-effects hint">' + _effectsLabel(opt.immediate_effects) + '</span>' +
-            '</div>' +
-            '<div class="county-verdict-rationale hint">' + (opt.rationale || '') + '</div>' +
-            '</div>';
-        });
-        html += '</div></div>';
-      }
-      // 程序性操作（打回重审 / 搁置委托上级裁定）
-      var procActions = (c.available_actions || []).filter(function (a) { return a !== '判决'; });
-      if (procActions.length) {
-        html += '<div class="pref-review-actions">';
-        procActions.forEach(function (act) {
-          html += '<button class="btn btn-small btn-county-judicial-action" data-case-id="' + c.instance_id + '" data-action="' + act + '">' + act + '</button>';
-        });
-        html += '</div>';
-      }
+
+    container.innerHTML = html;
+
+    // 绑定展开/收起
+    container.querySelectorAll('.judicial-archive-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var body = document.getElementById('judicial-archive-body-' + this.dataset.idx);
+        if (!body) return;
+        var hidden = body.classList.toggle('hidden');
+        this.textContent = hidden ? '展开' : '收起';
+      });
+    });
+  }
+
+  function _renderPendingCase(c) {
+    var diffClass = c.difficulty === '新手' ? 'difficulty-easy' : c.difficulty === '进阶' ? 'difficulty-medium' : 'difficulty-hard';
+    var html = '<div class="pref-personnel-card">';
+    // 标题行
+    html += '<div class="pref-personnel-header">' +
+      '<div><strong>' + (c.case_name || '') + '</strong>' +
+      ' <span class="judicial-badge ' + diffClass + '">' + (c.difficulty || '') + '</span>' +
+      ' · 第' + (c.current_round || 1) + '轮</div>' +
+      '<div>' + (c.category || '') + '</div></div>';
+    // 县丞意见（仅显示意见，不标注推荐）
+    var ao = c.assistant_opinion || {};
+    html += '<div class="pref-personnel-block">' +
+      '<div><strong>县丞意见：</strong>' + (ao.opinion_label || '—') + '</div>' +
+      '<div class="hint">' + (ao.reason || '') + '</div></div>';
+    // 卷宗正文
+    html += '<div class="pref-personnel-block">' +
+      '<div><strong>卷宗正文：</strong></div>' +
+      '<div class="judicial-dossier-text" style="white-space:pre-wrap">' + (c.dossier_text || '') + '</div></div>';
+    // 附件证物
+    if (c.attachments && c.attachments.length) {
+      html += '<div class="pref-personnel-block"><div><strong>附件证物：</strong></div><ul style="margin:4px 0 0 16px">';
+      c.attachments.forEach(function (a) { html += '<li class="hint">' + a + '</li>'; });
+      html += '</ul></div>';
+    }
+    // 案件疑点
+    var sm = c.suspicion_markers || {};
+    var allSuspicions = (sm.critical || []).concat(sm.secondary || []);
+    if (allSuspicions.length) {
+      html += '<div class="pref-personnel-block judicial-suspicion"><div class="judicial-suspicion-label"><strong>关键疑点：</strong></div><ul class="judicial-suspicion-list critical" style="margin:4px 0 0 16px">';
+      allSuspicions.forEach(function (s) { html += '<li>' + s + '</li>'; });
+      html += '</ul></div>';
+    }
+    // 判决方向（不显示县丞推荐标记）
+    var opts = c.verdict_options || [];
+    if (opts.length) {
+      html += '<div class="pref-personnel-block"><div><strong>判决方向：</strong></div><div class="county-verdict-options">';
+      opts.forEach(function (opt) {
+        html += '<div class="county-verdict-option">' +
+          '<div class="county-verdict-top">' +
+          '<button class="btn btn-small btn-county-verdict-option" ' +
+          'data-case-id="' + c.instance_id + '" ' +
+          'data-verdict-code="' + opt.verdict_code + '">' +
+          opt.verdict_label +
+          '</button>' +
+          '<span class="county-verdict-effects hint">' + _effectsLabel(opt.immediate_effects) + '</span>' +
+          '</div>' +
+          '<div class="county-verdict-rationale hint">' + (opt.rationale || '') + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    // 程序性操作
+    var procActions = (c.available_actions || []).filter(function (a) { return a !== '判决'; });
+    if (procActions.length) {
+      html += '<div class="pref-review-actions">';
+      procActions.forEach(function (act) {
+        html += '<button class="btn btn-small btn-county-judicial-action" data-case-id="' + c.instance_id + '" data-action="' + act + '">' + act + '</button>';
+      });
       html += '</div>';
     }
-    container.innerHTML = html;
+    html += '</div>';
+    return html;
+  }
+
+  function _renderReviewedCase(c, idx) {
+    var diffClass = c.difficulty === '新手' ? 'difficulty-easy' : c.difficulty === '进阶' ? 'difficulty-medium' : 'difficulty-hard';
+    var statusLabel = STATUS_LABEL[c.status] || c.status;
+    var verdictText = c.verdict_label ? ('判决：' + c.verdict_label) : (c.magistrate_action || statusLabel);
+    var html = '<div class="pref-personnel-card judicial-archive-card">' +
+      '<div class="judicial-archive-header">' +
+        '<span><strong>' + (c.case_name || '') + '</strong>' +
+        ' <span class="judicial-badge ' + diffClass + '">' + (c.difficulty || '') + '</span>' +
+        ' · ' + (c.category || '') + ' · 第' + c.county_review_season + '月</span>' +
+        '<span class="judicial-archive-verdict hint">' + verdictText + '</span>' +
+        '<button class="btn btn-tiny judicial-archive-toggle" data-idx="' + idx + '">展开</button>' +
+      '</div>' +
+      '<div id="judicial-archive-body-' + idx + '" class="hidden">';
+    // 卷宗摘要
+    if (c.dossier_text) {
+      html += '<div class="pref-personnel-block">' +
+        '<div class="judicial-dossier-text" style="white-space:pre-wrap;font-size:0.9em">' + (c.dossier_text || '') + '</div></div>';
+    }
+    // 判决选项回顾
+    if (c.verdict_options && c.verdict_options.length) {
+      html += '<div class="pref-personnel-block hint"><strong>判决方向回顾：</strong>';
+      c.verdict_options.forEach(function (opt) {
+        var chosen = opt.verdict_code === c.verdict_code;
+        html += '<span style="margin-right:10px;' + (chosen ? 'color:#4a7a30;font-weight:bold' : 'color:#8a7a5a') + '">' +
+          (chosen ? '✓ ' : '') + opt.verdict_label + ' ' + _effectsLabel(opt.immediate_effects) + '</span>';
+      });
+      html += '</div>';
+    }
+    html += '</div></div>';
+    return html;
   }
 
   function loadCountyJudicial() {
@@ -935,6 +1005,31 @@
   });
 
   document.addEventListener("click", function (e) {
+    if (e.target.id === "btn-ai-draft-annual-review") {
+      var g = Game.state.currentGame;
+      if (!g) return;
+      var btn = e.target;
+      btn.disabled = true;
+      btn.textContent = "师爷起草中…";
+      api.getAnnualReviewDraft(g.id)
+        .then(function (data) {
+          var draft = data.draft || {};
+          var fields = ["achievements", "unfinished", "faults", "plan"];
+          fields.forEach(function (f) {
+            var input = el("annual-review-" + f);
+            if (input && draft[f]) input.value = draft[f];
+          });
+          components.showToast("草稿已填入，请确认修改后提交", "success");
+        })
+        .catch(function (err) {
+          components.showToast(err.message || "师爷代写失败，请稍后再试", "error");
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = "让师爷代写草稿";
+        });
+      return;
+    }
     if (e.target.id !== "btn-submit-annual-review") return;
     var g = Game.state.currentGame;
     if (!g) return;
@@ -1049,6 +1144,25 @@
       })
       .catch(function (err) {
         components.showToast(err.message || "强制征调失败", "error");
+      });
+  });
+
+  el("btn-emergency-buy-grain").addEventListener("click", function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var amount = parseFloat(el("emergency-buy-amount").value);
+    if (!(amount > 0)) {
+      components.showToast("请填写有效购粮数量", "error");
+      return;
+    }
+    api.emergencyBuyGrain(g.id, amount)
+      .then(function (data) {
+        components.showToast(data.message || "购粮完成", "success");
+        el("emergency-buy-amount").value = "";
+        return refreshCurrentGame(g.id);
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "购粮失败", "error");
       });
   });
 
@@ -1758,12 +1872,12 @@
     origShowTab(tabId);
     if (tabId === "tab-events") {
       loadEventLogs();
+    } else if (tabId === "tab-dashboard") {
+      loadRumorsBoard();
     } else if (tabId === "tab-judicial") {
       loadCountyJudicial();
     } else if (tabId === "tab-relationships") {
       loadRelationships();
-    } else if (tabId === "tab-staff") {
-      loadStaffInfo();
     } else if (tabId === "tab-neighbors") {
       loadNeighbors();
     } else if (tabId === "tab-officialdom") {
@@ -1775,6 +1889,10 @@
   Game.setGame = function (data) {
     _origSetGame(data);
     updateCountyJudicialTabVisibility(data);
+    // 每次游戏状态更新后刷新流言板（仅知县模式）
+    if (data && data.player_role === "COUNTY_MAGISTRATE") {
+      loadRumorsBoard();
+    }
   };
 
   // 判决方向按钮（选择具体 verdict_code）
@@ -1830,10 +1948,8 @@
         });
       });
     }
-    // 默认加载全国行政体系
-    if (Game.officialdom && !Game.officialdom.loaded) {
-      Game.officialdom.load(g.id);
-    }
+    // 默认显示幕僚子 tab
+    showOffdomSubtab("offdom-staff");
   }
 
   // ── 升迁事件交互 ────────────────────────────────────────────────────────
@@ -2000,7 +2116,7 @@
   });
 
   function showOffdomSubtab(subtabId) {
-    var panels = ["offdom-national", "offdom-career"];
+    var panels = ["offdom-staff", "offdom-national", "offdom-career"];
     panels.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.classList.toggle("hidden", id !== subtabId);
@@ -2008,12 +2124,36 @@
     document.querySelectorAll(".offdom-subtab-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.subtab === subtabId);
     });
-    if (subtabId === "offdom-career") {
+    if (subtabId === "offdom-staff") {
+      loadStaffInfo();
+    } else if (subtabId === "offdom-national") {
       var g = Game.state.currentGame;
+      if (g && Game.officialdom && !Game.officialdom.loaded) {
+        Game.officialdom.load(g.id);
+      }
+    } else if (subtabId === "offdom-career") {
+      var g = Game.state.currentGame;
+      // 渲染知县档案（始终刷新）
+      if (g && Game.components.renderPlayerArchive) {
+        var c = (g.county_data) || {};
+        Game.components.renderPlayerArchive(g, c);
+      }
       if (g && Game.officialdom && !Game.officialdom.careerLoaded) {
         Game.officialdom.loadCareer(g.id);
       }
     }
+  }
+
+  function loadRumorsBoard() {
+    var g = Game.state.currentGame;
+    if (!g || g.player_role !== "COUNTY_MAGISTRATE") return;
+    api.getCountyRumors(g.id)
+      .then(function (data) {
+        if (Game.components.renderRumorsBoard) {
+          Game.components.renderRumorsBoard(data);
+        }
+      })
+      .catch(function () {});
   }
 
   function loadRelationships() {
@@ -2114,15 +2254,33 @@
     var container = document.getElementById("neighbors-list");
     container.innerHTML = '<p class="hint">加载中...</p>';
 
-    api.getNeighbors(g.id)
-      .then(function (neighbors) {
-        Game.state.neighbors = neighbors;
-        components.renderNeighborsList(neighbors);
-      })
-      .catch(function () {
-        container.innerHTML = '<p class="hint">加载失败</p>';
-      });
+    // 并行加载邻县列表 + 本府概览
+    Promise.all([
+      api.getNeighbors(g.id),
+      api.getPrefectureOverviewForCounty(g.id).catch(function () { return null; }),
+    ]).then(function (results) {
+      var neighbors = results[0];
+      var prefData = results[1];
+      Game.state.neighbors = neighbors;
+      Game.state.prefectureOverview = prefData;
+      components.renderPrefectureCard(prefData);
+      components.renderNeighborsList(neighbors);
+    }).catch(function () {
+      container.innerHTML = '<p class="hint">加载失败</p>';
+    });
   }
+
+  // 查看府志按钮 / 关闭府志弹窗
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "open-prefecture-gazette-btn") {
+      var data = Game.state.prefectureOverview;
+      if (data) components.openPrefectureGazette(data);
+    }
+    if (e.target && e.target.id === "prefecture-gazette-close") {
+      var modal = document.getElementById("prefecture-gazette-modal");
+      if (modal) modal.classList.add("hidden");
+    }
+  });
 
   // Neighbor card click → open detail modal
   document.addEventListener("click", function (e) {
