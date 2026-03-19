@@ -5,7 +5,7 @@ from .constants import (
     ANNUAL_CONSUMPTION,
     IRRIGATION_DAMAGE_REDUCTION,
     COMMERCIAL_TAX_RETENTION,
-    EXCESS_CONSUMPTION_THRESHOLD,
+    CC_SENSITIVITY,
     CORVEE_PER_CAPITA,
     GRAIN_PER_LIANG,
     ROAD_COMMERCE_BONUS_PER_LEVEL,
@@ -16,6 +16,134 @@ from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
 
 class MetricsMixin:
     """民心、治安、商业、粮食生产等月度指标更新"""
+
+    @staticmethod
+    def _months_to_harvest(month, pre_harvest=False):
+        """Distance to next autumn harvest from the current state."""
+        moy = month_of_year(month)
+        if pre_harvest and moy == 9:
+            return 1
+        return (9 - moy) % 12 or 12
+
+    @classmethod
+    def _estimate_consumption_profile(
+        cls,
+        total_pop,
+        reserve,
+        months_to_harvest,
+        halve_consumption=False,
+        monthly_loan_repayment=0.0,
+    ):
+        """Estimate this month's peasant grain consumption profile.
+
+        消费信心指数 consumer_confidence = per_capita_surplus / months_to_harvest
+        （斤/人/月，超出维生水平的月均余粮）。
+        surplus 计算扣除未来各月的借粮还款，使信心指数正确反映实际可支配余粮。
+        紧急状态（仓空或限粮令）直接压至地板 -CC_SENSITIVITY/2，使两项乘数均降至0.5。
+        正常状态下统一公式：multiplier = clamp(1 + cc / CC_SENSITIVITY, 0.5, 2.0)
+        """
+        base_monthly_consumption = max(0.0, total_pop * ANNUAL_CONSUMPTION / 12)
+        if total_pop <= 0:
+            return {
+                "baseline_monthly_consumption": 0.0,
+                "monthly_consumption": 0.0,
+                "consumption_multiplier": 0.0,
+                "consumer_confidence": 0.0,
+            }
+
+        # 月度总流出 = 基础消耗 + 邻县借粮还款
+        # reserve 已由 prepare_month 扣除本月还款，故还款仅计入剩余 (N-1) 个月
+        total_monthly_outflow = base_monthly_consumption + float(monthly_loan_repayment)
+        pre_per_capita_surplus = (
+            (reserve
+             - months_to_harvest * base_monthly_consumption
+             - max(0, months_to_harvest - 1) * float(monthly_loan_repayment))
+            / max(total_pop, 1)
+        )
+
+        # 紧急状态：仓空或限粮令，直接压到地板（multiplier → 0.5）
+        if reserve < 0 or halve_consumption:
+            consumer_confidence = -CC_SENSITIVITY / 2.0
+        else:
+            consumer_confidence = pre_per_capita_surplus / max(months_to_harvest, 1)
+
+        consumption_multiplier = max(0.5, min(2.0, 1.0 + consumer_confidence / CC_SENSITIVITY))
+        monthly_consumption = base_monthly_consumption * consumption_multiplier
+
+        return {
+            "baseline_monthly_consumption": base_monthly_consumption,
+            "monthly_consumption": monthly_consumption,
+            "consumption_multiplier": consumption_multiplier,
+            "consumer_confidence": consumer_confidence,
+        }
+
+    @classmethod
+    def refresh_peasant_surplus_snapshot(
+        cls,
+        county,
+        month,
+        *,
+        monthly_consumption=None,
+        consumption_multiplier=None,
+        pre_harvest=False,
+    ):
+        """Sync peasant surplus display fields to the current reserve."""
+        ensure_county_ledgers(county)
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+            for v in county.get("villages", [])
+        )
+        months_to_harvest = cls._months_to_harvest(month, pre_harvest=pre_harvest)
+        reserve = float(county.get("peasant_grain_reserve", 0.0))
+
+        emergency = county.get("emergency") or {}
+        halve = bool(emergency.get("halve_consumption_this_month"))
+
+        # 活跃借粮每月还款总额（纳入余粮预期计算）
+        active_loans = emergency.get("neighbor_loans") or []
+        monthly_loan_repayment = sum(
+            float(l.get("installment_grain", 0.0))
+            for l in active_loans
+            if l.get("status") == "ACTIVE"
+        )
+
+        profile = cls._estimate_consumption_profile(
+            total_pop,
+            reserve,
+            months_to_harvest,
+            halve_consumption=halve,
+            monthly_loan_repayment=monthly_loan_repayment,
+        )
+        base_monthly_consumption = profile["baseline_monthly_consumption"]
+        if monthly_consumption is None:
+            monthly_consumption = profile["monthly_consumption"]
+        if consumption_multiplier is None:
+            consumption_multiplier = profile["consumption_multiplier"]
+
+        # 扣除消耗和还款后的余粮（反映到秋收实际剩余）
+        total_monthly_outflow = base_monthly_consumption + monthly_loan_repayment
+        surplus_total = reserve - months_to_harvest * total_monthly_outflow
+        per_capita_surplus = surplus_total / max(total_pop, 1)
+
+        # 消费信心指数（展示用，基于快照时刻余粮，已含还款压力）
+        if reserve < 0 or halve:
+            consumer_confidence = -CC_SENSITIVITY / 2.0
+        else:
+            consumer_confidence = per_capita_surplus / max(months_to_harvest, 1)
+        confidence_index = max(0.5, min(2.0, 1.0 + consumer_confidence / CC_SENSITIVITY))
+
+        county["peasant_surplus"] = {
+            "reserve": round(reserve),
+            "months_to_harvest": months_to_harvest,
+            "per_capita_surplus": round(per_capita_surplus, 1),
+            "consumer_confidence": round(consumer_confidence, 1),
+            "confidence_index": round(confidence_index, 2),
+            "monthly_consumption": round(monthly_consumption),
+            "baseline_monthly_consumption": round(base_monthly_consumption),
+            "consumption_multiplier": round(consumption_multiplier, 2),
+            "monthly_loan_repayment": round(monthly_loan_repayment, 1),
+        }
+        return county["peasant_surplus"]
 
     @classmethod
     def _update_morale(cls, county, report):
@@ -151,61 +279,60 @@ class MetricsMixin:
 
     @classmethod
     def _update_commercial(cls, county, month, report, prefecture_ctx=None):
-        """月度商业更新：粮食消耗→扣后余粮→需求系数→GMV→商税
+        """月度商业更新：粮食消耗→扣后余粮→消费信心指数→GMV→商税
         prefecture_ctx: optional dict with road_level for inter-county commerce bonus.
-        需求系数基于扣除本月消耗后的余粮，确保展示与计算口径一致。
+        消费信心基于扣除本月消耗后的余粮，确保展示与计算口径一致。
         """
         ensure_county_ledgers(county)
         total_pop = sum(
             v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
             for v in county["villages"]
         )
-        base_monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12
+        months_to_harvest = cls._months_to_harvest(month)
 
-        # 统一口径：到下次秋收（九月）剩余月数视角
-        moy = month_of_year(month)
-        months_to_harvest = (9 - moy) % 12 or 12
-
-        # 过度消费阈值检查用扣前余粮（判断"此时是否富裕到放开消费"）
         reserve_before = county.get("peasant_grain_reserve", 0)
-        pre_per_capita_surplus = (
-            (reserve_before - months_to_harvest * base_monthly_consumption)
-            / max(total_pop, 1)
-        )
-        pre_monthly_pcs = pre_per_capita_surplus / months_to_harvest
-
-        # 消耗机制：短缺→渐进配给；充裕→过度消费
-        monthly_consumption = base_monthly_consumption
-        consumption_multiplier = 1.0
         emergency = county.get("emergency") or {}
-        halve_consumption = bool(emergency.get("halve_consumption_this_month"))
-        if reserve_before < 0 or halve_consumption:
-            # 粮荒状态下口粮配给减半
-            consumption_multiplier = 0.5
-            monthly_consumption = base_monthly_consumption * consumption_multiplier
-        elif pre_monthly_pcs < 0:
-            # 预计缺粮（储备不足以撑到秋收）：自发渐进配给
-            # 每缺 30 斤/(人·月) 降低约 1 个乘数点；最低 0.5
-            consumption_multiplier = max(0.5, 1.0 + pre_monthly_pcs / 30)
-            monthly_consumption = base_monthly_consumption * consumption_multiplier
-        elif pre_monthly_pcs > EXCESS_CONSUMPTION_THRESHOLD:
-            ratio = pre_monthly_pcs / EXCESS_CONSUMPTION_THRESHOLD
-            excess_mult = 1 + ratio * ratio * 0.1
-            consumption_multiplier = excess_mult
-            monthly_consumption = base_monthly_consumption * consumption_multiplier
+        halve = bool(emergency.get("halve_consumption_this_month"))
+
+        # 活跃借粮每月还款（本月已在 prepare_month 扣除，此处用于预期余粮计算）
+        active_loans = emergency.get("neighbor_loans") or []
+        monthly_loan_repayment = sum(
+            float(l.get("installment_grain", 0.0))
+            for l in active_loans
+            if l.get("status") == "ACTIVE"
+        )
+
+        consumption_profile = cls._estimate_consumption_profile(
+            total_pop,
+            reserve_before,
+            months_to_harvest,
+            halve_consumption=halve,
+            monthly_loan_repayment=monthly_loan_repayment,
+        )
+        base_monthly_consumption = consumption_profile["baseline_monthly_consumption"]
+        monthly_consumption = consumption_profile["monthly_consumption"]
+        consumption_multiplier = consumption_profile["consumption_multiplier"]
 
         # 1. 先扣粮食消耗
         county["peasant_grain_reserve"] = reserve_before - monthly_consumption
 
-        # 2. 基于扣后余粮计算需求系数
-        # 用年化（/12）而非到秋收月数（/months_to_harvest）作分母：
-        # months_to_harvest 随时间缩短会人为抬高系数（正月余粮分摊8个月 vs 八月仅1个月），
-        # 年化折算消除该分母缩短效应，使商税有稳定的季节性变化。
+        # 2. 基于扣后余粮计算消费信心指数（含未来还款压力）
         post_reserve = county["peasant_grain_reserve"]
-        post_surplus_total = post_reserve - months_to_harvest * base_monthly_consumption
+        total_monthly_outflow = base_monthly_consumption + monthly_loan_repayment
+        # post_reserve 已扣本月消耗，loan 已在 prepare_month 扣除，故剩余 (N-1) 个月
+        post_surplus_total = post_reserve - max(0, months_to_harvest - 1) * total_monthly_outflow
         post_per_capita_surplus = post_surplus_total / max(total_pop, 1)
-        monthly_pcs_for_demand = post_per_capita_surplus / 12
-        demand_factor = max(0.1, min(2.0, 1 + monthly_pcs_for_demand / 50))
+        if post_reserve < 0 or halve:
+            post_cc = -CC_SENSITIVITY / 2.0
+        else:
+            post_cc = post_per_capita_surplus / max(months_to_harvest, 1)
+        demand_factor = max(0.5, min(2.0, 1.0 + post_cc / CC_SENSITIVITY))
+        cls.refresh_peasant_surplus_snapshot(
+            county,
+            month,
+            monthly_consumption=monthly_consumption,
+            consumption_multiplier=consumption_multiplier,
+        )
 
         # 3. 即时计算各集市 GMV（跨县驿道提升贸易量）
         road_mult = 1.0 + (prefecture_ctx or {}).get("road_level", 0) * ROAD_COMMERCE_BONUS_PER_LEVEL
@@ -227,26 +354,13 @@ class MetricsMixin:
         fy["commercial_retained"] = fy.get("commercial_retained", 0) + commercial_retained
         county["fiscal_year"] = fy
 
-        # 5. 存储盈余信息供前端展示（全部基于扣后储备，口径统一）
-        display_monthly_pcs = post_surplus_total / max(total_pop, 1) / months_to_harvest
-
-        county["peasant_surplus"] = {
-            "reserve": round(post_reserve),
-            "months_to_harvest": months_to_harvest,
-            "per_capita_surplus": round(post_per_capita_surplus, 1),
-            "monthly_per_capita_surplus": round(display_monthly_pcs, 1),
-            "demand_factor": round(demand_factor, 2),
-            "demand_basis_monthly_pcs": round(monthly_pcs_for_demand, 1),
-            "monthly_consumption": round(monthly_consumption),
-            "baseline_monthly_consumption": round(base_monthly_consumption),
-            "consumption_multiplier": round(consumption_multiplier, 2),
-        }
+        # 5. 扣后余粮已通过 snapshot helper 同步到 peasant_surplus
         cls._refresh_village_ledger_metrics(county, monthly_consumption, month=month)
 
         if total_gmv >= 1:
             report["events"].append(
                 f"集市月贸易额: {total_gmv:.0f}两 "
-                f"(需求系数: {demand_factor:.2f}, 年化月均余粮: {monthly_pcs_for_demand:.1f}斤)")
+                f"(消费信心: {demand_factor:.2f}, 月均余粮: {post_cc:.1f}斤/人)")
 
         if monthly_commercial_tax >= 0.5:
             report["events"].append(

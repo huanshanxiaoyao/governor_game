@@ -6,14 +6,17 @@ import random
 from typing import Dict, List, Optional, Tuple
 
 from ..models import Agent, EventLog, NeighborCounty
-from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG, EMERGENCY_BUY_GRAIN_RATE
+from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG, EMERGENCY_BUY_GRAIN_RATE, month_name
 from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
+from .settlement_metrics import MetricsMixin
 from .state import load_county_state, save_player_state
 
 
 class EmergencyService:
     """Emergency grain-shortage mechanics and related governance flow."""
 
+    # 借粮意愿系数：不再依赖 governor_style 标签，改由 _loan_willingness_bonus() 从 profile 属性计算
+    # 保留此处仅供外部存量代码引用（如脚本/调试），主流程已不使用
     STYLE_BONUS = {
         "minben": 0.20,
         "yuanhua": 0.10,
@@ -21,6 +24,17 @@ class EmergencyService:
         "jinqu": -0.03,
         "baoshou": -0.08,
     }
+
+    @staticmethod
+    def _loan_willingness_bonus(neighbor):
+        """从邻县知县的三层属性计算借粮意愿加成，取代 STYLE_BONUS 查表。
+        welfare 目标越高、assertiveness 越低 → 更愿意借出余粮。
+        """
+        profile = (neighbor.county_data or {}).get("governor_profile", {})
+        welfare = profile.get("goals", {}).get("welfare", 0.15)
+        assertiveness = profile.get("personality", {}).get("assertiveness", 0.5)
+        # welfare 偏离均值（0.15）的幅度 × 0.8；assertiveness 越低越好心 × 0.3
+        return round((welfare - 0.15) * 0.8 + (0.5 - assertiveness) * 0.3, 3)
 
     @classmethod
     def ensure_state(cls, county: Dict) -> Dict:
@@ -220,6 +234,11 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season)
         cls.refresh_state(county)
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            county,
+            game.current_season,
+            pre_harvest=True,
+        )
 
         save_player_state(game, county)
 
@@ -281,7 +300,7 @@ class EmergencyService:
         relations = emergency.get("neighbor_relations") or {}
         relation = float(relations.get(str(neighbor.id), 50.0))
 
-        style_bonus = cls.STYLE_BONUS.get(neighbor.governor_style, 0.0)
+        style_bonus = cls._loan_willingness_bonus(neighbor)
         liquidity_bonus = min(0.22, available / max(n_baseline * 8.0, 1.0) * 0.22)
         success_prob = 0.35 + (relation - 50.0) * 0.005 + style_bonus + liquidity_bonus
         success_prob = max(0.05, min(0.95, success_prob))
@@ -290,6 +309,15 @@ class EmergencyService:
             relations[str(neighbor.id)] = max(-99.0, relation - 4.0)
             emergency["neighbor_relations"] = relations
             save_player_state(game, county)
+            # 邻县记忆：记录婉拒事件（被频繁打扰可能积累负面印象）
+            n_attrs = neighbor.attributes or {}
+            n_memory = list(n_attrs.get("memory", []))
+            n_memory.append(
+                f"【{month_name(game.current_season)}】本县请求借粮，予以婉拒"
+            )
+            n_attrs["memory"] = n_memory[-20:]
+            neighbor.attributes = n_attrs
+            neighbor.save(update_fields=["attributes"])
             return {
                 "success": False,
                 "error": f"{neighbor.governor_name}婉拒借粮请求",
@@ -317,17 +345,44 @@ class EmergencyService:
             "status": "ACTIVE",
         }
         emergency.setdefault("neighbor_loans", []).append(loan)
-        relations[str(neighbor.id)] = min(99.0, relation + 3.0)
+        # 玩家→邻县：借方感恩，好感提升更多 +8
+        relations[str(neighbor.id)] = min(99.0, relation + 8.0)
         emergency["neighbor_relations"] = relations
 
         refresh_village_grain_ledgers(county, current_season=game.current_season)
         refresh_village_grain_ledgers(n_county, current_season=game.current_season)
         cls.refresh_state(county)
         cls.refresh_state(n_county)
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            county,
+            game.current_season,
+            pre_harvest=True,
+        )
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            n_county,
+            game.current_season,
+            pre_harvest=True,
+        )
+
+        # 双向好感度更新
+        # 玩家→邻县：借方感恩 +8（已在上方写入 emergency.neighbor_relations）
+        # 邻县→玩家：贷方正常好感 +3（存入 neighbor.attributes）
+        n_attrs = neighbor.attributes or {}
+        n_affinity = float(n_attrs.get("player_affinity", 50.0))
+        n_attrs["player_affinity"] = min(99.0, n_affinity + 3.0)
+
+        # 邻县记忆：AI知县记住这次借粮事件，供后续LLM决策参考
+        n_memory = list(n_attrs.get("memory", []))
+        n_memory.append(
+            f"【{month_name(game.current_season)}】出借{round(borrowed)}斤粮给本县（玩家），"
+            f"约定36期归还，每期{loan['installment_grain']}斤，尚待偿清"
+        )
+        n_attrs["memory"] = n_memory[-20:]
+        neighbor.attributes = n_attrs
 
         save_player_state(game, county)
         neighbor.county_data = n_county
-        neighbor.save(update_fields=["county_data"])
+        neighbor.save(update_fields=["county_data", "attributes"])
 
         msg = (
             f"向{neighbor.county_name}借得{round(borrowed)}斤粮，"
@@ -465,6 +520,11 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            county,
+            game.current_season,
+            pre_harvest=True,
+        )
         save_player_state(game, county)
 
         msg = f"经与地主议定，开仓放粮{round(released)}斤入民仓"
@@ -646,6 +706,11 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            county,
+            game.current_season,
+            pre_harvest=True,
+        )
         save_player_state(game, county)
 
         # 威名效果：强征地主余粮成功 → 威名+5
@@ -729,6 +794,11 @@ class EmergencyService:
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
+        MetricsMixin.refresh_peasant_surplus_snapshot(
+            county,
+            game.current_season,
+            pre_harvest=True,
+        )
         save_player_state(game, county)
 
         msg = (

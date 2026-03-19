@@ -11,12 +11,12 @@ from django.db import connection
 from ..models import AdminUnit, Agent, GameState, JudicialCaseInstance, NeighborPrecompute
 from .constants import (
     COUNTY_TYPES,
-    ARCHETYPE_TO_STYLES,
     ARCHETYPE_COUNTY_TYPE_WEIGHTS,
     GOVERNOR_STYLES,
     GOVERNOR_SURNAMES,
     GOVERNOR_GIVEN_NAMES,
     NEIGHBOR_COUNTY_NAMES,
+    derive_governor_style,
     generate_governor_profile,
     month_of_year,
     month_name,
@@ -337,13 +337,16 @@ class PrefectureService:
         specs = []
         for i, c_type in enumerate(county_mix):
             archetype = archetypes[i]
-            style_key = random.choice(ARCHETYPE_TO_STYLES[archetype])
+            # 先从 archetype 生成属性，再推导风格
+            profile = generate_governor_profile(archetype)
+            style_key = derive_governor_style(profile)
             names_pool = list(NEIGHBOR_COUNTY_NAMES.get(c_type, ["下辖县"]))
             county_name = names_pool[i % len(names_pool)]
             specs.append({
                 'c_type': c_type,
                 'archetype': archetype,
                 'style_key': style_key,
+                'profile': profile,
                 'county_name': county_name,
                 'governor_name': _pick_name(),
             })
@@ -357,7 +360,7 @@ class PrefectureService:
             county_data = CountyService.create_initial_county(county_type=spec['c_type'])
             EmergencyService.ensure_state(county_data)
             county_data['governor_profile'] = {
-                **generate_governor_profile(spec['style_key'], archetype=spec['archetype']),
+                **spec['profile'],
                 'name': spec['governor_name'],
                 'style': spec['style_key'],
                 'archetype': spec['archetype'],

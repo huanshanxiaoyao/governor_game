@@ -62,8 +62,8 @@ RELIEF_POP_LOSS_MULTIPLIER = 0.65
 # 商税地方留存比例（独立于 remit_ratio）
 COMMERCIAL_TAX_RETENTION = 0.60
 
-# 过度消费机制 (doc 06a §2.3)
-EXCESS_CONSUMPTION_THRESHOLD = 15  # 每月人均余粮(斤)触发阈值
+# 消费信心灵敏度：cc=+50斤/月 → index=2.0，cc=-25斤/月 → index=0.5
+CC_SENSITIVITY = 50
 
 # 人口迁移（邻县竞争，doc 06a §3.1）
 MIGRATION_SIGNIFICANT_DIFF = 15  # 显著领先/落后阈值（含边界）
@@ -323,6 +323,14 @@ NEIGHBOR_COUNTY_NAMES = {
     "disaster_prone": ["商丘县", "归德县", "凤阳县", "泗州县", "颍上县"],
 }
 
+# 玩家治理县的县名（与邻县名称池不重叠）
+PLAYER_COUNTY_NAMES = {
+    "fiscal_core": "华亭县",
+    "clan_governance": "歙县",
+    "coastal": "闽县",
+    "disaster_prone": "睢阳县",
+}
+
 GOVERNOR_STYLES = {
     "minben": {
         "name": "民本型",
@@ -367,50 +375,72 @@ GOVERNOR_STYLES = {
 }
 
 # ===== 知县三层属性体系 =====
-# 每种 governor_style 的属性基准值，创建时 ±0.15 随机扰动
+# 每种施政类型（archetype）的属性基准均值，创建时叠加随机扰动。
+# 执政风格（governor_style）不再作为属性生成的来源，
+# 而是由已生成的属性通过 derive_governor_style() 动态推导。
 
-GOVERNOR_STYLE_PROFILES = {
-    "minben": {
-        "intelligence": 6, "stamina": 5,
-        "personality": {"sociability": 0.7, "rationality": 0.4, "assertiveness": 0.3},
-        "ideology": {"state_vs_people": 0.2, "central_vs_local": 0.4, "pragmatic_vs_ideal": 0.3},
-        "goals": {"welfare": 0.35, "reputation": 0.20, "power": 0.10, "wealth": 0.10, "legacy": 0.25},
+ARCHETYPE_ATTRIBUTE_PROFILES = {
+    "VIRTUOUS": {
+        # 循吏型：重民本，温和，略偏理想主义，中等智识
+        "intelligence": 7,
+        "stamina": 6,
+        "personality": {
+            "sociability":   0.60,   # 略合群，善于联络民间
+            "rationality":   0.55,   # 略理性，但不失仁心
+            "assertiveness": 0.35,   # 温顺低调，不善强硬施压
+        },
+        "ideology": {
+            "state_vs_people":    0.25,   # 重黎民福祉
+            "central_vs_local":   0.40,   # 略重地方自主
+            "pragmatic_vs_ideal": 0.40,   # 略偏理想主义驱动
+        },
+        "goals_base": {
+            "welfare": 0.32, "reputation": 0.22,
+            "power": 0.12, "wealth": 0.07, "legacy": 0.27,
+        },
     },
-    "zhengji": {
-        "intelligence": 8, "stamina": 7,
-        "personality": {"sociability": 0.6, "rationality": 0.7, "assertiveness": 0.8},
-        "ideology": {"state_vs_people": 0.6, "central_vs_local": 0.7, "pragmatic_vs_ideal": 0.8},
-        "goals": {"welfare": 0.10, "reputation": 0.35, "power": 0.30, "wealth": 0.15, "legacy": 0.10},
+    "MIDDLING": {
+        # 中庸守成型：稳健务实，不走极端，以自保为先
+        "intelligence": 6,
+        "stamina": 5,
+        "personality": {
+            "sociability":   0.50,   # 中等，随机应变
+            "rationality":   0.68,   # 偏理性谨慎
+            "assertiveness": 0.25,   # 低调守成，不主动冒险（偏低以区别 zhengji）
+        },
+        "ideology": {
+            "state_vs_people":    0.45,   # 略偏民本（不如 VIRTUOUS 强烈）
+            "central_vs_local":   0.55,   # 略服从上级
+            "pragmatic_vs_ideal": 0.65,   # 务实为先
+        },
+        "goals_base": {
+            "welfare": 0.18, "reputation": 0.18,
+            "power": 0.15, "wealth": 0.20, "legacy": 0.29,
+        },
     },
-    "baoshou": {
-        "intelligence": 6, "stamina": 4,
-        "personality": {"sociability": 0.3, "rationality": 0.8, "assertiveness": 0.2},
-        "ideology": {"state_vs_people": 0.5, "central_vs_local": 0.6, "pragmatic_vs_ideal": 0.6},
-        "goals": {"welfare": 0.15, "reputation": 0.15, "power": 0.15, "wealth": 0.35, "legacy": 0.20},
-    },
-    "jinqu": {
-        "intelligence": 7, "stamina": 8,
-        "personality": {"sociability": 0.5, "rationality": 0.6, "assertiveness": 0.9},
-        "ideology": {"state_vs_people": 0.4, "central_vs_local": 0.3, "pragmatic_vs_ideal": 0.7},
-        "goals": {"welfare": 0.20, "reputation": 0.25, "power": 0.25, "wealth": 0.10, "legacy": 0.20},
-    },
-    "yuanhua": {
-        "intelligence": 7, "stamina": 6,
-        "personality": {"sociability": 0.8, "rationality": 0.5, "assertiveness": 0.5},
-        "ideology": {"state_vs_people": 0.5, "central_vs_local": 0.5, "pragmatic_vs_ideal": 0.5},
-        "goals": {"welfare": 0.20, "reputation": 0.20, "power": 0.20, "wealth": 0.20, "legacy": 0.20},
+    "CORRUPT": {
+        # 贪酷恶劣型：强硬精于计算，个人利益优先，善于交际（为利）
+        "intelligence": 7,
+        "stamina": 7,
+        "personality": {
+            "sociability":   0.65,   # 善于交际，擅长拉拢关系
+            "rationality":   0.70,   # 精于利益计算
+            "assertiveness": 0.75,   # 强硬施压，为己牟利
+        },
+        "ideology": {
+            "state_vs_people":    0.70,   # 重社稷/自身利益，轻百姓
+            "central_vs_local":   0.60,   # 顺从上级以求庇护
+            "pragmatic_vs_ideal": 0.80,   # 极端务实，唯利是图
+        },
+        "goals_base": {
+            "welfare": 0.08, "reputation": 0.22,
+            "power": 0.28, "wealth": 0.30, "legacy": 0.12,
+        },
     },
 }
 
 
 # ===== 知县施政类型体系 =====
-
-# 每种施政类型可取的风格列表
-ARCHETYPE_TO_STYLES = {
-    'VIRTUOUS': ['minben', 'jinqu'],
-    'MIDDLING': ['baoshou', 'yuanhua'],
-    'CORRUPT':  ['zhengji', 'yuanhua'],
-}
 
 # 各县域类型对应的施政类型概率权重 [VIRTUOUS, MIDDLING, CORRUPT]
 ARCHETYPE_COUNTY_TYPE_WEIGHTS = {
@@ -427,47 +457,122 @@ ARCHETYPE_WEALTH_GOAL = {
     'CORRUPT':  (0.38, 0.55),
 }
 
+# 旧版兼容：保留 ARCHETYPE_TO_STYLES 供存量代码引用，不再参与主流程
+ARCHETYPE_TO_STYLES = {
+    'VIRTUOUS': ['minben', 'jinqu'],
+    'MIDDLING': ['baoshou', 'yuanhua'],
+    'CORRUPT':  ['zhengji', 'yuanhua'],
+}
 
-def generate_governor_profile(style, archetype=None):
-    """根据知县风格（和可选的施政类型）生成三层属性，返回 dict。
-    archetype 影响 goals.wealth 权重，使贪酷型知县更倾向个人财富积累。
+
+def derive_governor_style(profile):
+    """从三层属性动态推导执政风格，返回 5 种风格之一。
+
+    推导逻辑：对每种风格按属性特征打分，取最高分。
+      minben  — 低 state_vs_people，高 welfare 目标，低 assertiveness
+      zhengji — 高 state_vs_people，高 assertiveness，高 power/reputation 目标
+      baoshou — 高 rationality，低 assertiveness，中高 wealth 目标
+      jinqu   — 高 assertiveness，低 pragmatic_vs_ideal（理想驱动），高 power 目标
+      yuanhua — 高 sociability，目标分布均衡（低方差）
     """
-    base = GOVERNOR_STYLE_PROFILES.get(style)
-    if not base:
-        base = GOVERNOR_STYLE_PROFILES["yuanhua"]
+    p = profile.get("personality", {})
+    ideo = profile.get("ideology", {})
+    goals = profile.get("goals", {})
+
+    soc = p.get("sociability", 0.5)
+    rat = p.get("rationality", 0.5)
+    ass = p.get("assertiveness", 0.5)
+    svp = ideo.get("state_vs_people", 0.5)
+    pvl = ideo.get("pragmatic_vs_ideal", 0.5)
+
+    welfare    = goals.get("welfare", 0.20)
+    wealth     = goals.get("wealth", 0.20)
+    power      = goals.get("power", 0.20)
+    reputation = goals.get("reputation", 0.20)
+    legacy     = goals.get("legacy", 0.20)
+
+    scores = {
+        "minben":  0.0,
+        "zhengji": 0.0,
+        "baoshou": 0.0,
+        "jinqu":   0.0,
+        "yuanhua": 0.0,
+    }
+
+    # minben：重民本，温顺，以民众福祉为目标
+    scores["minben"] += (1.0 - svp) * 2.0       # 重黎民
+    scores["minben"] += (1.0 - ass) * 1.0        # 温顺低调
+    scores["minben"] += welfare * 3.0            # 福祉目标高
+    scores["minben"] -= wealth * 2.0             # 财富目标低
+
+    # zhengji：重仕途政绩，强硬务实，追求权力声望
+    scores["zhengji"] += svp * 2.0              # 重社稷/仕途
+    scores["zhengji"] += ass * 2.5              # 强硬果决（提高权重以拉开与 baoshou 的差距）
+    scores["zhengji"] += (power + reputation) * 2.0
+    scores["zhengji"] += pvl * 0.5              # 务实（降低权重，避免与 baoshou 重叠）
+
+    # baoshou：理性保守，低调，守住财富；务实（pragmatic）的保守官员同样适配
+    scores["baoshou"] += rat * 2.0              # 理性谨慎
+    scores["baoshou"] += (1.0 - ass) * 1.5     # 低调守成
+    scores["baoshou"] += wealth * 2.0           # 财富保留
+    scores["baoshou"] += pvl * 0.8              # 务实守成（区别于理想主义的 jinqu）
+    scores["baoshou"] -= welfare * 1.0          # 不在乎民生
+
+    # jinqu：强硬进取，理想驱动，扩张权力
+    scores["jinqu"] += ass * 2.5               # 强硬进取
+    scores["jinqu"] += (1.0 - pvl) * 1.5      # 理想主义驱动
+    scores["jinqu"] += power * 2.0             # 权力扩张
+    scores["jinqu"] -= wealth * 1.0            # 非财富导向
+
+    # yuanhua：合群圆滑，目标均衡（低方差）
+    scores["yuanhua"] += soc * 2.0             # 合群圆滑
+    goal_vals = [welfare, wealth, power, reputation, legacy]
+    mean_g = sum(goal_vals) / len(goal_vals)
+    variance = sum((v - mean_g) ** 2 for v in goal_vals) / len(goal_vals)
+    # 方差越低（目标越均衡）得分越高；基准方差≈0.0 时满分
+    scores["yuanhua"] += max(0.0, (0.02 - variance) * 15.0)
+
+    return max(scores, key=scores.get)
+
+
+def generate_governor_profile(archetype="MIDDLING", style=None):  # noqa: ARG001 (style已废弃)
+    """根据施政类型（archetype）生成三层属性，返回 dict。
+
+    archetype 决定属性均值分布；style 参数已废弃，保留仅供旧调用兼容。
+    执政风格请在需要时调用 derive_governor_style(profile) 动态推导。
+    """
+    base = ARCHETYPE_ATTRIBUTE_PROFILES.get(archetype, ARCHETYPE_ATTRIBUTE_PROFILES["MIDDLING"])
 
     def _perturb(val, lo=0.0, hi=1.0):
-        return round(max(lo, min(hi, val + _random.uniform(-0.15, 0.15))), 2)
+        return round(max(lo, min(hi, val + _random.uniform(-0.18, 0.18))), 2)
 
     profile = {
-        "intelligence": max(1, min(10, base["intelligence"] + _random.randint(-1, 1))),
-        "stamina": max(1, min(10, base["stamina"] + _random.randint(-1, 1))),
+        "intelligence": max(1, min(10, base["intelligence"] + _random.randint(-1, 2))),
+        "stamina":      max(1, min(10, base["stamina"]      + _random.randint(-1, 2))),
         "personality": {k: _perturb(v) for k, v in base["personality"].items()},
-        "ideology": {k: _perturb(v) for k, v in base["ideology"].items()},
+        "ideology":    {k: _perturb(v) for k, v in base["ideology"].items()},
     }
 
     # 目标权重：扰动后重新归一化
-    raw_goals = {k: max(0.05, _perturb(v, 0.05, 0.60)) for k, v in base["goals"].items()}
+    raw_goals = {k: max(0.04, _perturb(v, 0.04, 0.65)) for k, v in base["goals_base"].items()}
     total = sum(raw_goals.values())
     profile["goals"] = {k: round(v / total, 2) for k, v in raw_goals.items()}
 
     profile["memory"] = []
 
-    # Apply archetype wealth bias: override goals.wealth and renormalize
-    if archetype and archetype in ARCHETYPE_WEALTH_GOAL:
+    # archetype wealth bias：将 goals.wealth 强制落入原型对应区间后重新归一化
+    if archetype in ARCHETYPE_WEALTH_GOAL:
         w_min, w_max = ARCHETYPE_WEALTH_GOAL[archetype]
         target_wealth = round(_random.uniform(w_min, w_max), 2)
         goals = profile["goals"]
         old_wealth = goals.get("wealth", 0.15)
         delta = target_wealth - old_wealth
-        # Distribute the delta away from other goals proportionally
         other_keys = [k for k in goals if k != "wealth"]
         other_total = sum(goals[k] for k in other_keys)
         if other_total > 0:
             for k in other_keys:
                 goals[k] = max(0.02, round(goals[k] - delta * (goals[k] / other_total), 2))
         goals["wealth"] = target_wealth
-        # Final renormalize to sum=1
         total = sum(goals.values())
         profile["goals"] = {k: round(v / total, 2) for k, v in goals.items()}
 

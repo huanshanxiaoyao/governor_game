@@ -17,6 +17,11 @@ from .career_track import CareerTrackService
 from .constants import (
     ADMIN_COST_DETAIL,
     COUNTY_TYPES,
+    GOVERNOR_SURNAMES,
+    GOVERNOR_GIVEN_NAMES,
+    GOVERNOR_STYLES,
+    PLAYER_COUNTY_NAMES,
+    derive_governor_style,
     generate_governor_profile,
 )
 from .emergency import EmergencyService
@@ -25,7 +30,7 @@ from .state import load_county_state, save_player_state
 
 logger = logging.getLogger("game")
 
-TERMINAL_REASONS = {"ANNUAL_REVIEW_DISMISSED", "PROMOTED_TO_PREFECT"}
+TERMINAL_REASONS = {"ANNUAL_REVIEW_DISMISSED", "PROMOTED_TO_PREFECT", "PLAYER_RETIRED"}
 
 
 class NewTermService:
@@ -46,11 +51,15 @@ class NewTermService:
         return None
 
     @classmethod
-    def start_new_term(cls, game: GameState) -> dict:
+    def start_new_term(cls, game: GameState, choice: str = "transfer") -> dict:
         """
         执行续任：
+          choice 参数：
+            "transfer" — pool_level==2 时调任邻县（默认）
+            "stay"     — 申请留任，即便 pool_level==2 也留在原县
+            "retire"   — 请求归隐，游戏终止
           1. 归档考评记录
-          2. 若 pool_level == 2，接管邻县；否则留任
+          2. 按 choice 决定是否调任
           3. 重置任期计数器
           4. 重置紧急状态、年度配额
         返回新的 game_data dict 供前端更新。
@@ -64,6 +73,13 @@ class NewTermService:
         pool_level = track.get("candidate_pool_level", 0)
         term_index = track.get("term_index", 1)
 
+        # ── 归隐：直接终止游戏 ────────────────────────────────────────────
+        if choice == "retire":
+            county["term_end_reason"] = "PLAYER_RETIRED"
+            county["awaiting_new_term"] = False
+            save_player_state(game, county)
+            return {"ok": True, "retired": True, "term_index": term_index, "pool_level": pool_level, "transfer_info": None}
+
         # ── Step 1: 归档考评 ──────────────────────────────────────────────
         current_reviews = county.get("annual_reviews") or []
         history = county.get("annual_reviews_history") or []
@@ -72,7 +88,7 @@ class NewTermService:
 
         # ── Step 2: 留任 or 调任 ─────────────────────────────────────────
         transfer_info = None
-        if pool_level == 2:
+        if pool_level == 2 and choice != "stay":
             transfer_result = cls._transfer_to_neighbor(game, county, track)
             if transfer_result.get("ok"):
                 county = transfer_result["new_county"]
@@ -157,8 +173,19 @@ class NewTermService:
         new_county["governor_profile"] = old_county.get("governor_profile", {})
         new_county["prefect_affinity"] = 50.0
 
+        # ── 调任动荡：新县民心/治安/商业各降5点 ──
+        for field in ("morale", "security", "commercial"):
+            new_county[field] = max(0.0, new_county.get(field, 50.0) - 5.0)
+
         # ── 从 neighbors 中移除（它现在归玩家治理）──
+        chosen_id = chosen.id
         chosen.delete()
+
+        # ── 将旧县转为邻县（由 AI 接管）──
+        old_county_name = old_county.get("county_name") or PLAYER_COUNTY_NAMES.get(
+            old_county.get("county_type", "fiscal_core"), "故县"
+        )
+        cls._create_neighbor_from_old_county(game, old_county, old_county_name)
 
         # ── 重建本县地主/村民代表 Agent 记录 ──
         # 旧县的 GENTRY/VILLAGER 绑定了旧村庄；调任后需删除并按新县村庄重建。
@@ -166,14 +193,14 @@ class NewTermService:
 
         logger.info(
             "game#%d 调任：%s → %s（邻县 id=%d）",
-            game.id, old_county.get("county_name", "旧县"), chosen.county_name, chosen.id,
+            game.id, old_county_name, chosen.county_name, chosen_id,
         )
         return {
             "ok": True,
             "new_county": new_county,
-            "old_county_name": old_county.get("county_name", ""),
+            "old_county_name": old_county_name,
             "new_county_name": chosen.county_name,
-            "neighbor_id": chosen.id,
+            "neighbor_id": chosen_id,
         }
 
     @classmethod
@@ -204,6 +231,45 @@ class NewTermService:
                 attributes=copy.deepcopy(defn["attributes"]),
             )
         logger.info("game#%d 重建本县 Agent（%d 条）", game.id, len(defs))
+
+    @classmethod
+    def _create_neighbor_from_old_county(cls, game: GameState, old_county: dict, county_name: str) -> None:
+        """
+        玩家调任后，将旧县转为一个 AI 管辖的邻县，由新知县接手治理。
+        随机生成新知县姓名、施政风格，使用模板简介（不调用 LLM）。
+        """
+        import random
+        # 随机抽取施政类型（换任知县原型分布），从属性推导风格
+        archetype = random.choices(
+            ["VIRTUOUS", "MIDDLING", "CORRUPT"], weights=[0.30, 0.45, 0.25]
+        )[0]
+        profile = generate_governor_profile(archetype)
+        style_key = derive_governor_style(profile)
+
+        surname = random.choice(GOVERNOR_SURNAMES)
+        given = random.choice(GOVERNOR_GIVEN_NAMES)
+        gov_name = surname + given
+
+        bio = f"{gov_name}，{county_name}知县。{GOVERNOR_STYLES[style_key]['bio_template']}"
+
+        # 剥离玩家专属字段，保留县情数据
+        county_data = copy.deepcopy(old_county)
+        for key in ("career_track", "annual_reviews", "annual_reviews_history",
+                    "governor_profile", "awaiting_new_term", "term_end_reason"):
+            county_data.pop(key, None)
+        county_data["county_name"] = county_name
+        county_data["governor_profile"] = profile
+
+        NeighborCounty.objects.create(
+            game=game,
+            county_name=county_name,
+            governor_name=gov_name,
+            governor_style=style_key,
+            governor_archetype=archetype,
+            governor_bio=bio,
+            county_data=county_data,
+        )
+        logger.info("game#%d 旧县「%s」转为邻县，新知县：%s", game.id, county_name, gov_name)
 
     @classmethod
     def _backfill_missing_fields(cls, county: dict, reference: dict) -> None:

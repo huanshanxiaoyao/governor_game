@@ -8,10 +8,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from ..models import AdminUnit
 from .constants import (
     ARCHETYPE_COUNTY_TYPE_WEIGHTS,
-    ARCHETYPE_TO_STYLES,
     GOVERNOR_GIVEN_NAMES,
     GOVERNOR_SURNAMES,
     MAX_MONTH,
+    derive_governor_style,
     generate_governor_profile,
     month_of_year,
     year_of,
@@ -990,13 +990,14 @@ class AnnualReviewService:
         old_name = old_profile.get("name", "")
         county_type = cd.get("county_type", "fiscal_core")
         archetype = cls._pick_successor_archetype(county_type)
-        style = random.choice(ARCHETYPE_TO_STYLES.get(archetype, ["yuanhua"]))
+        profile = generate_governor_profile(archetype)
+        style = derive_governor_style(profile)
         new_name = cls._pick_new_governor_name(
             unit.parent.children.exclude(id=unit.id),
             excluded={old_name},
         )
         cd["governor_profile"] = {
-            **generate_governor_profile(style, archetype=archetype),
+            **profile,
             "name": new_name,
             "style": style,
             "archetype": archetype,

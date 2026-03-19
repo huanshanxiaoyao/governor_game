@@ -13,6 +13,11 @@ from .state import load_county_state, save_player_state
 class InvestmentService:
     """投资行动处理"""
 
+    RECLAIM_LAND_GAIN = 800
+    RECLAIM_WARNING_THRESHOLD = 0.85
+    RECLAIM_HARD_CAP = 1.20
+    RECLAIM_HARD_CAP_REASON = "该村继续开垦将超过土地开发上限，无法执行"
+
     # 基建类投资（费用/工期动态计算）
     INFRA_ACTIONS = {"build_irrigation": "irrigation", "expand_school": "school", "build_medical": "medical"}
 
@@ -88,6 +93,37 @@ class InvestmentService:
         if not level_key:
             return 1
         return county.get(level_key, 0) + 1
+
+    @classmethod
+    def _get_reclaim_projection(cls, county, village):
+        """Return current/pending/projected reclaim utilization for one village."""
+        ensure_village_ledgers(village)
+        ceiling = float(village.get("land_ceiling", 0) or 0)
+        peasant_land = float(village.get("peasant_ledger", {}).get("farmland", 0) or 0)
+        gentry_registered = float(village.get("gentry_ledger", {}).get("registered_farmland", 0) or 0)
+        gentry_hidden = float(village.get("gentry_ledger", {}).get("hidden_farmland", 0) or 0)
+        cultivated_now = peasant_land + gentry_registered + gentry_hidden
+
+        pending_reclaims = sum(
+            1 for inv in county.get("active_investments", [])
+            if inv.get("action") == "reclaim_land"
+            and inv.get("target_village") == village.get("name")
+        )
+        pending_gain = pending_reclaims * cls.RECLAIM_LAND_GAIN
+        cultivated_with_pending = cultivated_now + pending_gain
+        projected_cultivated = cultivated_with_pending + cls.RECLAIM_LAND_GAIN
+
+        current_utilization = cultivated_now / ceiling if ceiling > 0 else 0.0
+        projected_utilization = projected_cultivated / ceiling if ceiling > 0 else 0.0
+        return {
+            "ceiling": ceiling,
+            "cultivated_now": cultivated_now,
+            "cultivated_with_pending": cultivated_with_pending,
+            "projected_cultivated": projected_cultivated,
+            "pending_reclaims": pending_reclaims,
+            "current_utilization": current_utilization,
+            "projected_utilization": projected_utilization,
+        }
 
     @classmethod
     def get_actual_cost(cls, county, action):
@@ -183,9 +219,21 @@ class InvestmentService:
         if spec["requires_village"]:
             if target_village is None:
                 return False, f"{spec['description']}需要指定目标村庄"
-            village_names = [v["name"] for v in county.get("villages", [])]
+            villages = county.get("villages", [])
+            village_names = [v["name"] for v in villages]
             if target_village not in village_names:
                 return False, f"村庄 '{target_village}' 不存在"
+            if action == "reclaim_land":
+                for village in villages:
+                    if village.get("name") != target_village:
+                        continue
+                    projection = cls._get_reclaim_projection(county, village)
+                    if (
+                        projection["ceiling"] > 0
+                        and projection["projected_utilization"] > cls.RECLAIM_HARD_CAP
+                    ):
+                        return False, cls.RECLAIM_HARD_CAP_REASON
+                    break
             if action == "fund_village_school":
                 for v in county.get("villages", []):
                     if v["name"] == target_village and v.get("has_school"):
@@ -363,23 +411,21 @@ class InvestmentService:
             # 过度开发预警 (doc 06a §2.5): reclaim_land 时标记高利用率村庄
             if action == "reclaim_land":
                 warnings = []
+                blocked_villages = []
                 for v in county.get("villages", []):
-                    ensure_village_ledgers(v)
-                    ceiling = v.get("land_ceiling", 0)
-                    if ceiling <= 0:
+                    projection = cls._get_reclaim_projection(county, v)
+                    if projection["ceiling"] <= 0:
                         continue
-                    peasant_land = v.get("peasant_ledger", {}).get("farmland", 0)
-                    gentry_registered = v.get("gentry_ledger", {}).get("registered_farmland", 0)
-                    gentry_hidden = v.get("gentry_ledger", {}).get("hidden_farmland", 0)
-                    cultivated = peasant_land + gentry_registered + gentry_hidden
-                    utilization = cultivated / ceiling
-                    if utilization > 0.85:
+                    if projection["current_utilization"] > cls.RECLAIM_WARNING_THRESHOLD:
                         warnings.append({
                             "village": v["name"],
-                            "utilization": round(utilization * 100, 1),
                         })
+                    if projection["projected_utilization"] > cls.RECLAIM_HARD_CAP:
+                        blocked_villages.append(v["name"])
                 if warnings:
                     item["village_warnings"] = warnings
+                if blocked_villages:
+                    item["blocked_villages"] = blocked_villages
 
             result.append(item)
         return result
