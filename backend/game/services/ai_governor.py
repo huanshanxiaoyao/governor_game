@@ -1,14 +1,17 @@
 """AI知县决策服务 — LLM为主 + 规则引擎兜底"""
 
 import logging
+import os
 import random
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
 from .constants import (
+    ANNUAL_CONSUMPTION,
     GOVERNOR_STYLES,
     INFRA_MAX_LEVEL,
     MAX_MONTH,
+    derive_governor_style,
     generate_governor_profile,
     month_name,
     calculate_infra_maint,
@@ -20,49 +23,26 @@ logger = logging.getLogger('game')
 # 记忆保留条数上限
 _MAX_MEMORY = 8
 
+# 游戏规则文档：从 game_knowledge.md 加载，作为 AI 知县的世界知识
+# 同一进程内只加载一次；文件缺失时降级为空字符串（日志警告）
+def _load_game_knowledge():
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'game_knowledge.md')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        logging.getLogger('game').warning(
+            "game_knowledge.md not found at %s — AI governor will have no game rules context", path)
+        return ""
+
+_GAME_KNOWLEDGE_DOC = _load_game_knowledge()
+
 
 class AIGovernorService:
     """AI知县每月通过LLM做出施政决策，LLM失败时规则引擎兜底"""
 
-    GAME_KNOWLEDGE_TEMPLATE = (
-        '【治县要略】\n'
-        '\n'
-        '一、财政收支\n'
-        '- 县库收入来自三大税源：田赋（农业税）、徭役折银、商税\n'
-        '- 田赋取决于耕地、农事丰歉和税率，民心越高征收效率越好；九月核定，十月入账\n'
-        '- 徭役只征自耕农和佃户，绅衿地主依制免役，五月一次性全年征收\n'
-        '- 商税按月征收，= 全县月GMV × 商税税率（可调1%~5%），地方固定留存60%\n'
-        '- 田赋和徭役按上缴比例上缴，留存部分入县库；上缴比例见县情概览\n'
-        '- 行政开支（含基建维护）在九月一次性扣除\n'
-        '\n'
-        '二、民心与治安\n'
-        '- 民心和治安每月都会自然衰减\n'
-        '- 文教兴盛有助于民心回升；衙役充足有助于治安维持\n'
-        '- 高税率（15%）会持续侵蚀民心；治安低迷则百姓流离失所\n'
-        '\n'
-        '三、投资施政\n'
-        '- 开垦荒地：增加耕地800亩、降低地主占地比，约2个月完工\n'
-        '- 资助村塾：指定村庄建立村塾，完工后民心+5，永久增加年度行政开支\n'
-        '- 修建水利：每级产出+15%，仅对洪灾和旱灾有减损效果（减损15%/30%/60%）\n'
-        '- 扩建县学：完工后文教+10，间接促进民心恢复\n'
-        '- 建设医疗：降低疫病风险和疫病人口损失，可升至3级\n'
-        '- 基建（水利/县学/医疗）最高3级，升级费用成倍增加，同类不可同时建设\n'
-        '- 增设衙役：立竿见影提升治安，但会永久增加行政开支\n'
-        '- 修缮道路：提升商业值，收益逐次递减（首次+8，之后逐次-1）\n'
-        '- 开设义仓：民心+5，秋季灾害人口损失×0.65；义仓用后耗尽，需重建\n'
-        '- 赈灾救济：民心+8，秋季灾害人口损失×0.65；仅灾年可用，仅限一次\n'
-        '\n'
-        '四、灾害与风险\n'
-        '- 水灾、旱灾、蝗灾、疫病可能在六月发生\n'
-        '- 水灾/旱灾/蝗灾：影响秋收产量；疫病：不影响产量，只造成人口损失\n'
-        '- 水利减损：仅对洪灾和旱灾有减产保护，对蝗灾和疫病无效\n'
-        '- 义仓和赈灾不影响秋收减产，仅减少人口损失；医疗设施可降低疫病风险\n'
-        '\n'
-        '五、商业动态\n'
-        '- 商业值(commercial)代表商业发展水平（道路修缮+、灾害-），是集市GMV的基础\n'
-        '- 集市月GMV = 商户数 × commercial × 需求系数；余粮充裕时需求旺盛，短缺时萎缩\n'
-        '- 商税 = 全县月GMV × 商税税率（默认3%，可调1%~5%），地方留存60%\n'
-    )
+    # 游戏规则文档（模块加载时从 game_knowledge.md 读取，仅供类内使用）
+    _GAME_KNOWLEDGE = _GAME_KNOWLEDGE_DOC
 
     COUNTY_TYPE_DESCS = {
         "fiscal_core": "本县为江南财赋重地，田多税重，上缴压力极大。",
@@ -77,6 +57,18 @@ class AIGovernorService:
     def make_decisions(cls, neighbor, season):
         """AI知县施政决策：LLM为主，规则引擎兜底。返回事件描述列表"""
         county = neighbor.county_data
+
+        # 滚动月度快照：_snapshot_prev 供本月_build_context计算delta，
+        # _snapshot_this 供下月_build_context使用
+        county['_snapshot_prev'] = county.get('_snapshot_this', {})
+        county['_snapshot_this'] = {
+            'morale': county.get('morale', 50),
+            'security': county.get('security', 50),
+            'commercial': county.get('commercial', 30),
+            'education': county.get('education', 30),
+            'treasury': county.get('treasury', 0),
+            'peasant_grain_reserve': float(county.get('peasant_grain_reserve', 0)),
+        }
 
         # 懒初始化 governor_profile
         profile = cls._ensure_profile(neighbor)
@@ -120,6 +112,19 @@ class AIGovernorService:
         levy_events = cls._ai_force_levy(county, profile)
         events.extend(levy_events)
 
+        # 购粮备荒（粮储不足且无紧急状态时主动购粮）
+        buy_events = cls._ai_buy_grain(county, profile)
+        events.extend(buy_events)
+
+        # 年度承诺系统：正月立誓，腊月核验
+        from .constants import month_of_year as _moy
+        moy = _moy(season)
+        if moy == 1:
+            cls._ai_make_annual_pledges(county, profile, season)
+        elif moy == 12:
+            pledge_events = cls._ai_check_pledges(county, season)
+            events.extend(pledge_events)
+
         # 追加记忆
         cls._append_memory(county, season, events)
 
@@ -134,8 +139,8 @@ class AIGovernorService:
 
         profile = county.get("governor_profile")
         if not profile:
-            archetype = county.get("governor_profile", {}).get("archetype")
-            profile = generate_governor_profile(neighbor.governor_style, archetype=archetype)
+            archetype = getattr(neighbor, "governor_archetype", None) or "MIDDLING"
+            profile = generate_governor_profile(archetype)
 
         return cls._build_context(neighbor, county, season, profile)
 
@@ -158,14 +163,18 @@ class AIGovernorService:
         county = neighbor.county_data
         profile = county.get("governor_profile")
         if not profile:
-            profile = generate_governor_profile(neighbor.governor_style)
+            # 从 archetype 生成属性，不依赖存储的 governor_style
+            archetype = getattr(neighbor, "governor_archetype", None) or "MIDDLING"
+            profile = generate_governor_profile(archetype)
             county["governor_profile"] = profile
         # Cache governor identity so settlement code (which has no model reference) can read it
         if "governor_meta" not in county:
+            # 执政风格从属性动态推导，不存储为静态字段
+            derived_style = derive_governor_style(profile)
             county["governor_meta"] = {
                 "name": getattr(neighbor, "governor_name", ""),
                 "bio": getattr(neighbor, "governor_bio", ""),
-                "style": getattr(neighbor, "governor_style", "zhengji"),
+                "style": derived_style,
                 "archetype": getattr(neighbor, "governor_archetype", "MIDDLING"),
                 "county_name": getattr(neighbor, "county_name", ""),
             }
@@ -205,7 +214,9 @@ class AIGovernorService:
     @classmethod
     def _build_context(cls, neighbor, county, season, profile):
         """构建LLM决策所需的上下文（含三层属性和记忆）"""
-        style_info = GOVERNOR_STYLES.get(neighbor.governor_style, {})
+        # 执政风格从当前属性动态推导，不依赖 neighbor.governor_style 字段
+        derived_style = derive_governor_style(profile)
+        style_info = GOVERNOR_STYLES.get(derived_style, {})
         county_type = county.get('county_type', 'fiscal_core')
         county_type_desc = cls.COUNTY_TYPE_DESCS.get(county_type, '')
 
@@ -225,6 +236,45 @@ class AIGovernorService:
         available_text, available_actions = cls._build_available_investments(county)
 
         total_pop = sum(v["population"] for v in county.get("villages", []))
+
+        # 粮食与紧急状态
+        monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12.0 if total_pop > 0 else 1.0
+        grain_reserve = float(county.get('peasant_grain_reserve', 0))
+        grain_months = grain_reserve / monthly_consumption if monthly_consumption > 0 else 0.0
+        grain_line = f"粮储{round(grain_reserve)}斤（{grain_months:.1f}月消耗量）"
+        if grain_months < 1:
+            grain_line += "【严重不足！】"
+        elif grain_months < 2:
+            grain_line += "【偏低】"
+
+        emergency = county.get('emergency') or {}
+        if emergency.get('active'):
+            shortage = round(float(emergency.get('shortage', 0)))
+            emerg_text = f"⚠️ 粮荒激活，缺口{shortage}斤"
+            riot = emergency.get('riot') or {}
+            if riot.get('active'):
+                emerg_text += "，民变已爆发"
+            grain_emergency_summary = grain_line + "\n" + emerg_text
+        else:
+            grain_emergency_summary = grain_line
+
+        # 上月变化（delta）
+        prev_snap = county.get('_snapshot_prev', {})
+        delta_parts = []
+        if prev_snap:
+            for key, label, unit in [
+                ('morale', '民心', ''), ('security', '治安', ''),
+                ('commercial', '商业', ''), ('education', '文教', ''),
+                ('treasury', '县库', '两'), ('peasant_grain_reserve', '粮储', '斤'),
+            ]:
+                curr_v = float(county.get(key, 0))
+                prev_v = float(prev_snap.get(key, curr_v))
+                diff = round(curr_v - prev_v, 1)
+                if abs(diff) >= 1:
+                    sign = '+' if diff > 0 else ''
+                    val = int(diff) if diff == int(diff) else diff
+                    delta_parts.append(f"{label}{sign}{val}{unit}")
+        delta_summary = "、".join(delta_parts) if delta_parts else "（首月，无对比数据）"
 
         # 县情摘要
         remit_ratio = county.get('remit_ratio', 0.65)
@@ -297,16 +347,29 @@ class AIGovernorService:
         else:
             directives_desc = ""
 
-        # game_knowledge: 游戏规则 + 县域特色（同一知县36个月不变，可命中前缀缓存）
-        # 知府指令（逐月变化）移至 user prompt，不混入此处
-        game_knowledge = cls.GAME_KNOWLEDGE_TEMPLATE
-        if county_type_desc:
-            game_knowledge += f"\n六、县域特色\n- {county_type_desc}\n"
+        # game_knowledge: 纯规则文档，对所有知县/县域完全相同 → 最大化前缀缓存命中
+        # county_type_desc 作为独立字段传入 system prompt，避免污染共享前缀
+        game_knowledge = cls._GAME_KNOWLEDGE
 
         # 知府指令单独构造，供 user prompt 使用
         directives_section = (
             f"\n【知府指令】\n{directives_desc}\n" if directives_desc else ""
         )
+
+        # 任期进度（年份 + 剩余月数），供 AI 判断是否还值得发起长期投资
+        from .constants import year_of, month_of_year as _moy2, MONTH_NAMES
+        yr = year_of(season)
+        moy2 = _moy2(season)
+        months_left = 36 - season
+        year_context = f"第{yr}年·{MONTH_NAMES[moy2 - 1]}，任期还剩 {months_left} 个月"
+
+        # 本年承诺提醒（正月立誓后，每月提醒 AI 记得履行）
+        pledge_data = county.get('ai_pledges_this_year', {})
+        if pledge_data:
+            pledge_descs = [p['description'] for p in pledge_data.get('pledges', [])]
+            pledge_reminder = "本年已立承诺：" + "、".join(pledge_descs) + "（腊月将检验）"
+        else:
+            pledge_reminder = ""
 
         # 年度配额与上缴进度
         annual_quota = county.get('annual_quota', {})
@@ -340,6 +403,10 @@ class AIGovernorService:
         medical_costs_desc = ", ".join(medical_costs)
 
         return {
+            # ── system prompt 静态段（前缀缓存命中率最高）──
+            'game_knowledge': game_knowledge,           # 全局唯一，所有知县共享
+            'county_type_desc': county_type_desc,       # 按县域类型固定（4种），per-county static
+            # ── system prompt 人设段（同一知县36个月不变）──
             'governor_name': neighbor.governor_name,
             'county_name': neighbor.county_name,
             'governor_bio': neighbor.governor_bio,
@@ -347,21 +414,25 @@ class AIGovernorService:
             'personality_desc': personality_desc,
             'ideology_desc': ideology_desc,
             'goals_desc': goals_desc,
-            'memory_desc': memory_desc,
-            'game_knowledge': game_knowledge,
-            'directives_section': directives_section,
-            'quota_summary': quota_summary,
+            # ── user prompt 动态段（每月变化）──
+            'season': season,
+            'year_context': year_context,
+            'county_summary': county_summary,
+            'grain_emergency_summary': grain_emergency_summary,
+            'delta_summary': delta_summary,
             'available_investments': available_text,
             'tax_rate': f"{county.get('tax_rate', 0.12):.0%}",
             'commercial_tax_rate': f"{county.get('commercial_tax_rate', 0.03):.0%}",
             'medical_level': current_medical,
             'medical_costs_desc': medical_costs_desc,
-            'season': season,
-            'county_summary': county_summary,
             'villages_summary': villages_summary,
             'markets_summary': markets_summary,
             'disaster_summary': disaster_summary,
             'investments_summary': investments_summary,
+            'directives_section': directives_section,
+            'quota_summary': quota_summary,
+            'memory_desc': memory_desc,
+            'pledge_reminder': pledge_reminder,
         }
 
     @classmethod
@@ -743,10 +814,37 @@ class AIGovernorService:
             else:
                 stance_data['quota'] = 'balance'
 
+    # 长工期投资（工期 > 6个月），任期意识惩罚适用
+    _LONG_BUILD_MONTHS = {
+        "build_irrigation": 8,   # 一级最少8个月
+        "expand_school": 2,      # 一级2月，三级5月（短工期，不惩罚）
+        "build_medical": 2,      # 同上
+        "repair_roads": 2,       # 较短
+        "fund_village_school": 4,
+        "reclaim_land": 4,
+    }
+
+    @classmethod
+    def _term_penalty(cls, action, months_left):
+        """计算任期意识惩罚分：若预计工期接近或超过剩余任期，大幅降分。
+        返回 0（无惩罚）到 -50（严重惩罚）之间的负数。
+        """
+        build_months = cls._LONG_BUILD_MONTHS.get(action, 0)
+        if build_months == 0 or months_left >= 12:
+            return 0  # 任期充足或即时生效投资，不惩罚
+        # 工期超过剩余月数 → 无法完工，重罚
+        if build_months >= months_left:
+            return -50
+        # 工期占剩余任期 50%+ → 轻惩罚
+        if build_months >= months_left * 0.5:
+            return -20
+        return 0
+
     @classmethod
     def _fallback_investment(cls, neighbor, county, season, profile):
         """规则引擎选择投资（可多项，按分数从高到低依次执行直到资金不足）"""
         all_events = []
+        months_left = MAX_MONTH - season  # 剩余任期月数（含本月不计）
 
         # 循环：每次重新评估可用投资（因为前一次投资可能改变了状态）
         for _ in range(5):  # 最多5轮，防止无限循环
@@ -755,7 +853,6 @@ class AIGovernorService:
                 break
 
             treasury = county.get("treasury", 0)
-            price_index = county.get("price_index", 1.0)
             goals = profile.get("goals", {})
             security = county.get("security", 50)
             commercial = county.get("commercial", 30)
@@ -781,7 +878,6 @@ class AIGovernorService:
             reputation_w = goals.get("reputation", 0.2)
 
             for action in available_actions:
-                spec = InvestmentService.INVESTMENT_TYPES[action]
                 actual_cost = InvestmentService.get_actual_cost(county, action)
                 if actual_cost > treasury:
                     continue
@@ -817,6 +913,9 @@ class AIGovernorService:
                         score = 20 + reputation_w * 15
                     else:
                         continue
+
+                # 任期意识：临近任期尾声时惩罚长工期投资
+                score += cls._term_penalty(action, months_left)
 
                 score += random.uniform(0, 8)
                 scores[action] = score
@@ -953,19 +1052,68 @@ class AIGovernorService:
 
         # 从事件中提取关键信息
         inv_desc = "无投资"
+        completed_descs = []
         for evt in events:
-            if "投资" in evt or "增设" in evt or "建成" in evt or "赈灾" in evt:
-                # 取事件的简短版本
-                inv_desc = evt.split("，")[0] if "，" in evt else evt
-                break
+            if "投资" in evt or "增设" in evt or "赈灾" in evt or "购粮" in evt:
+                if inv_desc == "无投资":
+                    inv_desc = evt.split("，")[0] if "，" in evt else evt
+            # 捕获本月完工的工程（由 settlement 写入，包含"竣工"或"已建成"）
+            if "竣工" in evt or "已建成" in evt or "完工" in evt:
+                short = evt.split("，")[0] if "，" in evt else evt
+                completed_descs.append(short)
 
         treasury = round(county.get("treasury", 0))
         morale = round(county.get("morale", 50))
+        security = round(county.get("security", 50))
         tax_rate = county.get("tax_rate", 0.12)
 
+        # 粮食储备状态
+        total_pop = sum(v.get("population", 0) for v in county.get("villages", []))
+        monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12.0 if total_pop > 0 else 1.0
+        grain_reserve = float(county.get("peasant_grain_reserve", 0))
+        grain_months = grain_reserve / monthly_consumption if monthly_consumption > 0 else 0.0
+        if grain_months < 1.0:
+            grain_tag = "【粮荒】"
+        elif grain_months < 2.0:
+            grain_tag = "【粮偏低】"
+        else:
+            grain_tag = ""
+
+        # 灾害标记
+        disaster = county.get("disaster_this_year")
+        disaster_tag = ""
+        if disaster:
+            dtype_map = {"flood": "洪灾", "drought": "旱灾", "locust": "蝗灾", "plague": "疫病"}
+            disaster_tag = f"【{dtype_map.get(disaster['type'], disaster['type'])}】"
+
+        # 人口变化方向（来自上月快照）
+        prev_pop = county.get("_pop_last_month")
+        curr_pop = total_pop
+        pop_tag = ""
+        if prev_pop is not None:
+            diff = curr_pop - prev_pop
+            if diff >= 50:
+                pop_tag = "人口↑"
+            elif diff <= -50:
+                pop_tag = "人口↓"
+        county["_pop_last_month"] = curr_pop  # 为下月比较写入快照
+
+        # 组装记忆条目
+        extras = []
+        if grain_tag:
+            extras.append(grain_tag)
+        if disaster_tag:
+            extras.append(disaster_tag)
+        if completed_descs:
+            extras.append("竣工：" + "、".join(completed_descs[:2]))
+        if pop_tag:
+            extras.append(pop_tag)
+
+        extras_str = " ".join(extras)
         entry = (
             f"{month_name(season)}: {inv_desc}, "
-            f"税率{tax_rate:.0%}, 县库{treasury}两, 民心{morale}"
+            f"税率{tax_rate:.0%}, 库{treasury}两, 民心{morale}, 治安{security}"
+            + (f" {extras_str}" if extras_str else "")
         )
 
         memory = profile.setdefault("memory", [])
@@ -973,3 +1121,184 @@ class AIGovernorService:
         # 只保留最近 _MAX_MEMORY 条
         if len(memory) > _MAX_MEMORY:
             profile["memory"] = memory[-_MAX_MEMORY:]
+
+    # ==================== 购粮备荒 ====================
+
+    @classmethod
+    def _ai_buy_grain(cls, county, profile):
+        """AI知县：粮储偏低时主动购粮，避免缺粮危机。
+
+        条件：peasant_grain_reserve < 2个月消耗 且 无紧急状态 且 县库 > 100两
+        效果：花费县库购粮，补充至约3个月消耗量。
+        welfare 导向高的知县更积极，wealth 导向高（保守型）的知县更谨慎。
+        """
+        from .constants import ANNUAL_CONSUMPTION, GRAIN_PER_LIANG
+
+        emergency = county.get('emergency', {})
+        if emergency.get('active'):
+            return []   # 紧急状态由 EmergencyService 处理
+
+        total_pop = sum(v.get('population', 0) for v in county.get('villages', []))
+        if total_pop <= 0:
+            return []
+
+        monthly_consumption = total_pop * ANNUAL_CONSUMPTION / 12.0
+        current_grain = float(county.get('peasant_grain_reserve', 0))
+
+        if current_grain >= monthly_consumption * 2:
+            return []   # 储备充足，无需购粮
+
+        treasury = county.get('treasury', 0)
+        min_reserve = 100   # 县库最低保留
+        if treasury <= min_reserve:
+            return []
+
+        # 决策得分：welfare高 → 积极购粮；wealth高/粮食不太紧 → 保守
+        goals = profile.get('goals', {})
+        welfare_w = goals.get('welfare', 0.2)
+        wealth_w = goals.get('wealth', 0.15)
+        grain_months = current_grain / monthly_consumption if monthly_consumption > 0 else 2
+        urgency = max(0.0, 2.0 - grain_months)  # 0-2，储备越少越紧急
+
+        score = welfare_w * 0.5 + urgency * 0.3 - wealth_w * 0.3 + random.uniform(-0.1, 0.1)
+        if score < 0.25:
+            return []
+
+        # 目标补充到3个月消耗量，最多花掉县库40%且不低于保留值
+        target_grain = monthly_consumption * 3
+        needed = target_grain - current_grain
+        max_spend = min(treasury - min_reserve, treasury * 0.4)
+        max_grain = max_spend * GRAIN_PER_LIANG
+        actual_grain = round(min(needed, max_grain))
+
+        if actual_grain < 100:
+            return []
+
+        actual_cost = round(actual_grain / GRAIN_PER_LIANG)
+        if actual_cost < 5:
+            return []
+
+        county['peasant_grain_reserve'] = round(current_grain + actual_grain, 1)
+        county['treasury'] = round(treasury - actual_cost, 1)
+
+        governor_name = county.get('governor_meta', {}).get('name', '知县')
+        return [f"【购粮备荒】{governor_name}拨银{actual_cost}两购粮{actual_grain}斤，以备不时之需"]
+
+    # ==================== 年度承诺系统（简版） ====================
+
+    @classmethod
+    def _ai_make_annual_pledges(cls, county, profile, season):
+        """正月：AI知县根据当前局势立下年度施政承诺（至多2条）。
+
+        承诺类型根据当前薄弱指标和人格目标选择，存入 county_data['ai_pledges_this_year']。
+        """
+        goals = profile.get('goals', {})
+        welfare_w = goals.get('welfare', 0.2)
+        legacy_w = goals.get('legacy', 0.2)
+
+        morale = county.get('morale', 50)
+        security = county.get('security', 50)
+        tax_rate = county.get('tax_rate', 0.12)
+        school_level = county.get('school_level', 1)
+
+        candidates = []
+
+        if morale < 45:
+            candidates.append({
+                'type': 'improve_morale',
+                'description': '改善百姓民心',
+                'start': round(morale),
+                'target': round(min(100, morale + 10)),
+                'priority': (45 - morale) * welfare_w * 3,
+            })
+
+        if tax_rate >= 0.14 and welfare_w > 0.15:
+            candidates.append({
+                'type': 'lower_tax',
+                'description': '降低赋税负担',
+                'start': tax_rate,
+                'target': round(tax_rate - 0.01, 2),
+                'priority': welfare_w * 2,
+            })
+
+        if security < 40:
+            candidates.append({
+                'type': 'improve_security',
+                'description': '加强地方治安',
+                'start': round(security),
+                'target': round(min(100, security + 10)),
+                'priority': (40 - security) * 0.05,
+            })
+
+        if school_level < 2 and legacy_w > 0.2:
+            candidates.append({
+                'type': 'build_education',
+                'description': '兴办文教学堂',
+                'start': school_level,
+                'target': 2,
+                'priority': legacy_w,
+            })
+
+        candidates.sort(key=lambda x: x['priority'], reverse=True)
+        pledges = candidates[:2]
+
+        if pledges:
+            county['ai_pledges_this_year'] = {
+                'season_made': season,
+                'pledges': pledges,
+                'morale_start': round(morale),
+                'security_start': round(security),
+                'tax_rate_start': tax_rate,
+            }
+
+    @classmethod
+    def _ai_check_pledges(cls, county, season):
+        """腊月：检查年度承诺履行情况，记录结果并生成事件描述。"""
+        pledge_data = county.get('ai_pledges_this_year')
+        if not pledge_data:
+            return []
+
+        pledges = pledge_data.get('pledges', [])
+        if not pledges:
+            return []
+
+        morale = county.get('morale', 50)
+        security = county.get('security', 50)
+        tax_rate = county.get('tax_rate', 0.12)
+        school_level = county.get('school_level', 1)
+
+        fulfilled = 0
+        results = []
+        for p in pledges:
+            ptype = p['type']
+            met = False
+            if ptype == 'improve_morale':
+                met = morale >= p['target']
+            elif ptype == 'lower_tax':
+                met = tax_rate <= p['target']
+            elif ptype == 'improve_security':
+                met = security >= p['target']
+            elif ptype == 'build_education':
+                met = school_level >= p['target']
+            results.append({**p, 'fulfilled': met})
+            if met:
+                fulfilled += 1
+
+        total = len(pledges)
+        fulfillment_rate = fulfilled / total if total > 0 else 0
+
+        history = county.setdefault('ai_pledge_history', [])
+        history.append({
+            'year_end_season': season,
+            'pledges': results,
+            'fulfillment_rate': round(fulfillment_rate, 2),
+        })
+        if len(history) > 3:
+            county['ai_pledge_history'] = history[-3:]
+
+        county.pop('ai_pledges_this_year', None)
+
+        if fulfillment_rate >= 0.5:
+            return [f"【年终自省】本年所立{total}条承诺，已履行{fulfilled}条，百姓尚称满意"]
+        else:
+            return [f"【年终自省】本年所立{total}条承诺，仅履行{fulfilled}条，有负所托"]

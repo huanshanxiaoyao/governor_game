@@ -12,8 +12,8 @@ from .constants import (
     GOVERNOR_SURNAMES,
     GOVERNOR_GIVEN_NAMES,
     NEIGHBOR_COUNTY_NAMES,
-    ARCHETYPE_TO_STYLES,
     ARCHETYPE_COUNTY_TYPE_WEIGHTS,
+    derive_governor_style,
     generate_governor_profile,
     month_name,
 )
@@ -126,8 +126,6 @@ class NeighborService:
         for i in range(5):
             c_type = county_types[i]
             archetype = archetypes[i]
-            # Pick style constrained by archetype
-            style_key = random.choice(ARCHETYPE_TO_STYLES[archetype])
 
             names_pool = list(NEIGHBOR_COUNTY_NAMES.get(c_type, ["邻县"]))
             county_name = names_pool[i % len(names_pool)]
@@ -138,10 +136,15 @@ class NeighborService:
                     used_names.add(name)
                     break
 
+            # 先从 archetype 生成属性，再推导风格
+            profile = generate_governor_profile(archetype)
+            style_key = derive_governor_style(profile)
+
             specs.append({
                 'c_type': c_type,
                 'archetype': archetype,
                 'style_key': style_key,
+                'profile': profile,
                 'county_name': county_name,
                 'name': name,
             })
@@ -180,8 +183,8 @@ class NeighborService:
 
             county_data = CountyService.create_initial_county(county_type=spec['c_type'])
             EmergencyService.ensure_state(county_data)
-            county_data["governor_profile"] = generate_governor_profile(
-                spec['style_key'], archetype=spec['archetype'])
+            # 使用创建时已生成的 profile（属性先行，风格为派生值）
+            county_data["governor_profile"] = spec['profile']
             county_data["initial_villages"] = copy.deepcopy(county_data.get("villages", []))
             county_data["initial_snapshot"] = cls._build_initial_snapshot(county_data)
 

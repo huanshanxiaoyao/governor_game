@@ -54,8 +54,12 @@ class PrefectAIService:
 
         moy = month_of_year(month)
 
-        # 腊月由年度考核流程处理，不走月度决策
+        # 腊月：仅做司法复审，年度考核由 AnnualReviewService 处理
         if moy == 12:
+            try:
+                cls._run_judicial_review(game, prefect, county, month, report)
+            except Exception as e:
+                logger.warning("知府司法复审失败（腊月）: %s", e)
             return
 
         context = cls._build_monthly_context(prefect, county, month)
@@ -64,6 +68,17 @@ class PrefectAIService:
             decision = cls._fallback_decision(prefect, county, moy)
 
         cls._apply_decision(prefect, county, month, decision, report, game)
+
+        # 季末：季度记忆快照 + 司法复审
+        if moy in {3, 6, 9}:
+            try:
+                cls._append_quarterly_memory(prefect, county, month)
+            except Exception as e:
+                logger.warning("知府季度记忆快照失败: %s", e)
+            try:
+                cls._run_judicial_review(game, prefect, county, month, report)
+            except Exception as e:
+                logger.warning("知府司法复审失败: %s", e)
 
     # ------------------------------------------------------------------
     # 2. 上下文构建
@@ -406,13 +421,19 @@ class PrefectAIService:
         # 同步到 county_data（向后兼容字段）
         county['prefect_affinity'] = new_affinity
 
-        # 追加评价笔记
+        # 追加评价笔记（含县情快照）
+        morale_lbl = _tier_label(county.get('morale', 50))
+        security_lbl = _tier_label(county.get('security', 50))
+        county_snapshot = f"民心{morale_lbl}·治安{security_lbl}"
         if memo_entry:
-            notes = attrs.get('evaluation_notes', [])
-            notes.append(f'[{month_name(month)}] {memo_entry}')
-            if len(notes) > _MAX_EVAL_NOTES:
-                notes = notes[-_MAX_EVAL_NOTES:]
-            attrs['evaluation_notes'] = notes
+            enriched_note = f'[{month_name(month)}] {memo_entry}（{county_snapshot}）'
+        else:
+            enriched_note = f'[{month_name(month)}] 例行观察（{county_snapshot}）'
+        notes = attrs.get('evaluation_notes', [])
+        notes.append(enriched_note)
+        if len(notes) > _MAX_EVAL_NOTES:
+            notes = notes[-_MAX_EVAL_NOTES:]
+        attrs['evaluation_notes'] = notes
 
         # 具体行动
         if action_type in ('directive', 'praise') and directive_text:
@@ -470,6 +491,57 @@ class PrefectAIService:
                 description=f'【知府内部批注】{memo_entry}',
                 data={'affinity_delta': affinity_delta},
             )
+
+    # ------------------------------------------------------------------
+    # 5b. 季度记忆快照（三/六/九月末）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _append_quarterly_memory(cls, prefect, county: dict, month: int) -> None:
+        """在三、六、九月末写入季度记忆快照（跨年持久化，辅助 LLM 跨年连续性）。"""
+        attrs = prefect.attributes
+        moy = month_of_year(month)
+        quarter_map = {3: '一季度（正月至三月）', 6: '二季度（四月至六月）', 9: '三季度（七月至九月）'}
+        quarter_name = quarter_map.get(moy, f'第{moy}月末')
+
+        morale_lbl = _tier_label(county.get('morale', 50))
+        security_lbl = _tier_label(county.get('security', 50))
+
+        quota = county.get('annual_quota', {})
+        fy = county.get('fiscal_year', {})
+        agri_quota = quota.get('agri', 0)
+        agri_done = fy.get('agri_remitted', 0)
+        quota_str = f'配额进度{agri_done / agri_quota * 100:.0f}%' if agri_quota > 0 else '配额未定'
+
+        directives = county.get('prefect_directives', [])
+        recent_dir = directives[-1].get('directive_type', '') if directives else ''
+        dir_str = f'·发出{recent_dir}' if recent_dir else ''
+
+        complaints = county.get('prefect_complaints', 0)
+        complaint_str = f'·乡绅陈情{complaints}件' if complaints > 0 else ''
+
+        memo = f'{quarter_name}：民心{morale_lbl}·治安{security_lbl}·{quota_str}{dir_str}{complaint_str}'
+
+        memory = attrs.get('memory', [])
+        memory.append(memo)
+        if len(memory) > _MAX_MEMORY:
+            memory = memory[-_MAX_MEMORY:]
+        attrs['memory'] = memory
+        prefect.attributes = attrs
+        prefect.save(update_fields=['attributes'])
+
+    # ------------------------------------------------------------------
+    # 5c. 司法复审（三/六/九/十二月）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _run_judicial_review(cls, game, prefect, county: dict, month: int, report: dict) -> None:
+        """调用 JudicialCaseflowService 对玩家已上呈的案件进行知府复审。"""
+        from .judicial_caseflow import JudicialCaseflowService, PREFECT_JUDICIAL_MONTHS
+        moy = month_of_year(month)
+        if moy not in PREFECT_JUDICIAL_MONTHS:
+            return
+        JudicialCaseflowService.auto_review_county_by_prefect(game, prefect, month, county, report)
 
     # ------------------------------------------------------------------
     # 6. 年度考核评语（腊月）
