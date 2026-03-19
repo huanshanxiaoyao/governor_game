@@ -47,6 +47,30 @@
     return parts.length ? parts.join(' ') : '无即时效果';
   }
 
+  // 判决效果小弹窗：展示判决后落地效果
+  function _showVerdictEffectsPopup(verdictLabel, effects) {
+    var label = _effectsLabel(effects);
+    var existing = document.getElementById('verdict-effects-popup');
+    if (existing) existing.remove();
+
+    var popup = document.createElement('div');
+    popup.id = 'verdict-effects-popup';
+    popup.className = 'verdict-effects-popup';
+    popup.innerHTML =
+      '<div class="verdict-effects-popup-inner">' +
+      '<div class="verdict-effects-title">判决已落地：' + verdictLabel + '</div>' +
+      '<div class="verdict-effects-body">' + label + '</div>' +
+      '<button class="btn btn-small verdict-effects-close">确认</button>' +
+      '</div>';
+    document.body.appendChild(popup);
+
+    popup.querySelector('.verdict-effects-close').addEventListener('click', function () {
+      popup.remove();
+    });
+    // 3秒后自动关闭
+    setTimeout(function () { if (popup.parentNode) popup.remove(); }, 3000);
+  }
+
   var STATUS_LABEL = {
     SUBMITTED_TO_PREFECT: '已上呈知府',
     DEFERRED_TO_PREFECT: '委托知府裁定',
@@ -133,7 +157,7 @@
       allSuspicions.forEach(function (s) { html += '<li>' + s + '</li>'; });
       html += '</ul></div>';
     }
-    // 判决方向（不显示县丞推荐标记）
+    // 判决方向（不显示县丞推荐标记，效果在判决后弹窗展示）
     var opts = c.verdict_options || [];
     if (opts.length) {
       html += '<div class="pref-personnel-block"><div><strong>判决方向：</strong></div><div class="county-verdict-options">';
@@ -145,7 +169,6 @@
           'data-verdict-code="' + opt.verdict_code + '">' +
           opt.verdict_label +
           '</button>' +
-          '<span class="county-verdict-effects hint">' + _effectsLabel(opt.immediate_effects) + '</span>' +
           '</div>' +
           '<div class="county-verdict-rationale hint">' + (opt.rationale || '') + '</div>' +
           '</div>';
@@ -191,6 +214,25 @@
         html += '<span style="margin-right:10px;' + (chosen ? 'color:#4a7a30;font-weight:bold' : 'color:#8a7a5a') + '">' +
           (chosen ? '✓ ' : '') + opt.verdict_label + ' ' + _effectsLabel(opt.immediate_effects) + '</span>';
       });
+      html += '</div>';
+    }
+    // 知府复审结果
+    var pd = c.prefect_decision;
+    if (pd) {
+      var overturned = !!pd.overturned;
+      var reviewClass = overturned ? 'prefect-review-block overturned' : 'prefect-review-block upheld';
+      var resultLabel = overturned
+        ? '改判 <span class="prefect-review-arrow">→</span> <strong>' + (pd.verdict_label || '') + '</strong>（原判：' + (c.verdict_label || '—') + '）'
+        : '维持原判（' + (c.verdict_label || pd.verdict_label || '—') + '）';
+      html += '<div class="' + reviewClass + '">';
+      html += '<div class="prefect-review-header">知府复审（第' + (pd.season || '?') + '月）：' + resultLabel + '</div>';
+      if (pd.letter) {
+        html += '<div class="prefect-review-letter">"' + pd.letter + '"</div>';
+      }
+      if (overturned && pd.affinity_delta) {
+        var affinitySign = pd.affinity_delta > 0 ? '+' : '';
+        html += '<div class="prefect-review-affinity hint">与知府关系：' + affinitySign + pd.affinity_delta + '</div>';
+      }
       html += '</div>';
     }
     html += '</div></div>';
@@ -1198,11 +1240,26 @@
       var select = el("modal-village-select");
       select.innerHTML = "";
       var villages = Game.state.currentGame.county_data.villages;
+      var investments = (Game.state.currentGame || {}).available_investments || [];
+      var reclaimDef = null;
+      for (var i = 0; i < investments.length; i++) {
+        if (investments[i].action === "reclaim_land") { reclaimDef = investments[i]; break; }
+      }
 
       // Filter villages for fund_village_school (only those without school)
       var filtered = villages;
       if (action === "fund_village_school") {
         filtered = villages.filter(function (v) { return !v.has_school; });
+      } else if (action === "reclaim_land") {
+        var blockedVillages = (reclaimDef && reclaimDef.blocked_villages) || [];
+        filtered = villages.filter(function (v) {
+          return blockedVillages.indexOf(v.name) === -1;
+        });
+        if (filtered.length === 0) {
+          components.showToast("暂无可继续开垦的村庄", "error");
+          pendingAction = null;
+          return;
+        }
       }
 
       filtered.forEach(function (v) {
@@ -1231,14 +1288,20 @@
         if (investments[i].action === "reclaim_land") { reclaimDef = investments[i]; break; }
       }
       var warnings = (reclaimDef && reclaimDef.village_warnings) || [];
+      var blockedVillages = (reclaimDef && reclaimDef.blocked_villages) || [];
       var warning = null;
       for (var j = 0; j < warnings.length; j++) {
         if (warnings[j].village === village) { warning = warnings[j]; break; }
       }
+      if (blockedVillages.indexOf(village) !== -1) {
+        components.showToast("该村继续开垦将超过土地开发上限，无法执行", "error");
+        pendingAction = null;
+        return;
+      }
       if (warning) {
         // Show advisor warning modal
         el("advisor-warning-text").textContent =
-          village + "土地开发率已达" + warning.utilization + "%，继续开垦恐增加水旱灾害风险。是否仍要继续？";
+          village + "已接近土地开发上限，继续开垦恐增加水旱灾害风险。是否仍要继续？";
         el("advisor-warning-modal").classList.remove("hidden");
         // Store pending data for proceed/cancel
         el("advisor-warning-modal").dataset.action = pendingAction;
@@ -1903,10 +1966,13 @@
     if (!g) return;
     var caseId = btn.getAttribute("data-case-id");
     var verdictCode = btn.getAttribute("data-verdict-code");
+    // 取判决标签用于弹窗标题
+    var verdictLabel = btn.textContent.trim();
     btn.disabled = true;
     api.decideCountyJudicial(g.id, caseId, "判决", verdictCode)
       .then(function (res) {
-        components.showToast(res.message || "判决已记录", "success");
+        // 弹出效果弹窗（附带判决名和落地效果）
+        _showVerdictEffectsPopup(verdictLabel, res.applied_effects || {});
         return loadCountyJudicial();
       })
       .catch(function (err) {
@@ -2040,6 +2106,15 @@
     // 口号
     el("term-complete-flavor").textContent = summary.flavor || "";
 
+    // 按调任资格显示/隐藏"申请继续留任"按钮
+    var isTransferEligible = summary.pool_level === 2;
+    el("btn-start-new-term").textContent = isTransferEligible ? "接受调任" : "开始新任期";
+    if (isTransferEligible) {
+      el("btn-stay-new-term").classList.remove("hidden");
+    } else {
+      el("btn-stay-new-term").classList.add("hidden");
+    }
+
     modal.classList.remove("hidden");
   }
 
@@ -2075,27 +2150,36 @@
     });
   }
 
-  el("btn-start-new-term").addEventListener("click", function () {
+  function doStartNewTerm(choice, btn, originalText) {
     var g = Game.state.currentGame;
     if (!g) return;
-    var btn = this;
     btn.disabled = true;
     btn.textContent = "处理中...";
-    api.startNewTerm(g.id)
+    api.startNewTerm(g.id, choice)
       .then(function (res) {
         el("term-complete-modal").classList.add("hidden");
         if (res.error) {
           components.showToast(res.error, "error");
           btn.disabled = false;
-          btn.textContent = "开始新任期";
+          btn.textContent = originalText;
+          return;
+        }
+        if (res.retired) {
+          components.showToast("已请求归隐，任期结束。", "info");
+          Game.setGame(res.game);
+          btn.disabled = false;
+          btn.textContent = originalText;
+          screens.showTab("tab-dashboard");
           return;
         }
         Game.setGame(res.game);
         btn.disabled = false;
-        btn.textContent = "开始新任期";
+        btn.textContent = originalText;
         var msg = "已开始第 " + res.term_index + " 任";
         if (res.transfer_info && res.transfer_info.new_county_name) {
           msg += "，调任 " + res.transfer_info.new_county_name;
+        } else if (choice === "stay") {
+          msg += "，留任原职";
         }
         components.showToast(msg, "success");
         screens.showTab("tab-dashboard");
@@ -2107,8 +2191,21 @@
       .catch(function (err) {
         components.showToast(err.message || "续任失败", "error");
         btn.disabled = false;
-        btn.textContent = "开始新任期";
+        btn.textContent = originalText;
       });
+  }
+
+  el("btn-start-new-term").addEventListener("click", function () {
+    doStartNewTerm("transfer", this, this.textContent);
+  });
+
+  el("btn-stay-new-term").addEventListener("click", function () {
+    doStartNewTerm("stay", this, "申请继续留任");
+  });
+
+  el("btn-retire-term").addEventListener("click", function () {
+    if (!confirm("确定请求归隐？游戏将结束，无法继续。")) return;
+    doStartNewTerm("retire", this, "请求归隐");
   });
 
   el("term-complete-modal").addEventListener("click", function (e) {

@@ -46,6 +46,43 @@
       var archetypeLabel = escapeHtml(n.governor_archetype_display || "");
       var styleLabel = escapeHtml(n.governor_style_display || n.governor_style);
 
+      // 农民粮食盈余（复用玩家侧逻辑）
+      var ps = cd.peasant_surplus || {};
+      var ncc = ps.consumer_confidence !== undefined ? ps.consumer_confidence : null;
+      var grainHtml = "";
+      if (ps.reserve !== undefined) {
+        var g = Game.state.currentGame;
+        var curSeason = g ? (g.current_season || 1) : 1;
+        var curMoy = ((curSeason - 1) % 12) + 1;
+        var rawDist = (9 - curMoy + 12) % 12;
+        var harvestLabel = rawDist === 0 ? "今月秋收" : rawDist + "月";
+        var ccIcon = ncc === null ? "" : (ncc >= 10 ? "↑" : (ncc <= 0 ? "↓" : "→"));
+        var ccClass = ncc === null ? "" : (ncc >= 10 ? "delta-positive" : (ncc <= 0 ? "delta-negative" : ""));
+        var ccText = ncc !== null
+          ? '<span class="' + ccClass + '">' + ncc + '斤/人 ' + ccIcon + '</span>'
+          : "—";
+        grainHtml =
+          '<div class="neighbor-grain">' +
+            '<span>储粮 ' + Math.round(ps.reserve || 0).toLocaleString() + '斤</span>' +
+            '<span>距秋收 ' + harvestLabel + '</span>' +
+            '<span>月均余粮 ' + ccText + '</span>' +
+            '<span>信心 ' + (ps.confidence_index !== undefined ? ps.confidence_index : '—') + '</span>' +
+          '</div>';
+      }
+
+      // AI施政分析：取 last_reasoning 前两行拼合显示
+      var reasoningHtml = '';
+      if (n.last_reasoning) {
+        var lines = n.last_reasoning.split('\n').filter(function (l) { return l.trim(); });
+        var preview = lines.slice(0, 2).join(' ').substring(0, 140);
+        if (n.last_reasoning.length > 140) preview += '…';
+        reasoningHtml =
+          '<div class="neighbor-analysis">' +
+            '<span class="neighbor-analysis-label">【AI析】</span>' +
+            escapeHtml(preview) +
+          '</div>';
+      }
+
       var card = h("div", "neighbor-card");
       card.dataset.neighborId = n.id;
       card.innerHTML =
@@ -65,10 +102,11 @@
           '<span>治安 ' + Math.round(cd.security || 0) + '</span>' +
           '<span>行政开支 ' + Math.round(cd.admin_cost || 0) + '两/年</span>' +
         '</div>' +
-        (n.last_reasoning ?
-          '<div class="neighbor-analysis">' +
-            escapeHtml(n.last_reasoning.split('\n')[0].substring(0, 80)) +
-          '</div>' : '');
+        grainHtml +
+        reasoningHtml +
+        '<div class="neighbor-card-actions">' +
+          '<button class="neighbor-events-btn" data-neighbor-id="' + n.id + '">施政动态</button>' +
+        '</div>';
 
       grid.appendChild(card);
     });
@@ -339,10 +377,76 @@
     modal.classList.remove("hidden");
   }
 
+  // ==================== 施政动态面板 ====================
+
+  function showNeighborEvents(neighborId) {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var gameId = g.id;
+
+    // 找到对应邻县名，用于标题
+    var neighborName = "邻县";
+    var neighborGovernor = "";
+    var allNeighbors = Game.state.neighbors || [];
+    for (var i = 0; i < allNeighbors.length; i++) {
+      if (String(allNeighbors[i].id) === String(neighborId)) {
+        neighborName = allNeighbors[i].county_name || "邻县";
+        neighborGovernor = allNeighbors[i].governor_name || "";
+        break;
+      }
+    }
+
+    // 复用现有的 neighbor-detail-modal
+    var modal = el("neighbor-detail-modal");
+    var body = el("neighbor-detail-body");
+    var titleEl = el("neighbor-detail-title");
+    if (!modal || !body) return;
+
+    if (titleEl) titleEl.textContent = neighborName + (neighborGovernor ? " — " + neighborGovernor + " 施政动态" : " 施政动态");
+    body.innerHTML = '<p class="hint">加载中…</p>';
+    modal.classList.remove("hidden");
+
+    Game.api.getNeighborEvents(gameId, neighborId, 20).then(function (data) {
+      var events = Array.isArray(data) ? data : (data.events || data.results || []);
+      if (!events.length) {
+        body.innerHTML = '<p class="hint">暂无施政记录</p>';
+        return;
+      }
+
+      var html = '<div class="nd-section"><h4>近期施政动态</h4>';
+      events.forEach(function (evt) {
+        var category = evt.category || evt.event_type || "决策";
+        var desc = evt.description || evt.detail || "";
+        var season = evt.season || evt.month || "";
+        html +=
+          '<div class="event-log-item">' +
+            '<div class="event-log-header">' +
+              '<span class="event-log-category">' + escapeHtml(category) + '</span>' +
+              (season ? '<span class="event-log-season">第' + escapeHtml(String(season)) + '月</span>' : '') +
+            '</div>' +
+            '<div class="event-log-desc">' + escapeHtml(desc) + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+      body.innerHTML = html;
+    }).catch(function () {
+      body.innerHTML = '<p class="hint">加载失败，请稍后重试</p>';
+    });
+  }
+
+  // 事件委托：点击「施政动态」按钮
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".neighbor-events-btn");
+    if (btn) {
+      showNeighborEvents(btn.dataset.neighborId);
+    }
+  });
+
   // Export
   C.renderNeighborsList = renderNeighborsList;
   C.openNeighborDetail = openNeighborDetail;
   C.openNeighborTermReport = openNeighborTermReport;
   C.renderPrefectureCard = renderPrefectureCard;
   C.openPrefectureGazette = openPrefectureGazette;
+  C.showNeighborEvents = showNeighborEvents;
 })();

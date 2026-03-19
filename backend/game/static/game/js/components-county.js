@@ -473,9 +473,14 @@
           return sum + (v.population || 0);
         }, 0);
 
-        var monthlyPcs = ps.monthly_per_capita_surplus || 0;
-        var trendIcon = monthlyPcs >= 10 ? "↑" : (monthlyPcs <= 0 ? "↓" : "→");
-        var trendClass = monthlyPcs >= 10 ? "delta-positive" : (monthlyPcs <= 0 ? "delta-negative" : "");
+        var cc = ps.consumer_confidence !== undefined ? ps.consumer_confidence : 0;
+        var trendIcon = cc >= 10 ? "↑" : (cc <= 0 ? "↓" : "→");
+        var trendClass = cc >= 10 ? "delta-positive" : (cc <= 0 ? "delta-negative" : "");
+
+        // 距秋收：从 current_season 实时计算，避免快照滞后一个月的偏差
+        var curMoy = monthOfYear(g.current_season || 1);
+        var rawDist = (9 - curMoy + 12) % 12;
+        var harvestLabel = rawDist === 0 ? "今月秋收！" : rawDist + "月";
 
         // 第一行：基础数据
         var row1 = h("div", "env-row");
@@ -483,7 +488,7 @@
           { label: "当前储备", value: ps.reserve.toLocaleString() + "斤" },
           { label: "农民人口", value: totalPeasantPop.toLocaleString() + "人" },
           { label: "月消耗", value: ps.monthly_consumption.toLocaleString() + "斤" },
-          { label: "距秋收", value: ps.months_to_harvest + "月" },
+          { label: "距秋收", value: harvestLabel },
         ];
         row1Items.forEach(function (it) {
           row1.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
@@ -493,14 +498,33 @@
         // 第二行：衍生指标
         var row2 = h("div", "env-row");
         var row2Items = [
-          { label: "月均余粮", value: '<span class="' + trendClass + '">' + monthlyPcs + "斤/人 " + trendIcon + "</span>" },
-          { label: "需求系数", value: ps.demand_factor !== undefined ? ps.demand_factor : "—" },
-          { label: "消耗系数", value: ps.consumption_multiplier !== undefined ? ps.consumption_multiplier : "—" },
+          { label: "月均余粮", value: '<span class="' + trendClass + '">' + cc + "斤/人 " + trendIcon + "</span>" },
+          { label: "消费信心指数", value: ps.confidence_index !== undefined ? ps.confidence_index : "—" },
         ];
         row2Items.forEach(function (it) {
           row2.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
         });
         surplusDiv.appendChild(row2);
+
+        // 第三行：邻县借粮还款（有活跃贷款时才显示）
+        var activeLoans = ((c.emergency || {}).neighbor_loans || []).filter(function (l) {
+          return l.status === "ACTIVE";
+        });
+        if (activeLoans.length > 0) {
+          var totalMonthly = activeLoans.reduce(function (s, l) {
+            return s + (l.installment_grain || 0);
+          }, 0);
+          var loanLines = activeLoans.map(function (l) {
+            var remaining = Math.max(0, l.term_months - (l.months_paid || 0));
+            return escapeHtml(l.lender_name || "邻县") + " " + Math.round(l.installment_grain) + "斤×" + remaining + "期";
+          }).join("　");
+          var row3 = h("div", "env-row");
+          row3.innerHTML =
+            '<span class="env-item"><strong>月还邻县借粮:</strong> ' +
+            '<span class="delta-negative">' + Math.round(totalMonthly) + '斤/月</span>' +
+            ' <span class="hint-text">（' + loanLines + '）</span></span>';
+          surplusDiv.appendChild(row3);
+        }
       }
     }
 
@@ -658,6 +682,31 @@
       }
     }
 
+    // 知府近期来文（最近两个月）
+    var directiveDiv = el("prefect-directive-info");
+    if (directiveDiv) {
+      directiveDiv.innerHTML = "";
+      var allDirs = c.prefect_directives || [];
+      var curSeason = g.current_season || 1;
+      var recentDirs = allDirs.filter(function (d) { return d.month >= curSeason - 1; });
+      if (recentDirs.length) {
+        var dirTitle = h("h4", "section-title", "知府来文");
+        directiveDiv.appendChild(dirTitle);
+        recentDirs.forEach(function (d) {
+          var age = curSeason - d.month;
+          var ageLabel = age === 0 ? "本月" : "上月";
+          var shortText = (d.text || "").length > 60 ? d.text.slice(0, 60) + "…" : (d.text || "");
+          var row = document.createElement("div");
+          row.className = "prefect-directive-row";
+          row.innerHTML =
+            '<span class="prefect-directive-tag">' + (d.directive_type || "来文") + '</span>' +
+            '<span class="prefect-directive-age hint">（' + ageLabel + '）</span>' +
+            '<span class="prefect-directive-text">' + shortText + '</span>';
+          directiveDiv.appendChild(row);
+        });
+      }
+    }
+
     // Disaster alert
     var alertDiv = el("disaster-alert");
     if (c.disaster_this_year) {
@@ -677,7 +726,7 @@
       } else if (app && app.status === "CAUGHT") {
         reliefHint = "；减免申报失实被查";
       } else if (appMonth === 9) {
-        reliefHint = "；本月可在“施政”页提交减免申请";
+        reliefHint = "；本月可在“知府配额”处提交减免申请";
       }
       alertDiv.innerHTML =
         "<strong>" + dName + "警报</strong>" +
@@ -764,8 +813,6 @@
         '<div class="sidebar-archive-title">知县档案</div>' +
         quoteHtml +
         '<div class="sidebar-archive-stats">' +
-          stat("知识", p.knowledge.toFixed(1)) +
-          stat("技能", p.skill.toFixed(1)) +
           stat("清名", p.integrity) +
           stat("能名", p.competence) +
           stat("人缘", p.popularity) +
@@ -1777,8 +1824,6 @@
     var wealthDisplay = (p.wealth_tier || "清贫") + "（" + Math.round(p.personal_wealth || 0) + "两）";
     var statsHtml =
       '<div class="archive-stats">' +
-        _archiveStat("知识", p.knowledge.toFixed(1)) +
-        _archiveStat("技能", p.skill.toFixed(1)) +
         _archiveStat("清名", p.integrity) +
         _archiveStat("能名", p.competence) +
         _archiveStat("人缘", p.popularity) +

@@ -209,8 +209,8 @@
     promotionAction: function (gameId, payload) {
       return request("POST", "/api/games/" + gameId + "/promotion-action/", payload);
     },
-    startNewTerm: function (gameId) {
-      return request("POST", "/api/games/" + gameId + "/new-term/", {});
+    startNewTerm: function (gameId, choice) {
+      return request("POST", "/api/games/" + gameId + "/new-term/", { choice: choice || "transfer" });
     },
     getCountyRumors: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/rumors/");

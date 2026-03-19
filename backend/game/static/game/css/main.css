@@ -1618,6 +1618,7 @@ body {
 /* === Village Deltas === */
 .delta-positive { color: #27ae60; font-size: 0.8em; }
 .delta-negative { color: #c0392b; font-size: 0.8em; }
+.hint-text { color: #8a7a5a; font-size: 0.85em; }
 .delta-neutral { color: #8a7a5a; font-size: 0.8em; }
 
 /* === Staff (幕僚) Tab === */
@@ -1767,6 +1768,16 @@ body {
   color: #5c4a2a;
   margin-bottom: 6px;
 }
+.neighbor-grain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.85em;
+  color: #5c4a2a;
+  margin-bottom: 6px;
+  padding: 4px 0;
+  border-top: 1px dashed #ede7d9;
+}
 .neighbor-analysis {
   font-size: 0.8em;
   color: #8a7a5a;
@@ -1775,6 +1786,31 @@ body {
   border-top: 1px dashed #ede7d9;
   padding-top: 6px;
   margin-top: 4px;
+}
+.neighbor-analysis-label {
+  font-style: normal;
+  color: #c0702a;
+  font-weight: 600;
+  margin-right: 2px;
+}
+.neighbor-card-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.neighbor-events-btn {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  background: #f5f0e8;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  color: #6b5d45;
+  cursor: pointer;
+}
+.neighbor-events-btn:hover {
+  background: #ede7d9;
+  color: #3d2b1f;
 }
 
 /* === Prefecture Overview Card (本府概览) === */
@@ -3611,6 +3647,110 @@ body {
   line-height: 1.4;
 }
 
+/* ── 知府来文（县情总览） ── */
+#prefect-directive-info {
+  margin-top: 6px;
+}
+.prefect-directive-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 8px;
+  background: #fdf8ec;
+  border-left: 3px solid #c8a840;
+  border-radius: 3px;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+.prefect-directive-tag {
+  font-weight: bold;
+  color: #7a5010;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.prefect-directive-age {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.prefect-directive-text {
+  color: #4a3820;
+}
+
+/* ── 知府复审结果（司法归档） ── */
+.prefect-review-block {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+.prefect-review-block.upheld {
+  background: #f0f7ec;
+  border-left: 3px solid #5a8a3a;
+}
+.prefect-review-block.overturned {
+  background: #fff5e8;
+  border-left: 3px solid #c07020;
+}
+.prefect-review-header {
+  font-weight: bold;
+  color: #3a3020;
+  margin-bottom: 4px;
+}
+.prefect-review-block.overturned .prefect-review-header {
+  color: #8a4010;
+}
+.prefect-review-arrow {
+  color: #c07020;
+}
+.prefect-review-letter {
+  color: #5a4830;
+  font-style: italic;
+  margin: 4px 0 2px;
+  padding-left: 6px;
+  border-left: 2px solid #c8a840;
+}
+.prefect-review-affinity {
+  margin-top: 4px;
+  color: #8a4010;
+}
+
+/* ── 判决效果弹窗 ── */
+.verdict-effects-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  animation: fadeInScale 0.15s ease;
+}
+.verdict-effects-popup-inner {
+  background: #faf6ed;
+  border: 2px solid #8b6914;
+  border-radius: 8px;
+  padding: 20px 28px;
+  text-align: center;
+  min-width: 220px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.28);
+}
+.verdict-effects-title {
+  font-weight: bold;
+  font-size: 1em;
+  color: #4a3520;
+  margin-bottom: 10px;
+}
+.verdict-effects-body {
+  font-size: 1.05em;
+  color: #3a5a20;
+  margin-bottom: 14px;
+  letter-spacing: 0.03em;
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
 /* ── 已审案件归档 ── */
 .judicial-archive-card {
   opacity: 0.88;
@@ -4150,6 +4290,17 @@ body {
   font-style: italic;
   flex: 1;
 }
+.term-complete-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.btn-retire {
+  color: #7a3a20;
+  border-color: #c8a080;
+}
+.btn-retire:hover { background: #f5e8d8; }
 
 /* Career review — term grouping */
 .career-term-group { margin-bottom: 14px; }

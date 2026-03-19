@@ -146,6 +146,45 @@
         <div id="stats-grid" class="stats-grid"></div>
         <div id="info-row" class="info-row"></div>
         <div id="quota-info"></div>
+        <div id="prefect-directive-info"></div>
+        <div id="relief-action-section" class="action-section hidden">
+          <h3>灾害减免申请</h3>
+          <div id="relief-status" class="hint">仅九月可提交，十月统一批示</div>
+          <div id="relief-advice" class="hint"></div>
+          <div class="tax-control relief-control">
+            <input type="number" id="relief-claimed-loss" min="1" step="1" placeholder="申报减免额度（两）">
+            <button id="btn-fill-relief-suggestion" class="btn btn-small">填入县丞建议</button>
+            <button id="btn-submit-relief" class="btn btn-primary btn-small">向知府申请</button>
+          </div>
+        </div>
+        <div id="emergency-action-section" class="action-section hidden">
+          <h3>粮荒紧急处置</h3>
+          <div id="emergency-status" class="hint">当前未进入紧急状态</div>
+          <div class="tax-control relief-control">
+            <label><input type="checkbox" id="emergency-debug-toggle"> 测试期显式展示隐藏触发</label>
+          </div>
+          <div class="tax-control relief-control">
+            <button id="btn-emergency-prefecture" class="btn btn-small">向知府申请拨粮</button>
+          </div>
+          <div class="tax-control relief-control">
+            <select id="emergency-neighbor-select"></select>
+            <input type="number" id="emergency-borrow-amount" min="1" step="1" placeholder="借粮数量（斤）">
+            <button id="btn-emergency-borrow" class="btn btn-small">向邻县借粮</button>
+          </div>
+          <div class="tax-control relief-control">
+            <input type="number" id="emergency-gentry-amount" min="1" step="1" placeholder="协商放粮数量（斤）">
+            <button id="btn-emergency-gentry" class="btn btn-small">号召地主放粮（谈判）</button>
+          </div>
+          <div class="tax-control relief-control">
+            <input type="number" id="emergency-force-amount" min="1" step="1" placeholder="强制征调总量（斤）">
+            <button id="btn-emergency-force" class="btn btn-primary btn-small">强制调用地主余粮</button>
+          </div>
+          <div class="tax-control relief-control">
+            <input type="number" id="emergency-buy-amount" min="1" step="1" placeholder="购粮数量（斤）">
+            <button id="btn-emergency-buy-grain" class="btn btn-small">动用县库资金买粮</button>
+            <span class="hint" id="emergency-buy-grain-hint">灾时溢价：每两银买70斤</span>
+          </div>
+        </div>
         <div id="disaster-alert" class="disaster-alert hidden"></div>
         <div id="investments-list"></div>
         <div id="irrigation-negotiate-section" class="hidden"></div>
@@ -216,46 +255,6 @@
             <button id="btn-set-commercial-tax" class="btn btn-primary btn-small">确认调整</button>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div id="relief-action-section" class="action-section hidden">
-      <h3>灾害减免申请</h3>
-      <div id="relief-status" class="hint">仅九月可提交，十月统一批示</div>
-      <div id="relief-advice" class="hint"></div>
-      <div class="tax-control relief-control">
-        <input type="number" id="relief-claimed-loss" min="1" step="1" placeholder="申报减免额度（两）">
-        <button id="btn-fill-relief-suggestion" class="btn btn-small">填入县丞建议</button>
-        <button id="btn-submit-relief" class="btn btn-primary btn-small">向知府申请</button>
-      </div>
-    </div>
-
-    <div id="emergency-action-section" class="action-section hidden">
-      <h3>粮荒紧急处置</h3>
-      <div id="emergency-status" class="hint">当前未进入紧急状态</div>
-      <div class="tax-control relief-control">
-        <label><input type="checkbox" id="emergency-debug-toggle"> 测试期显式展示隐藏触发</label>
-      </div>
-      <div class="tax-control relief-control">
-        <button id="btn-emergency-prefecture" class="btn btn-small">向知府申请拨粮</button>
-      </div>
-      <div class="tax-control relief-control">
-        <select id="emergency-neighbor-select"></select>
-        <input type="number" id="emergency-borrow-amount" min="1" step="1" placeholder="借粮数量（斤）">
-        <button id="btn-emergency-borrow" class="btn btn-small">向邻县借粮</button>
-      </div>
-      <div class="tax-control relief-control">
-        <input type="number" id="emergency-gentry-amount" min="1" step="1" placeholder="协商放粮数量（斤）">
-        <button id="btn-emergency-gentry" class="btn btn-small">号召地主放粮（谈判）</button>
-      </div>
-      <div class="tax-control relief-control">
-        <input type="number" id="emergency-force-amount" min="1" step="1" placeholder="强制征调总量（斤）">
-        <button id="btn-emergency-force" class="btn btn-primary btn-small">强制调用地主余粮</button>
-      </div>
-      <div class="tax-control relief-control">
-        <input type="number" id="emergency-buy-amount" min="1" step="1" placeholder="购粮数量（斤）">
-        <button id="btn-emergency-buy-grain" class="btn btn-small">动用县库资金买粮</button>
-        <span class="hint" id="emergency-buy-grain-hint">灾时溢价：每两银买70斤</span>
       </div>
     </div>
 
@@ -394,7 +393,11 @@
     <div id="term-complete-stats" class="term-complete-stats"></div>
     <div class="term-complete-footer">
       <div id="term-complete-flavor" class="term-complete-flavor"></div>
-      <button id="btn-start-new-term" class="btn btn-primary">开始新任期</button>
+      <div class="term-complete-actions">
+        <button id="btn-start-new-term" class="btn btn-primary">开始新任期</button>
+        <button id="btn-stay-new-term" class="btn hidden">申请继续留任</button>
+        <button id="btn-retire-term" class="btn btn-retire">请求归隐</button>
+      </div>
     </div>
   </div>
 </div>
