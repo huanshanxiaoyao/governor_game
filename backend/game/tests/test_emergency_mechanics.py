@@ -152,3 +152,39 @@ def test_force_levy_reduces_gentry_affinity_and_creates_complaint():
     complaints = game.county_data["emergency"].get("complaints") or []
     assert complaints and complaints[-1]["status"] == "pending"
     assert complaints[-1]["trigger_season"] == game.current_season + 1
+
+
+@pytest.mark.django_db
+def test_prefecture_relief_refreshes_live_peasant_surplus_snapshot():
+    user = get_user_model().objects.create_user(username="u_emergency_relief", password="pw")
+    county = CountyService.create_initial_county("disaster_prone")
+    game = GameState.objects.create(user=user, current_season=9, county_data=county)
+
+    state = load_county_state(game)
+    EmergencyService.ensure_state(state)
+    baseline = _baseline(state)
+    state["peasant_grain_reserve"] = baseline * 0.2
+    state["peasant_surplus"] = {
+        "reserve": 177191,
+        "months_to_harvest": 1,
+        "per_capita_surplus": -3.7,
+        "consumer_confidence": -3.7,
+        "confidence_index": 0.93,
+        "monthly_consumption": round(baseline * 1.53),
+        "baseline_monthly_consumption": round(baseline),
+        "consumption_multiplier": 1.53,
+    }
+    save_player_state(game, state)
+
+    result = EmergencyService.request_prefecture_relief(game)
+
+    assert result["success"] is True
+
+    game.refresh_from_db()
+    updated = load_county_state(game)
+    ps = updated["peasant_surplus"]
+
+    assert ps["reserve"] == round(updated["peasant_grain_reserve"])
+    assert ps["months_to_harvest"] == 1
+    assert ps["consumption_multiplier"] != 1.53
+    assert ps["consumption_multiplier"] >= 0.5

@@ -255,7 +255,7 @@ class NeighborCountySummarySerializer(serializers.ModelSerializer):
             'id', 'county_name', 'governor_name', 'governor_style',
             'governor_style_display', 'governor_archetype', 'governor_archetype_display',
             'governor_bio', 'county_type_name',
-            'county_data', 'last_reasoning',
+            'county_data', 'last_reasoning', 'attributes',
         ]
 
     def get_county_type_name(self, obj):

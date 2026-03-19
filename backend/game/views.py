@@ -198,6 +198,9 @@ class GameListCreateView(APIView):
 
         # Create game with initial county data
         county_data = CountyService.create_initial_county(county_type=county_type)
+        # 设置玩家县名（调任后旧县会成为邻县，需有名字）
+        from .services.constants import PLAYER_COUNTY_NAMES
+        county_data['county_name'] = PLAYER_COUNTY_NAMES.get(county_type, "本县")
         # Store initial village snapshot for delta display
         county_data['initial_villages'] = copy.deepcopy(county_data['villages'])
         # Store initial county-level snapshot for 任期述职 baseline
@@ -713,6 +716,10 @@ class AdvanceSeasonView(APIView):
         blocker = AnnualReviewService.get_county_advance_blocker(game)
         if blocker:
             return Response({"error": blocker}, status=status.HTTP_400_BAD_REQUEST)
+
+        judicial_blocker = JudicialCaseflowService.get_county_advance_blocker(game)
+        if judicial_blocker:
+            return Response({"error": judicial_blocker}, status=status.HTTP_400_BAD_REQUEST)
 
         season = game.current_season
         report = SettlementService.advance_season(game)
@@ -1852,7 +1859,8 @@ class NewTermView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        result = NewTermService.start_new_term(game)
+        choice = request.data.get("choice", "transfer")  # transfer | stay | retire
+        result = NewTermService.start_new_term(game, choice=choice)
         if result.get("error"):
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
 

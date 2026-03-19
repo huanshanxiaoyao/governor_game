@@ -1,0 +1,1 @@
+../backend/game/game_knowledge.md

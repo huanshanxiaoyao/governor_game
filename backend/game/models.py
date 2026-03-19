@@ -353,6 +353,10 @@ class NeighborCounty(models.Model):
     governor_bio = models.TextField(blank=True, default='', help_text='知县人设描述')
     county_data = models.JSONField(default=dict, help_text='同玩家county_data结构')
     last_reasoning = models.TextField(blank=True, default='', help_text='上月LLM决策reasoning')
+    attributes = models.JSONField(
+        default=dict,
+        help_text='AI知县属性：player_affinity(对玩家好感度, 0-99), memory(记忆列表, 最近20条)',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
