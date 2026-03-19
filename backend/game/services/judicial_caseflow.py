@@ -173,7 +173,25 @@ class JudicialCaseflowService:
             "verdict_code": latest_magistrate.get("verdict_code", ""),
             "dossier_text": payload.get("dossier_text", ""),
             "verdict_options": payload.get("verdict_options") or [],
+            "prefect_decision": instance.prefect_decision,
         }
+
+    @classmethod
+    def get_county_advance_blocker(cls, game) -> Optional[str]:
+        """若当前月份有未审结案件，返回阻止推进的提示文字；否则返回 None。"""
+        if not game.player_unit_id:
+            return None
+        if month_of_year(game.current_season) not in COUNTY_JUDICIAL_MONTHS:
+            return None
+        pending = JudicialCaseInstance.objects.filter(
+            game=game,
+            county_unit=game.player_unit,
+            county_review_season=game.current_season,
+            status__in=["PENDING_MAGISTRATE_ROUND_1", "PENDING_MAGISTRATE_ROUND_2"],
+        ).count()
+        if pending:
+            return f"司法月份尚有 {pending} 件案件待审，必须先完成案件审理方可推进月份"
+        return None
 
     @classmethod
     def decide_county_case(cls, game, case_instance_id: int, action: str, verdict_code: Optional[str] = None) -> dict:
@@ -183,6 +201,7 @@ class JudicialCaseflowService:
         if month_of_year(season) not in COUNTY_JUDICIAL_MONTHS:
             return {"error": "当前不在县级司法处理月份"}
 
+        applied_effects: Optional[dict] = None
         instance = JudicialCaseInstance.objects.filter(
             id=case_instance_id,
             game=game,
@@ -202,6 +221,7 @@ class JudicialCaseflowService:
                 if "error" in result:
                     return result
                 cls._apply_verdict_effects(game, result["selected_option"])
+                applied_effects = result["selected_option"].get("immediate_effects") or {}
                 instance.status = "SUBMITTED_TO_PREFECT"
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
@@ -221,6 +241,7 @@ class JudicialCaseflowService:
                 if "error" in result:
                     return result
                 cls._apply_verdict_effects(game, result["selected_option"])
+                applied_effects = result["selected_option"].get("immediate_effects") or {}
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
                 instance.status = "SUBMITTED_TO_PREFECT"
@@ -238,10 +259,13 @@ class JudicialCaseflowService:
         instance.magistrate_rounds = magistrate_rounds
         instance.save(update_fields=["assistant_rounds", "magistrate_rounds", "status", "submitted_to_prefect", "submitted_season", "updated_at"])
 
-        return {
+        resp: dict = {
             "case": cls._serialize_county_case(instance),
             "message": f"已处理：{instance.local_payload.get('case_name', '')} - {action}",
         }
+        if applied_effects is not None:
+            resp["applied_effects"] = applied_effects
+        return resp
 
     @classmethod
     def _apply_player_verdict(cls, instance: JudicialCaseInstance, magistrate_rounds: list, round_no: int, season: int, verdict_code: Optional[str]) -> dict:
@@ -880,6 +904,313 @@ class JudicialCaseflowService:
     def _apply_verdict_effects_for_ai(cls, unit, verdict_option: dict) -> None:
         """AI路径：将判决效果写入县域 unit_data（不含玩家档案声誉），复用共用底层。"""
         cls._apply_verdict_effects_to_unit(unit, verdict_option)
+
+    # ==================== 知府复审（知县游戏路径）====================
+
+    @classmethod
+    def auto_review_county_by_prefect(cls, game, prefect_agent, season: int, county: dict, report: dict) -> None:
+        """AI知府复审玩家知县已上呈/委托的案件（知县游戏路径，每季末调用）。"""
+        if not game.player_unit_id:
+            return
+        cases = JudicialCaseInstance.objects.filter(
+            game=game,
+            county_unit=game.player_unit,
+            prefect_review_season=season,
+            status__in=['SUBMITTED_TO_PREFECT', 'DEFERRED_TO_PREFECT'],
+        ).order_by('id')
+        if not cases.exists():
+            return
+        prefect_attrs = prefect_agent.attributes
+        for instance in cases:
+            cls._prefect_review_single_case(instance, prefect_agent, prefect_attrs, county, report, season)
+
+    @classmethod
+    def _prefect_review_single_case(
+        cls, instance: JudicialCaseInstance, prefect_agent, prefect_attrs: dict,
+        county: dict, report: dict, season: int
+    ) -> None:
+        """知府复审单个案件：LLM优先，规则引擎兜底。写入 prefect_decision + 事件 + 好感变化。"""
+        payload = instance.local_payload or {}
+        verdict_options = payload.get('verdict_options') or []
+        case_name = payload.get('case_name', '未名案件')
+        is_deferred = instance.status == 'DEFERRED_TO_PREFECT'
+
+        # 取知县最终判决（最后一个 VERDICT 轮次）
+        magistrate_verdict_code = None
+        magistrate_verdict_label = ''
+        for r in reversed(instance.magistrate_rounds or []):
+            if r.get('action') == 'VERDICT':
+                magistrate_verdict_code = r.get('verdict_code')
+                magistrate_verdict_label = r.get('verdict_label', magistrate_verdict_code or '')
+                break
+
+        # 规则引擎基线
+        factors = cls._estimate_case_factors(payload)
+        rule_verdict_code = cls._pick_prefect_verdict_code(verdict_options, prefect_attrs, factors)
+        if rule_verdict_code is None:
+            return
+
+        # LLM决策（优先）
+        prefect_verdict_code = rule_verdict_code
+        llm_letter = ''
+        try:
+            ctx = cls._build_prefect_review_context(
+                prefect_agent, prefect_attrs, county, season, payload,
+                verdict_options, factors, magistrate_verdict_code,
+                magistrate_verdict_label, is_deferred,
+            )
+            llm_result = cls._request_llm_prefect_decision(ctx, verdict_options)
+            if llm_result:
+                prefect_verdict_code = llm_result['verdict_code']
+                llm_letter = llm_result.get('letter', '')
+        except Exception as exc:
+            logger.warning("知府司法 LLM 失败，降级规则引擎（case %s）: %s", instance.id, exc)
+
+        selected_option = next((o for o in verdict_options if o.get('verdict_code') == prefect_verdict_code), {})
+        prefect_verdict_label = selected_option.get('verdict_label', prefect_verdict_code)
+
+        # 判断结果：维持/改判/上裁，计算好感变动
+        if is_deferred:
+            overturned = False
+            affinity_delta = 0
+            tag = '【知府裁定】'
+            fallback_body = f'知县呈请上裁，依卷宗裁定：{prefect_verdict_label}'
+            note_text = f'《{case_name}》委托上裁，知府裁定：{prefect_verdict_label}'
+            cls._apply_verdict_effects_to_county_dict(county, selected_option)
+        elif magistrate_verdict_code == prefect_verdict_code:
+            overturned = False
+            affinity_delta = 1
+            tag = '【知府复审·维持原判】'
+            fallback_body = f'{prefect_verdict_label}，判决合理，知府表示认可'
+            note_text = f'《{case_name}》维持原判（{prefect_verdict_label}），判决得当'
+        else:
+            overturned = True
+            public_harm = factors.get('public_harm', 0.22)
+            affinity_delta = -6 if public_harm > 0.5 else -3
+            tag = '【知府改判】'
+            fallback_body = (
+                f'原判"{magistrate_verdict_label}"，改判为"{prefect_verdict_label}"，'
+                f'认为原判有失妥当'
+            )
+            note_text = (
+                f'《{case_name}》改判：{magistrate_verdict_label}→{prefect_verdict_label}，'
+                f'好感{affinity_delta:+d}'
+            )
+            cls._apply_verdict_effects_to_county_dict(county, selected_option)
+
+        # 月报事件：优先使用 LLM 批文，否则用兜底文案
+        letter_body = llm_letter if llm_letter else fallback_body
+        event_text = f'{tag}《{case_name}》：{letter_body}'
+
+        # 更新知府好感
+        old_affinity = prefect_attrs.get('player_affinity', 50)
+        prefect_attrs['player_affinity'] = max(-99, min(99, old_affinity + affinity_delta))
+        county['prefect_affinity'] = prefect_attrs['player_affinity']
+
+        # 写入评价笔记
+        from .constants import month_name, month_of_year
+        notes = prefect_attrs.get('evaluation_notes', [])
+        notes.append(f'[{month_name(month_of_year(season))}] {note_text}')
+        if len(notes) > 12:
+            notes = notes[-12:]
+        prefect_attrs['evaluation_notes'] = notes
+
+        # 保存 Agent + 案件
+        prefect_agent.attributes = prefect_attrs
+        prefect_agent.save(update_fields=['attributes'])
+        instance.prefect_decision = {
+            'verdict_code': prefect_verdict_code,
+            'verdict_label': prefect_verdict_label,
+            'overturned': overturned,
+            'affinity_delta': affinity_delta,
+            'letter': llm_letter,
+            'season': season,
+            'is_deferred': is_deferred,
+        }
+        instance.status = 'PREFECT_DECIDED'
+        instance.save(update_fields=['prefect_decision', 'status', 'updated_at'])
+
+        # 写入月报事件
+        report['events'].append(event_text)
+        if overturned:
+            report.setdefault('prefect_judicial_overturn', []).append({
+                'case_name': case_name,
+                'magistrate_verdict': magistrate_verdict_code,
+                'magistrate_verdict_label': magistrate_verdict_label,
+                'prefect_verdict': prefect_verdict_code,
+                'prefect_verdict_label': prefect_verdict_label,
+                'affinity_delta': affinity_delta,
+                'letter': llm_letter,
+            })
+
+        # 写入府志
+        from ..models import EventLog
+        EventLog.objects.create(
+            game=instance.game,
+            season=season,
+            event_type='prefect_judicial_review',
+            category='PREFECT',
+            description=f'{tag}{case_name}：{letter_body[:60]}',
+            data={
+                'case_name': case_name,
+                'overturned': overturned,
+                'affinity_delta': affinity_delta,
+                'prefect_verdict': prefect_verdict_code,
+            },
+        )
+
+    @classmethod
+    def _build_prefect_review_context(
+        cls, prefect_agent, prefect_attrs: dict, county: dict, season: int,
+        payload: dict, verdict_options: list, factors: dict,
+        magistrate_verdict_code: Optional[str], magistrate_verdict_label: str,
+        is_deferred: bool,
+    ) -> dict:
+        """构建知府司法复审的 LLM 上下文。"""
+        from .ai_prefect import PrefectAIService
+        from .constants import month_name, month_of_year
+
+        personality_desc, ideology_desc, _ = PrefectAIService._describe_attrs(prefect_attrs)
+
+        # 记忆拼合：近期记忆 + 最新3条评价笔记
+        memory_lines = [f'- {m}' for m in prefect_attrs.get('memory', [])[-4:]]
+        note_lines = [f'- {n}' for n in prefect_attrs.get('evaluation_notes', [])[-3:]]
+        memory_desc = '\n'.join(memory_lines) if memory_lines else '初任，尚无积累'
+        if note_lines:
+            memory_desc += '\n近期批注：\n' + '\n'.join(note_lines)
+
+        # 县情概要（模糊）
+        from .ai_prefect import _tier_label
+        morale_lbl = _tier_label(county.get('morale', 50))
+        security_lbl = _tier_label(county.get('security', 50))
+        treasury = county.get('treasury', 0)
+        treasury_lbl = '充裕' if treasury > 500 else ('尚可' if treasury > 200 else ('紧张' if treasury > 50 else '匮乏'))
+        county_situation = f'民心{morale_lbl}·治安{security_lbl}·县库{treasury_lbl}'
+
+        # 判决选项文本
+        verdict_options_text = '\n'.join(
+            f'- [{o.get("verdict_code")}] {o.get("verdict_label", "")}: {o.get("rationale", "")}'
+            for o in verdict_options
+        ) or '- 无'
+
+        # 附件
+        attachments = payload.get('attachments') or []
+        attachments_block = (
+            '- 附件：\n' + '\n'.join(f'  · {a}' for a in attachments) + '\n'
+            if attachments else ''
+        )
+
+        # 疑点
+        suspicion = payload.get('suspicion_markers') or {}
+        suspicion_items = (suspicion.get('critical') or []) + (suspicion.get('secondary') or [])
+        suspicion_text = '\n'.join(f'- {s}' for s in suspicion_items) if suspicion_items else '- 暂无明显疑点'
+
+        # 知县处置描述
+        if is_deferred:
+            magistrate_situation = '知县经两轮审理后仍无把握，搁置案件并呈请本府裁定。你需主动作出判决。'
+        elif magistrate_verdict_code:
+            magistrate_situation = (
+                f'知县已作出判决：{magistrate_verdict_label}（代码：{magistrate_verdict_code}）。'
+                f'你可维持原判，也可改判为其他选项。'
+            )
+        else:
+            magistrate_situation = '知县处置情况不明。'
+
+        # 风险因素文本
+        factors_text = '\n'.join(f'- {k}: {v:.2f}' for k, v in factors.items())
+
+        return {
+            'prefect_name': prefect_agent.name,
+            'prefecture_name': prefect_attrs.get('prefecture', '本府'),
+            'bio': prefect_attrs.get('bio', ''),
+            'personality_desc': personality_desc,
+            'ideology_desc': ideology_desc,
+            'memory_desc': memory_desc,
+            'affinity': prefect_attrs.get('player_affinity', 50),
+            'season_label': month_name(month_of_year(season)),
+            'county_name': county.get('county_type_name', county.get('county_name', '本县')),
+            'county_situation': county_situation,
+            'case_name': payload.get('case_name', '未名案件'),
+            'case_category': payload.get('category', ''),
+            'case_difficulty': payload.get('difficulty', '新手'),
+            'dossier_text': payload.get('dossier_text', ''),
+            'attachments_block': attachments_block,
+            'suspicion_text': suspicion_text,
+            'verdict_options_text': verdict_options_text,
+            'magistrate_situation': magistrate_situation,
+            'factors_text': factors_text,
+        }
+
+    @classmethod
+    def _request_llm_prefect_decision(cls, ctx: dict, verdict_options: list) -> Optional[dict]:
+        """调用 LLM 获取知府判决。返回 {'verdict_code': ..., 'letter': ...} 或 None。"""
+        from llm.client import LLMClient
+        from llm.prompts import PromptRegistry
+
+        system_prompt, user_prompt = PromptRegistry.render('prefect_judicial_review', **ctx)
+        client = LLMClient(timeout=10, max_retries=1)
+        result = client.chat_json(
+            [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            temperature=0.5,
+            max_tokens=400,
+        )
+
+        if not isinstance(result, dict):
+            return None
+        verdict_code = str(result.get('verdict_code') or '').strip()
+        valid_codes = {o.get('verdict_code') for o in verdict_options}
+        if verdict_code not in valid_codes:
+            logger.warning("知府 LLM 返回无效 verdict_code: %r（有效: %s）", verdict_code, valid_codes)
+            return None
+        return {
+            'verdict_code': verdict_code,
+            'letter': str(result.get('letter') or '').strip(),
+        }
+
+    @classmethod
+    def _pick_prefect_verdict_code(
+        cls, verdict_options: list, prefect_attrs: dict, factors: dict
+    ) -> Optional[str]:
+        """根据知府性格和案件因素选择判决。"""
+        if not verdict_options:
+            return None
+        people_focus = prefect_attrs.get('ideology', {}).get('people_vs_authority', 0.5)
+        conscientiousness = prefect_attrs.get('personality', {}).get('conscientiousness', 0.5)
+        evidence_doubt = factors.get('evidence_doubt', 0.3)
+
+        # 良知官员面对高疑点倾向存疑续查
+        if evidence_doubt >= 0.55 and conscientiousness >= 0.65:
+            for opt in verdict_options:
+                if opt.get('verdict_code') == 'INSUFFICIENT_EVIDENCE':
+                    return opt['verdict_code']
+
+        # 按民本/权威取向决定倾向
+        if people_focus >= 0.65:
+            preference = ('CONVICT_HEAVY', 'PLAINTIFF_WIN', 'STRICT_ENFORCE', 'CONVICT_LIGHT', 'MEDIATION', 'ACQUIT')
+        elif people_focus <= 0.35:
+            preference = ('MEDIATION', 'CONVICT_LIGHT', 'DEFENDANT_WIN', 'ACQUIT', 'CONVICT_HEAVY')
+        else:
+            preference = ('CONVICT_LIGHT', 'PLAINTIFF_WIN', 'MEDIATION', 'ACQUIT', 'CONVICT_HEAVY')
+        for code in preference:
+            for opt in verdict_options:
+                if opt.get('verdict_code') == code:
+                    return opt['verdict_code']
+        return verdict_options[0].get('verdict_code')
+
+    @classmethod
+    def _apply_verdict_effects_to_county_dict(cls, county: dict, verdict_option: dict) -> None:
+        """将判决效果写入县域 dict（知府改判/上裁路径，不触达 AdminUnit）。"""
+        effects = verdict_option.get('immediate_effects') or {}
+        for field in ('morale', 'security', 'gentry_favor', 'commercial', 'education'):
+            delta = effects.get(field, 0)
+            if delta:
+                county[field] = max(0, min(100, round(float(county.get(field, 50)) + delta, 1)))
+        treasury_delta = effects.get('treasury', 0)
+        if treasury_delta:
+            county['treasury'] = max(0, round(float(county.get('treasury', 0)) + treasury_delta, 2))
 
     # ==================== 府情总览 / 下辖县统计 ====================
 
