@@ -2,6 +2,23 @@ from django.db import models
 from django.contrib.auth.models import User
 
 
+class UserLoginLog(models.Model):
+    """用户登录日志 — 记录每次登录的基础数据"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='login_logs')
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='客户端 IP')
+    user_agent = models.CharField(max_length=300, blank=True, default='', help_text='浏览器 User-Agent')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_login_logs'
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} {self.ip_address} {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class GameState(models.Model):
     """游戏存档 - 核心表"""
     ROLE_CHOICES = [

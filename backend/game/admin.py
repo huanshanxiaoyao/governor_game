@@ -1,5 +1,17 @@
 from django.contrib import admin
-from .models import GameState, PlayerProfile, Agent, Relationship, EventLog, DialogueMessage, NegotiationSession, Promise
+from .models import GameState, PlayerProfile, Agent, Relationship, EventLog, DialogueMessage, NegotiationSession, Promise, UserLoginLog
+
+
+@admin.register(UserLoginLog)
+class UserLoginLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'ip_address', 'user_agent_short', 'created_at')
+    list_filter = ('user',)
+    search_fields = ('user__username', 'ip_address')
+    date_hierarchy = 'created_at'
+
+    @admin.display(description='User-Agent')
+    def user_agent_short(self, obj):
+        return obj.user_agent[:60] + '...' if len(obj.user_agent) > 60 else obj.user_agent
 
 
 @admin.register(GameState)
