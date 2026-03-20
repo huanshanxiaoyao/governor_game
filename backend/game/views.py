@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.db.models import Prefetch
 from django.db import OperationalError, ProgrammingError
 from django.template.response import TemplateResponse
 from rest_framework import status
@@ -10,7 +12,7 @@ from rest_framework.views import APIView
 
 from .models import (
     AdminUnit, Agent, EventLog, GameState, NeighborCounty, NeighborEventLog,
-    NegotiationSession, PlayerProfile, Promise,
+    NegotiationSession, PlayerProfile, Promise, UserLoginLog,
 )
 from .serializers import (
     AnnualReviewSubmitSerializer,
@@ -1996,45 +1998,39 @@ class AdminPlayerStatsView(APIView):
         if not request.user.is_staff:
             return Response({"error": "权限不足"}, status=status.HTTP_403_FORBIDDEN)
 
-        from django.contrib.auth.models import User
-        from .models import UserLoginLog
+        # 3 queries total: users + login_logs (all) + games (all)
+        users = User.objects.prefetch_related(
+            Prefetch('login_logs', queryset=UserLoginLog.objects.order_by('-created_at')),
+            Prefetch('games', queryset=GameState.objects.only('current_season')),
+        ).order_by('username')
 
         rows = []
-        for u in User.objects.all().order_by('username'):
-            login_logs = UserLoginLog.objects.filter(user=u)
-            login_count = login_logs.count()
-            ip_set = list(
-                login_logs.values_list('ip_address', flat=True)
-                .distinct()
-                .order_by()
-            )
-
-            games = GameState.objects.filter(user=u)
-            game_count = games.count()
-            total_advances = sum(max(g.current_season - 1, 0) for g in games)
-
-            closed = login_logs.filter(logged_out_at__isnull=False)
+        for u in users:
+            logs = list(u.login_logs.all())
+            ip_list = list({log.ip_address for log in logs if log.ip_address})
             online_minutes = sum(
                 (log.logged_out_at - log.created_at).total_seconds() / 60
-                for log in closed
+                for log in logs if log.logged_out_at
             )
-
             recent_logins = [
                 {
                     "ip": log.ip_address,
                     "time": log.created_at.strftime('%m-%d %H:%M'),
                     "duration": log.duration_minutes,
                 }
-                for log in login_logs.order_by('-created_at')[:10]
+                for log in logs[:10]
             ]
+
+            games = list(u.games.all())
+            total_advances = sum(max(g.current_season - 1, 0) for g in games)
 
             rows.append({
                 "username": u.username,
                 "is_staff": u.is_staff,
-                "login_count": login_count,
-                "ip_count": len([ip for ip in ip_set if ip]),
-                "ip_list": [ip for ip in ip_set if ip],
-                "game_count": game_count,
+                "login_count": len(logs),
+                "ip_count": len(ip_list),
+                "ip_list": ip_list,
+                "game_count": len(games),
                 "total_advances": total_advances,
                 "online_minutes": round(online_minutes, 1),
                 "last_login": u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else None,
