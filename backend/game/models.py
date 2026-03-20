@@ -3,10 +3,11 @@ from django.contrib.auth.models import User
 
 
 class UserLoginLog(models.Model):
-    """用户登录日志 — 记录每次登录的基础数据"""
+    """用户登录日志 — 记录每次 session 的登录/登出与在线时长"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='login_logs')
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='客户端 IP')
     user_agent = models.CharField(max_length=300, blank=True, default='', help_text='浏览器 User-Agent')
+    logged_out_at = models.DateTimeField(null=True, blank=True, help_text='登出时间（null = session 仍开着或异常断开）')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -17,6 +18,13 @@ class UserLoginLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} {self.ip_address} {self.created_at:%Y-%m-%d %H:%M}"
+
+    @property
+    def duration_minutes(self):
+        """在线时长（分钟），登出后才有值。"""
+        if self.logged_out_at and self.created_at:
+            return round((self.logged_out_at - self.created_at).total_seconds() / 60, 1)
+        return None
 
 
 class GameState(models.Model):
