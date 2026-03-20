@@ -2000,7 +2000,7 @@ class AdminPlayerStatsView(APIView):
         from .models import UserLoginLog
 
         rows = []
-        for u in User.objects.filter(is_staff=False).order_by('username'):
+        for u in User.objects.all().order_by('username'):
             login_logs = UserLoginLog.objects.filter(user=u)
             login_count = login_logs.count()
             ip_set = list(
@@ -2030,6 +2030,7 @@ class AdminPlayerStatsView(APIView):
 
             rows.append({
                 "username": u.username,
+                "is_staff": u.is_staff,
                 "login_count": login_count,
                 "ip_count": len([ip for ip in ip_set if ip]),
                 "ip_list": [ip for ip in ip_set if ip],
