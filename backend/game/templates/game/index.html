@@ -35,16 +35,27 @@
   </div>
 
   <div class="new-game-panel">
-    <h3>开始新游戏</h3>
+    <div class="new-game-panel-header">
+      <h3>开始新游戏</h3>
+      <button id="btn-open-knowledge-new" class="btn btn-small" type="button">新手指南</button>
+    </div>
     <p>1）选择角色：</p>
     <div class="role-choices">
       <button class="btn btn-role" data-role="COUNTY">
         <strong>知县</strong>
-        <span>县域治理·三年任期</span>
+        <span>县域治理·生存与发展</span>
       </button>
       <button class="btn btn-role" data-role="PREFECTURE">
         <strong>知府</strong>
-        <span>府域统辖·三年任期</span>
+        <span>完成度较低</span>
+      </button>
+      <button class="btn btn-role btn-role-disabled" data-role="GOVERNOR" data-planned="1" type="button">
+        <strong>巡抚</strong>
+        <span>计划中</span>
+      </button>
+      <button class="btn btn-role btn-role-disabled" data-role="CABINET" data-planned="1" type="button">
+        <strong>内阁</strong>
+        <span>计划中</span>
       </button>
     </div>
     <div id="county-type-section" class="hidden">
@@ -111,7 +122,10 @@
       <span id="season-display"></span>
       <span id="treasury-display"></span>
     </div>
-    <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
+    <div class="game-header-actions">
+      <button id="btn-open-knowledge-game" class="btn btn-small" type="button">治县要略</button>
+      <button id="btn-advance" class="btn btn-primary btn-advance">推进月份</button>
+    </div>
   </div>
   <div id="neighbor-precompute-status" class="precompute-status-inline header-precompute"></div>
   <!-- Riot Status Banner -->
@@ -524,6 +538,39 @@
   </div>
 </div>
 
+<div id="knowledge-modal" class="modal hidden">
+  <div class="modal-content knowledge-modal-content">
+    <div class="knowledge-modal-header">
+      <h4 id="knowledge-modal-title">治县要略</h4>
+      <button id="knowledge-modal-close" class="btn btn-small" type="button">关闭</button>
+    </div>
+    <div id="knowledge-modal-body" class="knowledge-modal-body">
+      <p class="hint">加载中...</p>
+    </div>
+  </div>
+</div>
+
+<div id="feedback-modal" class="modal hidden">
+  <div class="modal-content modal-sm feedback-modal-content">
+    <div class="feedback-modal-header">
+      <h4>提交反馈</h4>
+      <button id="feedback-modal-close" class="btn btn-small" type="button">关闭</button>
+    </div>
+    <div id="feedback-modal-meta" class="hint feedback-modal-meta"></div>
+    <textarea
+      id="feedback-input"
+      class="feedback-input"
+      rows="6"
+      maxlength="1000"
+      placeholder="请输入你的问题、建议或复现路径..."
+    ></textarea>
+    <div class="modal-actions">
+      <button id="btn-feedback-submit" class="btn btn-primary btn-small" type="button">发送</button>
+      <button id="btn-feedback-cancel" class="btn btn-small" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== Screen 5: Prefecture (知府) ==================== -->
 <section id="screen-prefecture" class="screen hidden">
   <!-- Header -->
@@ -655,6 +702,7 @@
 </div>
 
 <!-- ==================== Toast Container ==================== -->
+<button id="btn-feedback-entry" class="btn btn-small feedback-fab hidden" type="button">反馈</button>
 <div id="toast-container"></div>
 
 <!-- Scripts -->

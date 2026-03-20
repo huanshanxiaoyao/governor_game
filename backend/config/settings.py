@@ -148,6 +148,7 @@ LLM_PROVIDERS = {
 
 # Feishu log webhook — set in .env to enable WARNING+ push notifications
 FEISHU_LOG_WEBHOOK = os.getenv('FEISHU_LOG_WEBHOOK', '')
+FEISHU_FEEDBACK_WEBHOOK = os.getenv('FEISHU_FEEDBACK_WEBHOOK', FEISHU_LOG_WEBHOOK)
 
 # Logging
 LOGGING = {

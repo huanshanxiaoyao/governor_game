@@ -16,6 +16,7 @@
     user: null,
     games: [],
     currentGame: null,
+    prefectureGame: null,
     lastReport: null,
     activeNegotiation: null,
     agents: [],

@@ -4,9 +4,11 @@ from . import views, views_prefecture
 urlpatterns = [
     path("login/", views.LoginView.as_view(), name="api-login"),
     path("logout/", views.LogoutView.as_view(), name="api-logout"),
+    path("game-knowledge/", views.GameKnowledgeView.as_view(), name="api-game-knowledge"),
     path("judicial/debug/page/", views.JudicialDebugPageView.as_view(), name="judicial-debug-page"),
     path("npc/debug/page/", views.NPCDebugPageView.as_view(), name="npc-debug-page"),
     path("games/", views.GameListCreateView.as_view(), name="game-list-create"),
+    path("games/<int:game_id>/feedback/", views.GameFeedbackView.as_view(), name="game-feedback"),
     path("games/<int:game_id>/", views.GameDetailView.as_view(), name="game-detail"),
     path("games/<int:game_id>/npc-debug/", views.NPCDebugListView.as_view(), name="game-npc-debug"),
     path("games/<int:game_id>/npc-debug/detail/", views.NPCDebugDetailView.as_view(), name="game-npc-debug-detail"),

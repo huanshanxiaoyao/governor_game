@@ -86,6 +86,20 @@ class AnnualReviewSubmitSerializer(serializers.Serializer):
     plan = serializers.CharField(trim_whitespace=True)
 
 
+class FeedbackSubmitSerializer(serializers.Serializer):
+    content = serializers.CharField(
+        max_length=1000,
+        trim_whitespace=False,
+        help_text="玩家反馈内容",
+    )
+
+    def validate_content(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("反馈内容不能为空")
+        return value
+
+
 class PrefectureAnnualReviewSerializer(serializers.Serializer):
     unit_id = serializers.IntegerField(min_value=1)
     grade = serializers.ChoiceField(choices=["优", "良", "中", "差"])

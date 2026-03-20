@@ -6,5 +6,5 @@ __pycache__/
 *.pyc
 .env
 # 系统文件（跨平台避免冲突）
-.DS_Store  # Mac特有
-Thumbs.db  # Windows特有
+.DS_Store
+Thumbs.db

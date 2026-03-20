@@ -259,6 +259,7 @@
       components.renderSummary(payload.data);
     }
     screens.show("screen-summary");
+    syncFeedbackEntryVisibility();
   }
 
   // ==================== Login ====================
@@ -287,7 +288,9 @@
       Game.state.user = null;
       Game.state.games = [];
       Game.state.currentGame = null;
+      Game.state.prefectureGame = null;
       screens.show("screen-login");
+      syncFeedbackEntryVisibility();
       el("login-password").value = "";
     });
   });
@@ -301,6 +304,7 @@
   var selectedRole = "";
   var selectedCountyType = "";
   var selectedPrefectureType = "";
+  var knowledgeCache = null;
 
   function updateSelectionButtons(buttons, dataKey, selectedValue) {
     for (var i = 0; i < buttons.length; i++) {
@@ -321,6 +325,220 @@
       }
     }
     return selectedValue;
+  }
+
+  function formatKnowledgeInline(text) {
+    var html = components.escapeHtml(text || "");
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/`(.+?)`/g, "<code>$1</code>");
+    return html;
+  }
+
+  function renderKnowledgeTable(lines) {
+    var rows = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+      var cells = line.split("|").map(function (cell) { return cell.trim(); });
+      if (cells[0] === "") cells.shift();
+      if (cells[cells.length - 1] === "") cells.pop();
+      if (!cells.length) continue;
+      var isSeparator = cells.every(function (cell) {
+        return /^:?-{3,}:?$/.test(cell);
+      });
+      if (!isSeparator) rows.push(cells);
+    }
+    if (!rows.length) return "";
+
+    var html = '<div class="knowledge-table-wrap"><table class="knowledge-table"><thead><tr>';
+    rows[0].forEach(function (cell) {
+      html += "<th>" + formatKnowledgeInline(cell) + "</th>";
+    });
+    html += "</tr></thead>";
+    if (rows.length > 1) {
+      html += "<tbody>";
+      for (var r = 1; r < rows.length; r++) {
+        html += "<tr>";
+        rows[r].forEach(function (cell) {
+          html += "<td>" + formatKnowledgeInline(cell) + "</td>";
+        });
+        html += "</tr>";
+      }
+      html += "</tbody>";
+    }
+    html += "</table></div>";
+    return html;
+  }
+
+  function renderKnowledgeMarkdown(markdown) {
+    var lines = (markdown || "").split(/\r?\n/);
+    var html = "";
+    var currentSection = false;
+    var i = 0;
+
+    function ensureSection(title) {
+      if (currentSection) html += "</section>";
+      currentSection = true;
+      html += '<section class="knowledge-section"><h5>' + formatKnowledgeInline(title) + "</h5>";
+    }
+
+    function closeSection() {
+      if (currentSection) {
+        html += "</section>";
+        currentSection = false;
+      }
+    }
+
+    while (i < lines.length) {
+      var raw = lines[i];
+      var line = raw.trim();
+
+      if (!line || line === "---") {
+        i += 1;
+        continue;
+      }
+      if (line.indexOf("# ") === 0) {
+        i += 1;
+        continue;
+      }
+      if (line.indexOf("> ") === 0) {
+        html += '<p class="knowledge-intro">' + formatKnowledgeInline(line.slice(2)) + "</p>";
+        i += 1;
+        continue;
+      }
+      if (line.indexOf("## ") === 0) {
+        ensureSection(line.slice(3));
+        i += 1;
+        continue;
+      }
+      if (line.indexOf("### ") === 0) {
+        if (!currentSection) ensureSection("概要");
+        html += '<h6 class="knowledge-subtitle">' + formatKnowledgeInline(line.slice(4)) + "</h6>";
+        i += 1;
+        continue;
+      }
+      if (line.indexOf("- ") === 0) {
+        if (!currentSection) ensureSection("概要");
+        html += "<ul>";
+        while (i < lines.length && lines[i].trim().indexOf("- ") === 0) {
+          html += "<li>" + formatKnowledgeInline(lines[i].trim().slice(2)) + "</li>";
+          i += 1;
+        }
+        html += "</ul>";
+        continue;
+      }
+      if (line.indexOf("|") === 0) {
+        if (!currentSection) ensureSection("概要");
+        var tableLines = [];
+        while (i < lines.length && lines[i].trim().indexOf("|") === 0) {
+          tableLines.push(lines[i]);
+          i += 1;
+        }
+        html += renderKnowledgeTable(tableLines);
+        continue;
+      }
+      if (!currentSection) ensureSection("概要");
+      html += "<p>" + formatKnowledgeInline(line) + "</p>";
+      i += 1;
+    }
+
+    closeSection();
+    return html || '<p class="hint">暂无手册内容</p>';
+  }
+
+  function openKnowledgeModal() {
+    var modal = el("knowledge-modal");
+    var titleEl = el("knowledge-modal-title");
+    var bodyEl = el("knowledge-modal-body");
+    if (!modal || !titleEl || !bodyEl) return;
+
+    bodyEl.innerHTML = '<p class="hint">加载中...</p>';
+    modal.classList.remove("hidden");
+
+    var loader = knowledgeCache ? Promise.resolve(knowledgeCache) : api.getGameKnowledge();
+    loader.then(function (data) {
+      knowledgeCache = data;
+      titleEl.textContent = data.title || "治县要略";
+      bodyEl.innerHTML = renderKnowledgeMarkdown(data.markdown || "");
+    }).catch(function (err) {
+      bodyEl.innerHTML = '<p class="hint">' + components.escapeHtml(err.message || "加载手册失败") + '</p>';
+    });
+  }
+
+  function closeKnowledgeModal() {
+    var modal = el("knowledge-modal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function getActiveFeedbackTarget() {
+    var countyScreen = el("screen-game");
+    var prefectureScreen = el("screen-prefecture");
+    if (countyScreen && countyScreen.classList.contains("active") && Game.state.currentGame) {
+      return {
+        gameId: Game.state.currentGame.id,
+        roleLabel: "知县",
+        unitName: ((Game.state.currentGame.county_data || {}).county_name) || "本县",
+      };
+    }
+    if (prefectureScreen && prefectureScreen.classList.contains("active") && Game.state.prefectureGame) {
+      return {
+        gameId: Game.state.prefectureGame.game_id || Game.state.prefectureGame.id,
+        roleLabel: "知府",
+        unitName: Game.state.prefectureGame.prefecture_name || "本府",
+      };
+    }
+    return null;
+  }
+
+  function syncFeedbackEntryVisibility() {
+    var entry = el("btn-feedback-entry");
+    if (!entry) return;
+    entry.classList.toggle("hidden", !getActiveFeedbackTarget());
+  }
+
+  function closeFeedbackModal() {
+    var modal = el("feedback-modal");
+    if (modal) modal.classList.add("hidden");
+    if (el("feedback-input")) el("feedback-input").value = "";
+    if (el("feedback-modal-meta")) el("feedback-modal-meta").textContent = "";
+  }
+
+  function openFeedbackModal() {
+    var target = getActiveFeedbackTarget();
+    if (!target) {
+      components.showToast("当前页面无法提交反馈", "error");
+      return;
+    }
+    el("feedback-modal-meta").textContent = "将反馈到存档 #" + target.gameId + " · " + target.roleLabel + " · " + target.unitName;
+    el("feedback-modal").classList.remove("hidden");
+    el("feedback-input").focus();
+  }
+
+  function submitFeedback() {
+    var target = getActiveFeedbackTarget();
+    var input = el("feedback-input");
+    var submitBtn = el("btn-feedback-submit");
+    if (!target || !input || !submitBtn) return;
+
+    var content = input.value.trim();
+    if (!content) {
+      components.showToast("请先输入反馈内容", "error");
+      input.focus();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    api.submitFeedback(target.gameId, content)
+      .then(function (res) {
+        components.showToast(res.message || "反馈已提交", res.delivered === false ? "info" : "success");
+        closeFeedbackModal();
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "反馈提交失败", "error");
+      })
+      .finally(function () {
+        submitBtn.disabled = false;
+      });
   }
 
   function refreshNewGameState() {
@@ -347,6 +565,10 @@
 
   for (var ri = 0; ri < roleButtons.length; ri++) {
     roleButtons[ri].addEventListener("click", function () {
+      if (this.dataset.planned === "1") {
+        components.showToast("计划中", "info");
+        return;
+      }
       selectedRole = this.dataset.role || "";
       updateSelectionButtons(roleButtons, "role", selectedRole);
       // Show/hide type sections
@@ -404,6 +626,7 @@
             startPrecomputePolling(data.id);
             screens.show("screen-game");
             screens.showTab("tab-dashboard");
+            syncFeedbackEntryVisibility();
           })
           .catch(function (err) {
             components.showToast(err.message, "error");
@@ -415,6 +638,38 @@
     });
   }
   refreshNewGameState();
+
+  if (el("btn-open-knowledge-new")) {
+    el("btn-open-knowledge-new").addEventListener("click", openKnowledgeModal);
+  }
+  if (el("btn-open-knowledge-game")) {
+    el("btn-open-knowledge-game").addEventListener("click", openKnowledgeModal);
+  }
+  if (el("knowledge-modal-close")) {
+    el("knowledge-modal-close").addEventListener("click", closeKnowledgeModal);
+  }
+  if (el("knowledge-modal")) {
+    el("knowledge-modal").addEventListener("click", function (e) {
+      if (e.target === this) closeKnowledgeModal();
+    });
+  }
+  if (el("btn-feedback-entry")) {
+    el("btn-feedback-entry").addEventListener("click", openFeedbackModal);
+  }
+  if (el("feedback-modal-close")) {
+    el("feedback-modal-close").addEventListener("click", closeFeedbackModal);
+  }
+  if (el("btn-feedback-cancel")) {
+    el("btn-feedback-cancel").addEventListener("click", closeFeedbackModal);
+  }
+  if (el("btn-feedback-submit")) {
+    el("btn-feedback-submit").addEventListener("click", submitFeedback);
+  }
+  if (el("feedback-modal")) {
+    el("feedback-modal").addEventListener("click", function (e) {
+      if (e.target === this) closeFeedbackModal();
+    });
+  }
 
   // ==================== Continue Game ====================
   el("game-list").addEventListener("click", function (e) {
@@ -450,6 +705,7 @@
         Game.setGame(data);
         screens.show("screen-game");
         screens.showTab("tab-dashboard");
+        syncFeedbackEntryVisibility();
         if (termComplete) {
           // Term complete but not terminal — show new-term modal immediately
           showTermCompleteFromSaved(data);
@@ -473,6 +729,7 @@
     _updateJudicialBadge(data.pending_judicial_count || 0);
     showPrefTab("pref-tab-overview");
     screens.show("screen-prefecture");
+    syncFeedbackEntryVisibility();
     if (data.current_season <= 36) {
       api.precomputePrefecture(data.game_id).catch(function () {});
       startPrefecturePrecomputePolling(data.game_id);
@@ -2436,6 +2693,7 @@
         Game.state.games = games;
         components.renderGameList(games);
         screens.show("screen-game-list");
+        syncFeedbackEntryVisibility();
       })
       .catch(function (err) {
         components.showToast(err.message, "error");
@@ -2450,10 +2708,12 @@
         Game.state.games = games;
         components.renderGameList(games);
         screens.show("screen-game-list");
+        syncFeedbackEntryVisibility();
       })
       .catch(function () {
         // Not logged in
         screens.show("screen-login");
+        syncFeedbackEntryVisibility();
       });
   }
 

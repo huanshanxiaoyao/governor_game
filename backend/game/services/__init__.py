@@ -45,6 +45,7 @@ from .bribery import BriberyService
 from .career_track import CareerTrackService
 from .promotion_event import PromotionEventService
 from .new_term import NewTermService, TERMINAL_REASONS
+from .feedback import FeedbackService
 from .state import load_player_state, load_county_state, save_player_state, mutate_player_state
 
 __all__ = [
@@ -92,6 +93,7 @@ __all__ = [
     "is_ai_negotiation_enabled",
     "PrefectAIService",
     "BriberyService",
+    "FeedbackService",
     "load_player_state",
     "load_county_state",
     "save_player_state",

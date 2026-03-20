@@ -213,6 +213,27 @@ class EventLog(models.Model):
         return f"Game#{self.game_id} S{self.season}: [{self.category}] {self.event_type}"
 
 
+class PlayerFeedback(models.Model):
+    """玩家反馈记录"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='game_feedbacks')
+    game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='feedbacks')
+    content = models.TextField(help_text='玩家反馈内容')
+    sent_to_feishu = models.BooleanField(default=False, help_text='是否已推送到飞书')
+    feishu_error = models.CharField(max_length=300, blank=True, default='', help_text='飞书发送失败原因')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'player_feedbacks'
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['game', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Feedback#{self.id} User:{self.user_id} Game:{self.game_id}"
+
+
 class NegotiationSession(models.Model):
     """谈判会话 — 地主兼并 / 兴建水利 多轮谈判状态机"""
     EVENT_TYPES = [

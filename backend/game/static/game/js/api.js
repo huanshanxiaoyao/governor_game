@@ -53,6 +53,9 @@
     logout: function () {
       return request("POST", "/api/logout/", {});
     },
+    getGameKnowledge: function () {
+      return request("GET", "/api/game-knowledge/");
+    },
     listGames: function () {
       return request("GET", "/api/games/");
     },
@@ -63,6 +66,9 @@
     },
     getGame: function (id) {
       return request("GET", "/api/games/" + id + "/");
+    },
+    submitFeedback: function (id, content) {
+      return request("POST", "/api/games/" + id + "/feedback/", { content: content });
     },
     getCountyJudicial: function (id) {
       return request("GET", "/api/games/" + id + "/judicial/");

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.contrib.auth import authenticate, login, logout
 from django.db import OperationalError, ProgrammingError
 from django.template.response import TemplateResponse
@@ -19,6 +21,7 @@ from .serializers import (
     EmergencyDebugToggleSerializer,
     EmergencyGrainAmountSerializer,
     EventLogSerializer,
+    FeedbackSubmitSerializer,
     GameDetailSerializer,
     GameListSerializer,
     InvestActionSerializer,
@@ -36,7 +39,7 @@ from .serializers import (
 from .services import (
     AgentService, CountyService, InvestmentService,
     NegotiationService, NeighborService, OfficialdomService,
-    SettlementService, EmergencyService,
+    SettlementService, EmergencyService, FeedbackService,
 )
 from .services.annual_review import AnnualReviewService
 from .services.bribery import BriberyService
@@ -174,6 +177,51 @@ class LogoutView(APIView):
     def post(self, request):
         logout(request)
         return Response({"message": "已登出"})
+
+
+class GameKnowledgeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        knowledge_path = Path(__file__).resolve().parent / "game_knowledge.md"
+        markdown = knowledge_path.read_text(encoding="utf-8")
+        title = "治县要略"
+        for line in markdown.splitlines():
+            line = line.strip()
+            if line.startswith("# "):
+                title = line[2:].strip() or title
+                break
+        return Response({
+            "title": title,
+            "markdown": markdown,
+        })
+
+
+class GameFeedbackView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = FeedbackSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        feedback, delivered, error_message = FeedbackService.submit_feedback(
+            game=game,
+            user=request.user,
+            content=serializer.validated_data["content"],
+        )
+        payload = {
+            "id": feedback.id,
+            "delivered": delivered,
+            "message": "反馈已发送到飞书群" if delivered else "反馈已保存，但飞书通知发送失败",
+        }
+        if error_message:
+            payload["warning"] = error_message
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class GameListCreateView(APIView):
