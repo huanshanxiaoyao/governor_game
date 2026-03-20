@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩家统计面板</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  .subtitle { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+  .btn { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 13px; }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { background: #334155; cursor: default; }
+  .status { font-size: 13px; color: #64748b; }
+
+  /* 汇总卡片 */
+  .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+  .card { background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 18px; }
+  .card-label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+  .card-value { font-size: 26px; font-weight: 700; color: #f1f5f9; }
+
+  /* 主表格 */
+  .table-wrap { background: #111827; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th { background: #0f172a; padding: 12px 14px; text-align: left; color: #64748b; font-weight: 600; font-size: 12px; letter-spacing: .04em; white-space: nowrap; }
+  tbody tr { border-top: 1px solid #1e293b; transition: background .15s; }
+  tbody tr:hover { background: #1e293b; }
+  td { padding: 12px 14px; vertical-align: middle; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .username { font-weight: 600; }
+  .ip-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .ip-tag { background: #0f2744; color: #7dd3fc; border-radius: 4px; padding: 2px 7px; font-size: 12px; font-family: monospace; }
+  .muted { color: #475569; }
+  .zero { color: #334155; }
+  .highlight { color: #34d399; }
+
+  /* 展开行 */
+  .detail-row { display: none; background: #0b1120; }
+  .detail-row.open { display: table-row; }
+  .detail-inner { padding: 12px 14px 16px; }
+  .login-list { display: flex; gap: 8px; flex-wrap: wrap; }
+  .login-item { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+  .login-item .li-ip { font-family: monospace; color: #7dd3fc; }
+  .login-item .li-time { color: #94a3b8; margin-top: 2px; }
+  .login-item .li-dur { color: #6ee7b7; margin-top: 2px; }
+  .expand-btn { background: none; border: none; color: #64748b; cursor: pointer; padding: 0 6px; font-size: 16px; }
+  .expand-btn:hover { color: #e2e8f0; }
+
+  .empty { text-align: center; padding: 40px; color: #475569; }
+  .loading { text-align: center; padding: 40px; color: #64748b; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>玩家统计面板</h1>
+  <div class="subtitle">仅限管理员访问 · 数据实时查询</div>
+
+  <div class="toolbar">
+    <button class="btn" id="refreshBtn" onclick="load()">刷新数据</button>
+    <span class="status" id="statusTxt">加载中…</span>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>用户名</th>
+          <th class="num">登录次数</th>
+          <th>IP 地址</th>
+          <th class="num">开档数</th>
+          <th class="num">推进月份</th>
+          <th class="num">在线时长(分)</th>
+          <th>最后登录</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="8" class="loading">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+var lastData = null;
+
+function load() {
+  document.getElementById('refreshBtn').disabled = true;
+  document.getElementById('statusTxt').textContent = '加载中…';
+
+  fetch('/api/admin/player-stats/', { credentials: 'same-origin' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      lastData = data.players;
+      render(data.players);
+      document.getElementById('statusTxt').textContent =
+        '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+    })
+    .catch(function(e) {
+      document.getElementById('statusTxt').textContent = '加载失败: ' + e.message;
+    })
+    .finally(function() {
+      document.getElementById('refreshBtn').disabled = false;
+    });
+}
+
+function render(players) {
+  // 汇总卡片
+  var totalLogins = players.reduce(function(s, p) { return s + p.login_count; }, 0);
+  var totalGames  = players.reduce(function(s, p) { return s + p.game_count; }, 0);
+  var totalAdv    = players.reduce(function(s, p) { return s + p.total_advances; }, 0);
+  var totalMin    = players.reduce(function(s, p) { return s + p.online_minutes; }, 0);
+  document.getElementById('summary').innerHTML =
+    card('测试用户数', players.length) +
+    card('总登录次数', totalLogins) +
+    card('总开档数', totalGames) +
+    card('总推进月份', totalAdv) +
+    card('总在线时长', Math.round(totalMin) + ' 分');
+
+  // 主表格
+  var html = '';
+  if (!players.length) {
+    html = '<tr><td colspan="8" class="empty">暂无玩家数据</td></tr>';
+  } else {
+    players.forEach(function(p, i) {
+      var ipHtml = p.ip_list.length
+        ? p.ip_list.map(function(ip) { return '<span class="ip-tag">' + ip + '</span>'; }).join('')
+        : '<span class="muted">—</span>';
+      var lastLogin = p.last_login || '<span class="muted">从未</span>';
+      var advClass = p.total_advances > 0 ? 'highlight' : 'zero';
+
+      html += '<tr onclick="toggleDetail(' + i + ')">' +
+        '<td><button class="expand-btn" id="exp-' + i + '">▸</button></td>' +
+        '<td class="username">' + esc(p.username) + '</td>' +
+        '<td class="num">' + p.login_count + '</td>' +
+        '<td><div class="ip-tags">' + ipHtml + '</div></td>' +
+        '<td class="num">' + p.game_count + '</td>' +
+        '<td class="num ' + advClass + '">' + p.total_advances + '</td>' +
+        '<td class="num">' + p.online_minutes.toFixed(1) + '</td>' +
+        '<td>' + lastLogin + '</td>' +
+      '</tr>';
+
+      // 展开行：最近10次登录明细
+      var detailHtml = '<div class="detail-inner">' +
+        '<div style="font-size:12px;color:#64748b;margin-bottom:8px">最近登录记录（最多10条）</div>' +
+        '<div class="login-list">';
+      if (p.recent_logins.length) {
+        p.recent_logins.forEach(function(l) {
+          var dur = l.duration !== null ? l.duration + ' 分钟' : '未记录登出';
+          detailHtml +=
+            '<div class="login-item">' +
+            '<div class="li-ip">' + (l.ip || '未知IP') + '</div>' +
+            '<div class="li-time">' + l.time + '</div>' +
+            '<div class="li-dur">' + dur + '</div>' +
+            '</div>';
+        });
+      } else {
+        detailHtml += '<span class="muted">暂无记录</span>';
+      }
+      detailHtml += '</div></div>';
+
+      html += '<tr class="detail-row" id="detail-' + i + '">' +
+        '<td colspan="8">' + detailHtml + '</td></tr>';
+    });
+  }
+  document.getElementById('tbody').innerHTML = html;
+}
+
+function toggleDetail(i) {
+  var row = document.getElementById('detail-' + i);
+  var btn = document.getElementById('exp-' + i);
+  var open = row.classList.toggle('open');
+  btn.textContent = open ? '▾' : '▸';
+}
+
+function card(label, value) {
+  return '<div class="card"><div class="card-label">' + label + '</div>' +
+    '<div class="card-value">' + value + '</div></div>';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+load();
+</script>
+</body>
+</html>

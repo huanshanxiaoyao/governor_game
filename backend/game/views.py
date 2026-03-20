@@ -1985,3 +1985,70 @@ class AnnualReviewDraftView(APIView):
 
         draft = AnnualReviewService.generate_player_review_draft(game)
         return Response({"draft": draft})
+
+
+class AdminPlayerStatsView(APIView):
+    """GET /api/admin/player-stats/  — 管理员专用：玩家行为汇总数据"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "权限不足"}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.contrib.auth.models import User
+        from .models import UserLoginLog
+
+        rows = []
+        for u in User.objects.filter(is_staff=False).order_by('username'):
+            login_logs = UserLoginLog.objects.filter(user=u)
+            login_count = login_logs.count()
+            ip_set = list(
+                login_logs.values_list('ip_address', flat=True)
+                .distinct()
+                .order_by()
+            )
+
+            games = GameState.objects.filter(user=u)
+            game_count = games.count()
+            total_advances = sum(max(g.current_season - 1, 0) for g in games)
+
+            closed = login_logs.filter(logged_out_at__isnull=False)
+            online_minutes = sum(
+                (log.logged_out_at - log.created_at).total_seconds() / 60
+                for log in closed
+            )
+
+            recent_logins = [
+                {
+                    "ip": log.ip_address,
+                    "time": log.created_at.strftime('%m-%d %H:%M'),
+                    "duration": log.duration_minutes,
+                }
+                for log in login_logs.order_by('-created_at')[:10]
+            ]
+
+            rows.append({
+                "username": u.username,
+                "login_count": login_count,
+                "ip_count": len([ip for ip in ip_set if ip]),
+                "ip_list": [ip for ip in ip_set if ip],
+                "game_count": game_count,
+                "total_advances": total_advances,
+                "online_minutes": round(online_minutes, 1),
+                "last_login": u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else None,
+                "recent_logins": recent_logins,
+            })
+
+        return Response({"players": rows})
+
+
+class AdminPanelPageView(APIView):
+    """GET /admin-panel/  — 管理员统计面板页面"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "权限不足"}, status=status.HTTP_403_FORBIDDEN)
+        return TemplateResponse(request, "game/admin_panel.html", {})

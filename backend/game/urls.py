@@ -2,6 +2,8 @@ from django.urls import path
 from . import views, views_prefecture
 
 urlpatterns = [
+    path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
+    path("admin/panel/", views.AdminPanelPageView.as_view(), name="admin-panel"),
     path("login/", views.LoginView.as_view(), name="api-login"),
     path("logout/", views.LogoutView.as_view(), name="api-logout"),
     path("game-knowledge/", views.GameKnowledgeView.as_view(), name="api-game-knowledge"),
