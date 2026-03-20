@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 class UserLoginLog(models.Model):
     """用户登录日志 — 记录每次 session 的登录/登出与在线时长"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='login_logs')
+    session_key = models.CharField(max_length=40, null=True, blank=True, db_index=True, help_text='Django session key，用于精确匹配登出记录')
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='客户端 IP')
     user_agent = models.CharField(max_length=300, blank=True, default='', help_text='浏览器 User-Agent')
     logged_out_at = models.DateTimeField(null=True, blank=True, help_text='登出时间（null = session 仍开着或异常断开）')
