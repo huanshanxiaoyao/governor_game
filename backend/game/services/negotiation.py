@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from ..models import Agent, DialogueMessage, EventLog, NegotiationSession
 from .agent import AgentService
+from .eventlog import adjust_player_profile_stat, log_game_event
 from .ledger import (
     ensure_county_ledgers,
     ensure_village_ledgers,
@@ -94,6 +95,19 @@ class NegotiationService:
             max_rounds=max_rounds,
             season=game.current_season,
             context_data=context_data,
+        )
+        log_game_event(
+            game,
+            event_type='negotiation_started',
+            category='NEGOTIATION',
+            description=f'{village_name or agent.name}发起{dict(NegotiationSession.EVENT_TYPES).get(event_type, event_type)}谈判',
+            data={
+                'negotiation_id': session.id,
+                'agent_name': agent.name,
+                'event_type': event_type,
+                'village_name': village_name,
+                'context_data': context_data,
+            },
         )
         return session, None
 
@@ -254,14 +268,18 @@ class NegotiationService:
                 and speaker_role == 'PLAYER'
                 and session.context_data.get('delegate_failed_once')
                 and result.get('final_decision') in _SUCCESS_DECISIONS):
-            try:
-                from ..models import PlayerProfile
-                _profile = PlayerProfile.objects.filter(game=game).first()
-                if _profile:
-                    _profile.competence = min(100, _profile.competence + 1)
-                    _profile.save(update_fields=['competence', 'updated_at'])
-            except Exception:
-                pass
+            adjust_player_profile_stat(
+                game,
+                'competence',
+                1,
+                source_event='negotiation_player_salvage',
+                source_label=f'{session.agent.name}谈判亲谈成功',
+                extra_data={
+                    'negotiation_id': session.id,
+                    'event_type': session.event_type,
+                    'final_decision': result.get('final_decision'),
+                },
+            )
 
         response = {
             'agent_name': agent.name,
