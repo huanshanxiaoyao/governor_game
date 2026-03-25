@@ -177,7 +177,17 @@ class PrefectAIService:
         agri_quota = quota.get('agri', total_quota * 0.7)
 
         pct = min(100, agri_remitted / agri_quota * 100) if agri_quota > 0 else 0
-        expected_by_now = min(100, (moy / 12) * 100)
+
+        # 明代赋税征收节奏：夏税五~六月，秋税九~十月
+        # 正月至四月完成率接近零属正常，不应据此催科
+        _TAX_CALENDAR = {
+            1: 0, 2: 0, 3: 0, 4: 5,
+            5: 15, 6: 32,       # 夏税征收期（约占年赋40%）
+            7: 38, 8: 42,       # 夏税尾期，秋收前
+            9: 62, 10: 88,      # 秋税征收旺季（约占年赋60%）
+            11: 93, 12: 100,
+        }
+        expected_by_now = _TAX_CALENDAR.get(moy, 0)
         gap = pct - expected_by_now
 
         status = '进度正常'
@@ -190,7 +200,7 @@ class PrefectAIService:
 
         return (
             f'年度农赋指标: {agri_quota:.0f}两，已入库: {agri_remitted:.0f}两\n'
-            f'完成率: {pct:.0f}%，当前时节预期进度: {expected_by_now:.0f}%（{status}）'
+            f'完成率: {pct:.0f}%，{moy}月按时令应达进度: {expected_by_now}%（{status}）'
         )
 
     @staticmethod
@@ -308,7 +318,13 @@ class PrefectAIService:
         agri_quota = quota.get('agri', 0)
         agri_done = fy.get('agri_remitted', 0)
         quota_pct = (agri_done / agri_quota * 100) if agri_quota > 0 else 100
-        expected_pct = (moy / 12) * 100
+        # 明代赋税时令预期（夏税五~六月，秋税九~十月）
+        _TAX_CAL = {
+            1: 0, 2: 0, 3: 0, 4: 5,
+            5: 15, 6: 32, 7: 38, 8: 42,
+            9: 62, 10: 88, 11: 93, 12: 100,
+        }
+        season_expected = _TAX_CAL.get(moy, 0)
 
         # 正月：年度纲要
         if moy == 1:
@@ -345,18 +361,18 @@ class PrefectAIService:
                 'reasoning': 'fallback: complaints>=2',
             }
 
-        # 配额严重滞后（月份过半后，且知府偏重上级指标）
-        if moy >= 6 and quota_pct < expected_pct - 20 and people_focus <= 0.5:
+        # 配额严重滞后（秋税征收期后方可催科，正月至七月不催）
+        if moy >= 8 and quota_pct < season_expected - 20 and people_focus <= 0.5:
             return {
                 'action': {
                     'type': 'directive',
                     'directive_type': '催科',
                     'directive_text': (
-                        '据报本县本年赋税征收进度远落于预期。年关将近，指标紧迫，'
+                        '据报本县本年赋税征收进度远落于时令应有进度。年关将近，指标紧迫，'
                         '着尔即行督促征收，务求年底足额上缴，毋得有误。'
                     ),
                     'affinity_delta': -3 if assertiveness > 0.6 else -1,
-                    'memo_entry': f'{moy}月配额完成率{quota_pct:.0f}%，远低预期，已催科。',
+                    'memo_entry': f'{moy}月配额完成率{quota_pct:.0f}%，远低时令预期{season_expected}%，已催科。',
                 },
                 'analysis': '配额进度滞后，需催科。',
                 'reasoning': 'fallback: quota behind',
@@ -380,7 +396,7 @@ class PrefectAIService:
             }
 
         # 默认：内部记录
-        if quota_pct >= expected_pct - 5:
+        if quota_pct >= season_expected - 5:
             memo = f'县政平稳，配额进度达标。'
             delta = 1
         else:
@@ -473,6 +489,22 @@ class PrefectAIService:
                 description=f'【知府来文·{directive_type}】{directive_text[:80]}',
                 data={'directive_type': directive_type, 'affinity_delta': affinity_delta},
             )
+            # 同步创建来信（立即投递）
+            try:
+                from .letter import LetterService
+                tag = '知府来文' if action_type == 'directive' else '知府嘉奖'
+                LetterService.create_npc_letter(
+                    game=game,
+                    current_month=month,
+                    sender_agent=prefect,
+                    subject=f'【{tag}·{directive_type}】',
+                    body=directive_text,
+                    letter_type='OFFICIAL',
+                    confidentiality='PUBLIC',
+                    delivery_delay=0,
+                )
+            except Exception as _le:
+                logger.warning("知府来文创建书信失败: %s", _le)
         elif action_type == 'inspection':
             EventLog.objects.create(
                 game=game,

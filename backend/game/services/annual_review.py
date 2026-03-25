@@ -17,6 +17,7 @@ from .constants import (
     year_of,
 )
 from .emergency import EmergencyService
+from .eventlog import adjust_player_profile_stat, log_game_event
 from .state import load_county_state, save_player_state
 
 
@@ -101,6 +102,17 @@ class AnnualReviewService:
         cycle["state"] = "submitted"
 
         save_player_state(game, county)
+        log_game_event(
+            game,
+            event_type="annual_self_statement_submitted",
+            category="PREFECT",
+            description=f"已提交第{review_year}年年度自陈",
+            data={
+                "review_year": review_year,
+                "candor_penalty": candor_penalty,
+                "audit_flags": audit_flags,
+            },
+        )
         return cls.get_county_review_payload(game)
 
     @classmethod
@@ -185,17 +197,17 @@ class AnnualReviewService:
                 result["governor_recheck"] = final
 
                 # 能名随年度绩效变化：优/良+3，中不变，差-3
-                try:
-                    from ..models import PlayerProfile
-                    _grade = final["final_grade"]
-                    _delta = 3 if _grade in ("优", "良") else (-3 if _grade == "差" else 0)
-                    if _delta:
-                        _profile = PlayerProfile.objects.filter(game=game).first()
-                        if _profile:
-                            _profile.competence = max(0, min(100, _profile.competence + _delta))
-                            _profile.save(update_fields=["competence", "updated_at"])
-                except Exception:
-                    pass
+                _grade = final["final_grade"]
+                _delta = 3 if _grade in ("优", "良") else (-3 if _grade == "差" else 0)
+                if _delta:
+                    adjust_player_profile_stat(
+                        game,
+                        "competence",
+                        _delta,
+                        source_event="annual_review_finalized",
+                        source_label=f"年度考评{_grade}",
+                        extra_data={"final_grade": _grade, "review_year": review_year},
+                    )
 
                 if final["final_grade"] == "差":
                     EmergencyService.ensure_state(county)
@@ -1044,25 +1056,36 @@ class AnnualReviewService:
 
         county = load_county_state(game)
         season = game.current_season
+        review_year = year_of(season)
         snapshot = cls._build_objective_snapshot(county, season)
 
-        incident_flags = snapshot.get("incident_flags") or []
-        incident_section = ""
-        if incident_flags:
-            incident_section = "【本年重大事件】" + "、".join(incident_flags) + "\n"
+        # ── 1. 年初基线（上年腊月快照）──
+        year_start = cls._load_year_start_baseline(game, review_year)
+
+        # ── 2. 本年已记录的投资事件（从 EventLog 取）──
+        invest_section = cls._build_invest_section(game, review_year)
+
+        # ── 3. 知府来文摘要 ──
+        directive_section = cls._build_directive_section(county, review_year)
+
+        # ── 4. 灾情 & 救援 ──
+        disaster_section = cls._build_disaster_section(county)
+
+        # ── 5. 指标变化趋势 ──
+        trend_section = cls._build_trend_section(snapshot, year_start)
 
         system_prompt, user_prompt = PromptRegistry.render(
             "annual_review_player_draft",
             county_name=county.get("county_name", "本县"),
-            morale=float(snapshot.get("morale", 50)),
-            security=float(snapshot.get("security", 50)),
-            commercial=float(snapshot.get("commercial", 50)),
-            education=float(snapshot.get("education", 50)),
+            trend_section=trend_section,
             quota_pct=float(snapshot.get("quota_completion_pct", 0)),
             annual_quota=float(snapshot.get("annual_quota", 0)),
             annual_collected=float(snapshot.get("annual_collected", 0)),
             treasury=float(snapshot.get("treasury", 0)),
-            incident_section=incident_section,
+            invest_section=invest_section,
+            directive_section=directive_section,
+            disaster_section=disaster_section,
+            judicial_summary=cls._build_judicial_text(snapshot),
         )
 
         messages = [
@@ -1072,18 +1095,139 @@ class AnnualReviewService:
 
         client = LLMClient(timeout=30.0, max_retries=2)
         try:
-            result = client.chat_json(messages, temperature=0.7, max_tokens=600)
-        except Exception as exc:
-            # LLM 失败时回退到规则草稿
-            cycle_stub = {}
-            return cls._build_ai_self_statement(county, cycle_stub, snapshot)
+            result = client.chat_json(messages, temperature=0.6, max_tokens=700)
+        except Exception:
+            return cls._build_ai_self_statement(county, {}, snapshot)
 
         required = {"achievements", "unfinished", "faults", "plan"}
         if not isinstance(result, dict) or not required.issubset(result.keys()):
-            cycle_stub = {}
-            return cls._build_ai_self_statement(county, cycle_stub, snapshot)
+            return cls._build_ai_self_statement(county, {}, snapshot)
 
         return {k: str(result[k]) for k in required}
+
+    @classmethod
+    def _load_year_start_baseline(cls, game, review_year: int) -> dict:
+        """查询本年正月月度快照作为年初基线。
+
+        自陈在十一月写，本年腊月尚未发生，不能用上年腊月 winter_snapshot。
+        每月结算后都会将 monthly_snapshot 写入 EventLog，本年正月快照一定存在。
+        """
+        from ..models import EventLog
+        year_start_season = (review_year - 1) * 12 + 1  # 本年正月
+        log = (
+            EventLog.objects
+            .filter(game=game, season=year_start_season)
+            .exclude(data={})
+            .order_by('-id')
+            .first()
+        )
+        if log and isinstance(log.data, dict) and log.data.get('monthly_snapshot'):
+            ms = log.data['monthly_snapshot']
+            return {
+                'morale':     float(ms.get('morale',     0)),
+                'security':   float(ms.get('security',   0)),
+                'commercial': float(ms.get('commercial', 0)),
+                'education':  float(ms.get('education',  0)),
+                'treasury':   float(ms.get('treasury',   0)),
+            }
+        return {}
+
+    @classmethod
+    def _build_invest_section(cls, game, review_year: int) -> str:
+        """从 EventLog 提取本年投资事件，生成可读列表。"""
+        from ..models import EventLog
+        from .constants import month_name
+        year_start = (review_year - 1) * 12 + 1
+        year_end   = review_year * 12
+        logs = (
+            EventLog.objects
+            .filter(game=game, category='INVESTMENT',
+                    season__gte=year_start, season__lte=year_end)
+            .order_by('season')
+            .values('season', 'description')
+        )[:12]
+        if not logs:
+            return '本年未有记录在册的投资建设。'
+        lines = [f'- {month_name(row["season"])}：{row["description"]}' for row in logs]
+        return '\n'.join(lines)
+
+    @classmethod
+    def _build_directive_section(cls, county: dict, review_year: int) -> str:
+        """从 county_data 提取本年知府来文摘要。"""
+        from .constants import year_of as _year_of
+        directives = county.get('prefect_directives') or []
+        year_dirs = [
+            d for d in directives
+            if _year_of(int(d.get('month', 0))) == review_year and d.get('directive_type')
+        ]
+        if not year_dirs:
+            return '本年知府未有专项来文。'
+        lines = [f'- {d["directive_type"]}：{str(d.get("text",""))[:50]}' for d in year_dirs]
+        return '\n'.join(lines)
+
+    @classmethod
+    def _build_disaster_section(cls, county: dict) -> str:
+        """生成灾情简述。"""
+        disaster = county.get('disaster_this_year') or {}
+        if not disaster.get('type'):
+            return '本年未有灾情记录。'
+        desc = disaster.get('type', '未知灾情')
+        relief = county.get('relief_application') or {}
+        status = relief.get('status', '')
+        if status == 'APPROVED':
+            desc += '（已向知府申请减免，获批）'
+        elif status == 'PENDING':
+            desc += '（已向知府申请减免，待批）'
+        elif status == 'REJECTED':
+            desc += '（已向知府申请减免，被拒）'
+        elif status == 'CAUGHT':
+            desc += '（减免申报因数额失实被查处）'
+        relieved = (disaster.get('relieved') or False)
+        if relieved:
+            desc += '，已实施赈灾救济'
+        return desc
+
+    @classmethod
+    def _build_trend_section(cls, snapshot: dict, year_start: dict) -> str:
+        """生成各指标年度变化文字，无年初数据则只显示年末值。"""
+        def _fmt(key: str, label: str) -> str:
+            cur = float(snapshot.get(key, 0))
+            if key in year_start:
+                delta = cur - year_start[key]
+                sign = '+' if delta >= 0 else ''
+                return f'{label}：{year_start[key]:.0f}→{cur:.0f}（{sign}{delta:.0f}）'
+            return f'{label}：{cur:.0f}'
+
+        treasury_cur = float(snapshot.get('treasury', 0))
+        if 'treasury' in year_start:
+            td = treasury_cur - year_start['treasury']
+            ts = f'+{td:.0f}' if td >= 0 else f'{td:.0f}'
+            treasury_line = f'县库：{year_start["treasury"]:.0f}→{treasury_cur:.0f}（{ts}两）'
+        else:
+            treasury_line = f'县库：{treasury_cur:.0f}两'
+
+        return '\n'.join([
+            _fmt('morale',     '民心'),
+            _fmt('security',   '治安'),
+            _fmt('commercial', '商业'),
+            _fmt('education',  '文教'),
+            treasury_line,
+        ])
+
+    @staticmethod
+    def _build_judicial_text(snapshot: dict) -> str:
+        """从 snapshot 中提取司法摘要文字。"""
+        js = snapshot.get('judicial_summary') or {}
+        if not js.get('case_count'):
+            return '本年无司法案件上呈知府复核。'
+        parts = [f'本年共{js["case_count"]}件案件经知府复核']
+        if js.get('upheld_count'):
+            parts.append(f'维持{js["upheld_count"]}件')
+        if js.get('overturned_count'):
+            parts.append(f'改判{js["overturned_count"]}件')
+        if js.get('remand_count'):
+            parts.append(f'退回重审{js["remand_count"]}件')
+        return '，'.join(parts) + '。'
 
     @staticmethod
     def _is_blankish(text: Optional[str]) -> bool:
