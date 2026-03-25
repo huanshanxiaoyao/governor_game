@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_prefecture
+from . import views, views_prefecture, views_letter
 
 urlpatterns = [
     path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
@@ -58,6 +58,15 @@ urlpatterns = [
     path("games/<int:game_id>/promotion-action/", views.PromotionActionView.as_view(), name="game-promotion-action"),
     path("games/<int:game_id>/new-term/", views.NewTermView.as_view(), name="game-new-term"),
     path("games/<int:game_id>/rumors/", views.CountyRumorsView.as_view(), name="game-rumors"),
+    # Letters (书信系统)
+    path("games/<int:game_id>/letters/", views_letter.LetterInboxView.as_view(), name="letter-inbox"),
+    path("games/<int:game_id>/letters/sent/", views_letter.LetterSentView.as_view(), name="letter-sent"),
+    path("games/<int:game_id>/letters/pending/", views_letter.LetterPendingView.as_view(), name="letter-pending"),
+    path("games/<int:game_id>/letters/blocking-check/", views_letter.LetterBlockingCheckView.as_view(), name="letter-blocking-check"),
+    path("games/<int:game_id>/letters/summary/", views_letter.LetterSummaryView.as_view(), name="letter-summary"),
+    path("games/<int:game_id>/letters/<int:letter_id>/", views_letter.LetterDetailView.as_view(), name="letter-detail"),
+    path("games/<int:game_id>/letters/<int:letter_id>/reply/", views_letter.LetterReplyView.as_view(), name="letter-reply"),
+    path("games/<int:game_id>/letters/<int:letter_id>/archive/", views_letter.LetterArchiveView.as_view(), name="letter-archive"),
     # Prefecture overview (知县视角的府情+府志)
     path("games/<int:game_id>/prefecture-overview/", views.PrefectureOverviewForCountyView.as_view(), name="county-prefecture-overview"),
     # Neighbor counties

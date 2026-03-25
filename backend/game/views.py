@@ -1,4 +1,7 @@
+import logging
 from pathlib import Path
+
+logger = logging.getLogger('game')
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
@@ -47,6 +50,7 @@ from .services.annual_review import AnnualReviewService
 from .services.bribery import BriberyService
 from .services.career_track import CareerTrackService
 from .services.constants import MAX_MONTH
+from .services.eventlog import adjust_player_profile_stat, log_game_event
 from .services.new_term import NewTermService, TERMINAL_REASONS
 from .services.promotion_event import PromotionEventService
 from .services.state import load_county_state, save_player_state
@@ -54,6 +58,7 @@ from .services.judicial_caseflow import JudicialCaseflowService
 from .services.npc_debug import NPCDebugService
 from .services.rumors import RumorsService
 from .services.prefecture import PrefectureService
+from .services.letter import LetterService
 
 
 def _blocked_by_takeover(game):
@@ -648,6 +653,13 @@ class RequestLandSurveyView(APIView):
         if village_name not in surveys:
             surveys.append(village_name)
         save_player_state(game, county)
+        log_game_event(
+            game,
+            event_type='land_survey_requested',
+            category='SYSTEM',
+            description=f'已安排{village_name}土地勘查',
+            data={'village_name': village_name},
+        )
 
         return Response({"success": True, "message": f"已安排{village_name}土地勘查，结果将在下月报告中呈报"})
 
@@ -724,11 +736,19 @@ class RespondBribeView(APIView):
 
         # 清名变化：接受贿赂−5，拒绝贿赂+1
         if player_profile:
-            if accept:
-                player_profile.integrity = max(0, player_profile.integrity - 5)
-            else:
-                player_profile.integrity = min(100, player_profile.integrity + 1)
-            player_profile.save(update_fields=['integrity'])
+            adjust_player_profile_stat(
+                game,
+                'integrity',
+                -5 if accept else 1,
+                source_event='bribe_response',
+                source_label=f"{matched['gentry_name']}行贿",
+                extra_data={
+                    'village_name': village_name,
+                    'event_type': event_type,
+                    'accepted': bool(accept),
+                    'amount': matched['amount'],
+                },
+            )
 
         # Remove from pending list
         county["pending_bribes"] = [
@@ -737,6 +757,20 @@ class RespondBribeView(APIView):
         ]
 
         save_player_state(game, county)
+        log_game_event(
+            game,
+            event_type='bribe_response',
+            category='BRIBERY',
+            description=msg,
+            choice='accept' if accept else 'reject',
+            data={
+                'village_name': village_name,
+                'event_type': event_type,
+                'gentry_name': matched['gentry_name'],
+                'amount': matched['amount'],
+                'accepted': bool(accept),
+            },
+        )
 
         personal_wealth = player_profile.personal_wealth if player_profile else None
         return Response({
@@ -771,16 +805,28 @@ class AdvanceSeasonView(APIView):
         if judicial_blocker:
             return Response({"error": judicial_blocker}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 书信阻断检查
+        letter_blockers = LetterService.blocking_check(game, game.current_season)
+        if letter_blockers:
+            return Response(
+                {"error": "有紧急公文尚未处理，请先回复", "blocking_letters": letter_blockers},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         season = game.current_season
         report = SettlementService.advance_season(game)
+
+        # 书信月度处理（投递 + 软deadline + NPC回复生成）
+        try:
+            LetterService.run_month_advance(game, season)
+        except Exception:
+            logger.warning("书信月度处理失败（非致命）", exc_info=True)
 
         # Advance neighbor counties (LLM decisions + settlement)
         try:
             NeighborService.advance_all(game, season)
         except Exception:
-            import logging
-            logging.getLogger('game').warning(
-                "Neighbor advance failed (non-fatal)", exc_info=True)
+            logger.warning("Neighbor advance failed (non-fatal)", exc_info=True)
 
         return Response(report)
 

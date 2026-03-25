@@ -209,6 +209,10 @@ class EventLog(models.Model):
         ('INVESTMENT', '投资'),
         ('TAX', '税率'),
         ('NEGOTIATION', '谈判'),
+        ('JUDICIAL', '司法'),
+        ('LETTER', '书信'),
+        ('BRIBERY', '行贿'),
+        ('PROFILE', '声望'),
         ('DISASTER', '灾害'),
         ('SETTLEMENT', '结算'),
         ('ANNEXATION', '兼并'),
@@ -602,3 +606,108 @@ class JudicialCaseInstance(models.Model):
         if self.county_unit_id:
             county_name = self.county_unit.unit_data.get('county_name', '')
         return f"JudicialCase {self.template_case_id} {county_name} S{self.county_review_season} [{self.status}]"
+
+
+class Letter(models.Model):
+    """书信 — 官场社交基础设施，支持知府指令、私信往来、公文传递"""
+
+    class LetterType(models.TextChoices):
+        OFFICIAL     = 'OFFICIAL',     '公文'
+        PERSONAL     = 'PERSONAL',     '私信'
+        MEMORIAL     = 'MEMORIAL',     '奏折'
+        INTELLIGENCE = 'INTELLIGENCE', '情报'
+        CIRCULAR     = 'CIRCULAR',     '檄文'
+
+    class Confidentiality(models.TextChoices):
+        PUBLIC   = 'PUBLIC',   '公开'
+        PERSONAL = 'PERSONAL', '个人'
+        SECRET   = 'SECRET',   '机密'
+        BURN     = 'BURN',     '焚毁件'
+
+    class Status(models.TextChoices):
+        DRAFT      = 'DRAFT',      '草稿'
+        IN_TRANSIT = 'IN_TRANSIT', '传递中'
+        DELIVERED  = 'DELIVERED',  '已送达'
+        READ       = 'READ',       '已读'
+        REPLIED    = 'REPLIED',    '已回复'
+        ARCHIVED   = 'ARCHIVED',   '已归档'
+        BURNED     = 'BURNED',     '已焚毁'
+
+    game = models.ForeignKey(
+        GameState, on_delete=models.CASCADE, related_name='letters',
+    )
+
+    # 发件人（sender_agent=None 且 player_is_sender=True 表示玩家发送）
+    sender_agent     = models.ForeignKey(
+        'Agent', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='letters_sent',
+    )
+    player_is_sender = models.BooleanField(default=False)
+
+    # 收件人
+    recipient_agent     = models.ForeignKey(
+        'Agent', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='letters_received',
+    )
+    player_is_recipient    = models.BooleanField(default=False)
+    circular_recipient_ids = models.JSONField(default=list, blank=True,
+                                              help_text='檄文专用：多收件NPC的Agent ID列表')
+
+    # 内容
+    letter_type     = models.CharField(max_length=20, choices=LetterType.choices,
+                                       default=LetterType.OFFICIAL)
+    subject         = models.CharField(max_length=200)
+    body            = models.TextField()
+    confidentiality = models.CharField(max_length=20, choices=Confidentiality.choices,
+                                       default=Confidentiality.PERSONAL)
+
+    # 时间
+    sent_month      = models.IntegerField(help_text='发出时的游戏绝对月份')
+    delivery_delay  = models.IntegerField(default=1, help_text='送达延迟（月）')
+    delivered_month = models.IntegerField(help_text='sent_month + delivery_delay')
+
+    # 回复机制
+    requires_reply       = models.BooleanField(default=False)
+    is_blocking          = models.BooleanField(default=False,
+                                               help_text='True=超时未回复则硬阻断月份推进')
+    reply_deadline_month = models.IntegerField(null=True, blank=True)
+    reply_options        = models.JSONField(null=True, blank=True,
+                                            help_text='None=自由回复; list=选择题选项')
+    default_choice_id    = models.CharField(max_length=50, null=True, blank=True,
+                                            help_text='软deadline超时自动选项')
+
+    # 回复内容
+    reply_body      = models.TextField(blank=True, default='')
+    reply_choice_id = models.CharField(max_length=50, blank=True, default='')
+    replied_month   = models.IntegerField(null=True, blank=True)
+
+    # 状态
+    status         = models.CharField(max_length=20, choices=Status.choices,
+                                      default=Status.IN_TRANSIT)
+    read_at_month  = models.IntegerField(null=True, blank=True)
+
+    # 往来线索
+    parent_letter = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='thread_replies',
+    )
+
+    # LLM 元数据
+    llm_generated      = models.BooleanField(default=False)
+    generation_context = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'letters'
+        ordering = ['-sent_month', '-created_at']
+        indexes = [
+            models.Index(fields=['game', 'status'], name='letters_game_status_idx'),
+            models.Index(fields=['game', 'delivered_month'], name='letters_game_delivered_idx'),
+            models.Index(fields=['game', 'is_blocking', 'reply_deadline_month'],
+                         name='letters_blocking_idx'),
+        ]
+
+    def __str__(self):
+        return f"Letter#{self.id} [{self.letter_type}] {self.subject[:30]}"

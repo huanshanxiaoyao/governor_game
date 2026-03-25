@@ -106,9 +106,28 @@ class PrefectureAdvanceView(APIView):
         blocker = AnnualReviewService.get_prefecture_advance_blocker(game)
         if blocker:
             return Response({"error": blocker}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 书信阻断检查
+        from .services.letter import LetterService
+        letter_blockers = LetterService.blocking_check(game, game.current_season)
+        if letter_blockers:
+            return Response(
+                {"error": "有紧急公文尚未处理，请先回复", "blocking_letters": letter_blockers},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        season = game.current_season
         result = PrefectureService.advance_month(game)
         if "error" in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+        # 书信月度处理
+        try:
+            LetterService.run_month_advance(game, season)
+        except Exception as e:
+            import logging
+            logging.getLogger('game').warning("书信月度处理失败（非致命）: %s", e)
+
         return Response(result)
 
 
@@ -274,6 +293,19 @@ class PrefectureDirectiveView(APIView):
         unit.unit_data['pending_directives'] = unit.unit_data['pending_directives'][-3:]
         unit.save(update_fields=['unit_data'])
         PrefectureService.invalidate_precompute(game)
+
+        # 同步创建书信记录（进入玩家发件箱）
+        try:
+            from .services.letter import LetterService
+            LetterService.create_directive_letter(
+                game=game,
+                current_month=game.current_season,
+                unit=unit,
+                directive_text=directive,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger('game').warning("指令书信创建失败（非致命）: %s", e)
 
         gp = unit.unit_data.get('governor_profile', {})
         return Response({
