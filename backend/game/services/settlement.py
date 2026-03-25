@@ -223,6 +223,21 @@ class SettlementService(
 
         cls.refresh_metric_report_lines(county, report)
 
+        # 审核待批自创施政申请（省布政使 LLM）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .policy_review import PolicyReviewService
+                PolicyReviewService.review_pending_proposals(game, county)
+            except Exception as e:
+                logger.warning("自创施政审核失败（非致命）: %s", e)
+
+            # 同步已批准选项至邻县
+            try:
+                from .policy_sync import PolicySyncService
+                PolicySyncService.sync_approved_to_neighbors(game, county)
+            except Exception as e:
+                logger.warning("邻县施政同步失败（非致命）: %s", e)
+
         save_player_state(game, county)
         game.save(update_fields=["current_season", "updated_at"])
 
@@ -300,18 +315,17 @@ class SettlementService(
     @classmethod
     def _check_hidden_land(cls, county, report, game=None):
         """Check if hidden land is discovered during irrigation construction (doc 06a §2.4).
-        When game is provided, creates NegotiationSession + EventLog (player interactive path).
+
+        玩家路径分两阶段：
+          Phase A（首次触发）：有水利 + 衙役 + 概率门 → 发举报书信，下月送达；
+          Phase B（一月后）：结算行贿结果 → 免查或启动交涉谈判。
         When game is None, auto-resolves via forced survey ratio (neighbor path).
         """
         ensure_county_ledgers(county)
-        if county.get('bailiff_level', 0) < 1:
-            return
         has_irrigation = any(
             inv['action'] == 'build_irrigation'
             for inv in county.get('active_investments', [])
         )
-        if not has_irrigation:
-            return
 
         for v in county['villages']:
             ensure_village_ledgers(v)
@@ -324,75 +338,131 @@ class SettlementService(
 
             village_name = v['name']
 
-            # 若玩家本轮已拒绝该村行贿，跳过随机概率门直接触发交涉
-            from .bribery import bribe_key as _bk
-            _hbk = _bk(village_name, 'hidden_land')
-            bribe_rejected = game is not None and county.get('rejected_bribes', {}).get(_hbk)
+            if game is not None:
+                current_month = game.current_season
 
-            if not bribe_rejected:
+                # ── Phase B: 举报信已发，处理行贿结果 ──────────────────────
+                if (v.get('hidden_land_report_sent') and
+                        current_month >= v.get('hidden_land_report_month', 9999) + 1):
+                    from .bribery import bribe_key as _bk
+                    _hbk = _bk(village_name, 'hidden_land')
+
+                    if county.get('accepted_bribes', {}).get(_hbk):
+                        county['accepted_bribes'].pop(_hbk, None)
+                        v['hidden_land_discovered'] = True
+                        v['hidden_land_report_sent'] = False
+                        report['events'].append(
+                            f"【贿赂免查】{village_name}地主行贿得逞，隐田未被追究"
+                        )
+                        break
+
+                    county.get('rejected_bribes', {}).pop(_hbk, None)
+                    v['hidden_land_report_sent'] = False
+
+                    gentry = Agent.objects.filter(
+                        game=game, role='GENTRY',
+                        attributes__village_name=village_name,
+                    ).first()
+                    if gentry is None:
+                        continue
+
+                    context_data = {
+                        'village_name': village_name,
+                        'hidden_land': hidden,
+                        'current_farmland': v['farmland'],
+                        'current_gentry_pct': v.get('gentry_land_pct', 0.3),
+                    }
+                    from .negotiation import NegotiationService
+                    session, err = NegotiationService.start_negotiation(
+                        game, gentry, 'HIDDEN_LAND', context_data,
+                    )
+                    if err:
+                        continue
+
+                    notification = {
+                        'type': 'HIDDEN_LAND',
+                        'message': (
+                            f'接到举报，{village_name}地主{gentry.name}疑有隐匿田产，'
+                            f'请前往交涉。'
+                        ),
+                        'negotiation_id': session.id,
+                        'village_name': village_name,
+                        'agent_name': gentry.name,
+                    }
+                    if not isinstance(game.pending_events, list):
+                        game.pending_events = []
+                    game.pending_events.append(notification)
+
+                    report['events'].append(
+                        f'【隐匿土地】上月举报属实，{village_name}发现隐田，'
+                        f'需与地主{gentry.name}交涉'
+                    )
+                    EventLog.objects.create(
+                        game=game, season=game.current_season,
+                        event_type='hidden_land_discovery',
+                        category='HIDDEN_LAND',
+                        description=f'{village_name}发现隐匿土地{hidden}亩',
+                        data={'village_name': village_name, 'hidden_land': hidden},
+                    )
+                    break
+
+                # ── Phase A: 首次触发，发举报书信 ──────────────────────────
+                if v.get('hidden_land_report_sent'):
+                    continue  # 已发信，等待下月结算
+
+                if county.get('bailiff_level', 0) < 1 or not has_irrigation:
+                    continue
+
+                from .bribery import bribe_key as _bk
+                _hbk = _bk(village_name, 'hidden_land')
+                bribe_rejected = county.get('rejected_bribes', {}).get(_hbk)
+
+                if not bribe_rejected:
+                    morale = v.get('morale', 50)
+                    prob = 0.05 + max(0, (morale - 30)) / 2 * 0.01
+                    if random.random() >= prob:
+                        continue
+
+                # 从其他村选一位里长/村民代表作为举报人
+                reporter = Agent.objects.filter(
+                    game=game, role='VILLAGER',
+                ).exclude(
+                    attributes__village_name=village_name,
+                ).first()
+
+                from .letter import LetterService
+                LetterService.create_hidden_land_report_letter(
+                    game=game,
+                    current_month=current_month,
+                    reporter_agent=reporter,
+                    target_village_name=village_name,
+                    hidden_amount=hidden,
+                )
+                v['hidden_land_report_sent'] = True
+                v['hidden_land_report_month'] = current_month
+
+                report['events'].append(
+                    f"【书信来报】有人举报{village_name}地主疑有隐匿田产，请查阅信箱"
+                )
+                EventLog.objects.create(
+                    game=game, season=current_month,
+                    event_type='hidden_land_reported',
+                    category='HIDDEN_LAND',
+                    description=f'收到关于{village_name}地主隐田的举报书信',
+                    data={'village_name': village_name, 'hidden_land': hidden},
+                )
+
+            else:
+                # Neighbor path: auto-resolve via forced survey ratio（无书信延迟）
+                if county.get('bailiff_level', 0) < 1 or not has_irrigation:
+                    continue
+
                 morale = v.get('morale', 50)
                 prob = 0.05 + max(0, (morale - 30)) / 2 * 0.01
                 if random.random() >= prob:
                     continue
 
-            if game is not None:
-                # Player path: check if bribe was pre-accepted this turn
-                if bribe_rejected:
-                    county.get('rejected_bribes', {}).pop(_hbk, None)
-                if county.get('accepted_bribes', {}).get(_hbk):
-                    county['accepted_bribes'].pop(_hbk, None)
-                    # 标记为已处理，避免下月重复触发
-                    v['hidden_land_discovered'] = True
-                    report['events'].append(
-                        f"【贿赂免查】{village_name}地主贿赂得逞，隐田未被追究"
-                    )
-                    break
-
-                # Player path: create negotiation session
-                gentry = Agent.objects.filter(
-                    game=game, role='GENTRY',
-                    attributes__village_name=village_name,
-                ).first()
-                if gentry is None:
-                    continue
-
-                context_data = {
-                    'village_name': village_name,
-                    'hidden_land': hidden,
-                    'current_farmland': v['farmland'],
-                    'current_gentry_pct': v.get('gentry_land_pct', 0.3),
-                }
-                from .negotiation import NegotiationService
-                session, err = NegotiationService.start_negotiation(
-                    game, gentry, 'HIDDEN_LAND', context_data,
-                )
-                if err:
-                    continue
-
-                notification = {
-                    'type': 'HIDDEN_LAND',
-                    'message': f'修建水利时发现{village_name}的地主{gentry.name}隐匿田产！请前往交涉。',
-                    'negotiation_id': session.id,
-                    'village_name': village_name,
-                    'agent_name': gentry.name,
-                }
-                if not isinstance(game.pending_events, list):
-                    game.pending_events = []
-                game.pending_events.append(notification)
-
-                report['events'].append(
-                    f'【隐匿土地】修建水利时发现{village_name}有隐田，需与地主{gentry.name}交涉'
-                )
-
-                EventLog.objects.create(
-                    game=game, season=game.current_season,
-                    event_type='hidden_land_discovery',
-                    category='HIDDEN_LAND',
-                    description=f'{village_name}发现隐匿土地{hidden}亩',
-                    data={'village_name': village_name, 'hidden_land': hidden},
-                )
-            else:
-                # Neighbor path: inline hidden-land bribe check for AI governor
+                # Inline hidden-land bribe check for AI governor
                 from .bribery import BriberyService as _BS2
                 _hl_profile = county.get('governor_profile', {})
                 _hl_bribe = _BS2.generate_hidden_land_bribe(v, hidden)
@@ -413,7 +483,7 @@ class SettlementService(
                             f"【拒绝行贿】{_hl_bribe['gentry_name']}行贿{_hl_bribe['amount']}两被知县拒绝"
                         )
 
-                # Neighbor path: AI negotiation or auto-resolve via forced survey ratio
+                # AI negotiation or auto-resolve via forced survey ratio
                 from .ai_negotiation import (
                     is_ai_negotiation_enabled, AIGovernorNegotiationService,
                 )
@@ -429,7 +499,6 @@ class SettlementService(
                         ratio = None
 
                 if ratio is None:
-                    # Deterministic fallback
                     bailiff_score = min(1.0, county.get('bailiff_level', 0) / 3)
                     morale_score = min(1.0, morale / 100)
                     ratio = 0.60 + 0.15 * (0.5 * bailiff_score + 0.5 * morale_score)
@@ -446,17 +515,17 @@ class SettlementService(
                 sync_legacy_from_ledgers(v)
 
                 report['events'].append(
-                    f"【隐匿土地】修建水利时发现{v['name']}有隐田{discovered}亩，"
-                    f"已登记在册")
+                    f"【隐匿土地】修建水利时发现{v['name']}有隐田{discovered}亩，已登记在册"
+                )
 
-                # Gap 1: 威名+1（强制清查隐田）
+                # 威名+1（强制清查隐田）
                 county['governor_authority'] = min(100, county.get('governor_authority', 40) + 1)
                 governor_name = county.get('governor_meta', {}).get('name', '知县')
                 report['events'].append(
                     f"【威名】{governor_name}强行清查隐田，威名升至{county['governor_authority']}"
                 )
 
-                # Gap 3: 乡绅投诉检查（威名高 + 地主势力强时有概率向知府陈情）
+                # 乡绅投诉检查（威名高 + 地主势力强时有概率向知府陈情）
                 authority = county['governor_authority']
                 if authority >= 60:
                     gentry_pct = v.get('gentry_land_pct', 0.3)
@@ -469,7 +538,7 @@ class SettlementService(
                             f"【乡绅陈情】{v['name']}地主不满强行普查，悄然向知府陈情投诉"
                         )
 
-            break  # One discovery per month
+                break  # One discovery per month
 
         # Sync gentry land ratio (needed for neighbor auto-resolve path)
         if game is None:

@@ -116,11 +116,14 @@ class BriberyService:
     # ==================== 玩家路径 ====================
 
     @classmethod
-    def check_county_bribes(cls, county, monthly_surplus):
+    def check_county_bribes(cls, county, monthly_surplus, current_month=None):
         """
         扫描县内各村潜在贿赂事件，生成 pending_bribes 并存入 county_data。
         每村最多一次行贿（隐田优先，成功则跳过兼并检查）。
         同时重置 accepted_bribes，确保结算前状态干净。
+
+        隐田行贿触发条件：举报书信已发出（hidden_land_report_sent）且当前月份
+        已达举报月+1（即书信送达后一月）。
         """
         from .ledger import ensure_county_ledgers, ensure_village_ledgers
         ensure_county_ledgers(county)
@@ -129,18 +132,14 @@ class BriberyService:
         county['accepted_bribes'] = {}
         county['rejected_bribes'] = {}
 
-        bailiff_level = county.get('bailiff_level', 0)
-        has_irrigation = any(
-            inv['action'] == 'build_irrigation'
-            for inv in county.get('active_investments', [])
-        )
-
         offers = []
         for v in county.get('villages', []):
             ensure_village_ledgers(v)
 
-            # 隐田行贿（优先）
-            if bailiff_level >= 1 and has_irrigation:
+            # 隐田行贿（优先）— 举报书信送达后地主方可行贿
+            if (v.get('hidden_land_report_sent') and
+                    current_month is not None and
+                    current_month >= v.get('hidden_land_report_month', 9999) + 1):
                 hidden = max(0, int(
                     v.get('gentry_ledger', {}).get('hidden_farmland', v.get('hidden_land', 0))
                 ))

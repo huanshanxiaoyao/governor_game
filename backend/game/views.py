@@ -682,7 +682,8 @@ class CheckBribesView(APIView):
         monthly_surplus = SettlementService._estimate_monthly_surplus_per_capita(
             county, game.current_season
         )
-        offers = BriberyService.check_county_bribes(county, monthly_surplus)
+        offers = BriberyService.check_county_bribes(county, monthly_surplus,
+                                                     current_month=game.current_season)
         save_player_state(game, county)
 
         return Response({"offers": offers})

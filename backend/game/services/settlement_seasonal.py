@@ -139,6 +139,12 @@ class SeasonalMixin:
             report["events"].append(f"道路修缮完成，商业+{bonus}"
                                     f"{'（边际递减）' if bonus < 8 else ''}")
 
+        elif inv.get("custom_policy_id") is not None:
+            # 自创/标准施政选项完工
+            from .investment import InvestmentService
+            msg = InvestmentService.complete_custom_investment(county, inv)
+            report["events"].append(msg)
+
     @classmethod
     def _set_annual_quota(cls, county, month, report):
         """正月：知府按在册土地和人口下达本年度上缴配额。

@@ -249,6 +249,52 @@ class LetterService:
             generation_context=generation_context,
         )
 
+    @staticmethod
+    def create_hidden_land_report_letter(game, current_month, reporter_agent,
+                                         target_village_name, hidden_amount):
+        """村民代表举报地主隐匿田产的书信（下月送达）。
+        reporter_agent 可为 None，此时以匿名方式处理。
+        """
+        if reporter_agent:
+            reporter_name = reporter_agent.name
+            reporter_village = (reporter_agent.attributes or {}).get('village_name', '邻村')
+        else:
+            reporter_name = '来报村民'
+            reporter_village = '邻村'
+
+        subject = f"关于{target_village_name}地主隐匿田产一事"
+        body = (
+            f"大人台启：小民{reporter_name}，来自{reporter_village}，冒昧修书，"
+            f"实有紧要事禀报。近日修建水利，小民偶然察觉{target_village_name}地主名下"
+            f"似有隐匿田产约{hidden_amount}亩，未曾登记在册，恐有逃税漏籍之嫌。"
+            f"特此禀报，恭请大人明察。小民{reporter_name}叩首。"
+        )
+        return LetterService.create_npc_letter(
+            game=game,
+            current_month=current_month,
+            sender_agent=reporter_agent,
+            subject=subject,
+            body=body,
+            letter_type='PERSONAL',
+            confidentiality='PERSONAL',
+            requires_reply=False,
+            is_blocking=False,
+            reply_options=[
+                {
+                    "id": "ack",
+                    "text": "知道了，本县已着手调查，多谢告知",
+                    "hint": "回复后双方好感度+2",
+                    "consequence_tags": ["sender_relation:+2"],
+                },
+                {
+                    "id": "dismiss",
+                    "text": "（不予回复）",
+                },
+            ],
+            default_choice_id=None,
+            delivery_delay=0,
+        )
+
     # -------------------------------------------------------------------------
     # 读取与回复
     # -------------------------------------------------------------------------
@@ -297,14 +343,32 @@ class LetterService:
 
     @staticmethod
     def _apply_choice_consequence(letter):
-        """依据 reply_choice_id 的 consequence_tags 应用效果（预留，后续接入关系系统）。"""
+        """依据 reply_choice_id 的 consequence_tags 应用效果。
+
+        支持的标签：
+          sender_relation:+N / sender_relation:-N — 调整发信人 player_affinity
+        """
         if not letter.reply_options or not letter.reply_choice_id:
             return
+        tags = []
         for opt in letter.reply_options:
             if opt.get('id') == letter.reply_choice_id:
                 tags = opt.get('consequence_tags', [])
-                logger.info("信件#%s 触发后果标签: %s", letter.id, tags)
                 break
+
+        logger.info("信件#%s 触发后果标签: %s", letter.id, tags)
+
+        for tag in tags:
+            if tag.startswith('sender_relation:') and letter.sender_agent_id:
+                try:
+                    delta = int(tag.split(':')[1])
+                except (IndexError, ValueError):
+                    continue
+                agent = letter.sender_agent
+                attrs = agent.attributes or {}
+                attrs['player_affinity'] = max(0, min(99, attrs.get('player_affinity', 50) + delta))
+                agent.attributes = attrs
+                agent.save(update_fields=['attributes'])
 
     # -------------------------------------------------------------------------
     # LLM 生成
