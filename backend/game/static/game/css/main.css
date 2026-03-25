@@ -4573,3 +4573,302 @@ body {
   color: #9a8060;
   white-space: nowrap;
 }
+
+
+/* ========================================================
+   书信系统 (Letter System)
+   ======================================================== */
+
+/* 信箱按钮 + 徽标 */
+.letter-btn {
+  position: relative;
+}
+.letter-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 0.7em;
+  font-weight: bold;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 4px;
+  pointer-events: none;
+}
+.letter-badge-urgent {
+  background: #e67e22;
+  animation: letter-pulse 1.2s ease-in-out infinite;
+}
+@keyframes letter-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+/* 信箱 Modal */
+.letter-modal-content {
+  max-width: 680px;
+  width: 96%;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.letter-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid #e0d5c0;
+  background: #fdf8ef;
+  flex-shrink: 0;
+}
+.letter-modal-header h4 {
+  margin: 0;
+  color: #5c4a2a;
+  font-size: 1.05em;
+}
+.letter-modal-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Tab 栏 */
+.letter-tabs {
+  display: flex;
+  border-bottom: 1px solid #e0d5c0;
+  background: #faf5ea;
+  flex-shrink: 0;
+}
+.letter-tab-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  color: #7a6848;
+  font-size: 0.9em;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.letter-tab-btn:hover { color: #5c4a2a; }
+.letter-tab-btn.active {
+  color: #5c4a2a;
+  font-weight: bold;
+  border-bottom-color: #c8a060;
+}
+
+/* 内容面板 */
+.letter-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+
+/* 信箱 tab 嵌入式工具栏 */
+.letter-tab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 0;
+  border-bottom: 1px solid #e0d5c0;
+  background: #faf5ea;
+  margin-bottom: 0;
+}
+.letter-tab-toolbar .letter-tabs {
+  border-bottom: none;
+  background: transparent;
+  flex: 1;
+}
+
+/* tab 内的 pane 不用 flex，正常块排列 */
+#tab-letters .letter-pane,
+#pref-tab-letters .letter-pane {
+  overflow-y: visible;
+  flex: none;
+}
+.letter-loading, .letter-empty, .letter-error {
+  text-align: center;
+  color: #9a8060;
+  padding: 30px 10px;
+  font-size: 0.9em;
+}
+.letter-error { color: #8b0000; }
+
+/* 信件列表项 */
+.letter-item {
+  border: 1px solid #e0d5c0;
+  border-radius: 5px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.letter-item:hover { background: #fdf8ef; border-color: #c8a060; }
+.letter-unread {
+  background: #fffbf0;
+  border-left: 3px solid #c8a060;
+  font-weight: 500;
+}
+.letter-blocking {
+  border-left: 3px solid #c0392b !important;
+  background: #fff5f5 !important;
+}
+.letter-item-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82em;
+  color: #9a8060;
+  margin-bottom: 3px;
+}
+.letter-counterpart { font-weight: 600; color: #5c4a2a; }
+.letter-date { color: #a09070; }
+.letter-subject {
+  font-size: 0.95em;
+  color: #3a2810;
+  margin-bottom: 5px;
+}
+.letter-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.letter-tag {
+  font-size: 0.72em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.letter-tag-type     { background: #e8f0e8; color: #407040; }
+.letter-tag-conf     { background: #f0e8e8; color: #704040; }
+.letter-tag-urgent   { background: #ffe0e0; color: #8b0000; font-weight: bold; }
+.letter-tag-reply    { background: #fff0cc; color: #8b6000; }
+.letter-deadline     { font-size: 0.75em; color: #c0392b; }
+
+/* 信件详情 */
+.letter-back-btn {
+  margin-bottom: 10px;
+}
+.letter-detail-card {
+  border: 1px solid #e0d5c0;
+  border-radius: 6px;
+  padding: 14px 16px;
+  background: #fefcf7;
+}
+.letter-detail-subject {
+  font-size: 1.05em;
+  color: #3a1800;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #d0c090;
+}
+.letter-detail-meta {
+  font-size: 0.82em;
+  color: #7a6848;
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.letter-meta-label { color: #a08050; }
+.letter-parent-ref {
+  font-size: 0.8em;
+  color: #9a8060;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+.letter-burn-notice {
+  background: #fff0e0;
+  border: 1px solid #e0a060;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 0.85em;
+  color: #804020;
+  margin-bottom: 10px;
+}
+.letter-detail-body {
+  font-size: 0.93em;
+  color: #3a2810;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  padding: 10px 0;
+  border-bottom: 1px dashed #d0c090;
+  margin-bottom: 12px;
+}
+
+/* 回复区 */
+.letter-reply-area {
+  margin-top: 10px;
+}
+.letter-reply-label {
+  font-size: 0.85em;
+  color: #7a6848;
+  margin-bottom: 6px;
+}
+.letter-choice-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  background: #fdf8ef;
+  color: #3a2810;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background 0.12s;
+}
+.letter-choice-btn:hover { background: #f5ecd0; }
+.letter-choice-hint {
+  font-size: 0.8em;
+  color: #9a8060;
+}
+.letter-replied-notice {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f0f5e8;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #507030;
+  border: 1px solid #c0d0a0;
+}
+
+/* 写信 Modal 表单 */
+.letter-compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.letter-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85em;
+  color: #7a6848;
+}
+.letter-form-select,
+.letter-form-input {
+  padding: 6px 8px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  font-size: 0.93em;
+  background: #fdf8ef;
+  color: #3a2810;
+}
+.letter-form-textarea {
+  padding: 8px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  font-size: 0.92em;
+  resize: vertical;
+  background: #fdf8ef;
+  color: #3a2810;
+  line-height: 1.7;
+}

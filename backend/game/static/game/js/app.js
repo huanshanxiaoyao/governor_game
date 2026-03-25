@@ -706,6 +706,7 @@
         screens.show("screen-game");
         screens.showTab("tab-dashboard");
         syncFeedbackEntryVisibility();
+        Game.letter.updateBadge(data.id);
         if (termComplete) {
           // Term complete but not terminal — show new-term modal immediately
           showTermCompleteFromSaved(data);
@@ -730,6 +731,7 @@
     showPrefTab("pref-tab-overview");
     screens.show("screen-prefecture");
     syncFeedbackEntryVisibility();
+    Game.letter.updateBadge(data.game_id);
     if (data.current_season <= 36) {
       api.precomputePrefecture(data.game_id).catch(function () {});
       startPrefecturePrecomputePolling(data.game_id);
@@ -787,6 +789,10 @@
             components.showToast(err.message || "加载司法卷宗失败", "error");
           });
       }
+    }
+    if (tabId === "pref-tab-letters") {
+      var pgL = Game.state.prefectureGame;
+      if (pgL) Game.letter.loadForScreen("pref", pgL.game_id);
     }
   }
 
@@ -931,6 +937,7 @@
         refreshPrefectureTabVisibility(data);
         Game.prefecture.renderOverview(data);
         _updateJudicialBadge(data.pending_judicial_count || 0);
+        Game.letter.updateBadge(data.game_id);
         if (data.current_season > 36) {
           components.showToast("三年任期已满！", "info");
         } else {
@@ -939,7 +946,11 @@
         }
       })
       .catch(function (err) {
-        components.showToast(err.message || "推进失败", "error");
+        if (err.data && err.data.blocking_letters && err.data.blocking_letters.length) {
+          _showLetterBlockingModal(err.data.blocking_letters, pg.game_id, "pref");
+        } else {
+          components.showToast(err.message || "推进失败", "error");
+        }
       })
       .finally(function () {
         btn.disabled = false;
@@ -1794,13 +1805,19 @@
             Game.setGame(data);
             btn.disabled = false;
             btn.textContent = "推进月份";
+            Game.letter.updateBadge(g.id);
             api.precomputeNeighbors(g.id).catch(function () {});
             startPrecomputePolling(g.id);
           });
         }
       })
       .catch(function (err) {
-        components.showToast(err.message, "error");
+        // 书信阻断处理
+        if (err.data && err.data.blocking_letters && err.data.blocking_letters.length) {
+          _showLetterBlockingModal(err.data.blocking_letters, g.id, "county");
+        } else {
+          components.showToast(err.message, "error");
+        }
         btn.disabled = false;
         btn.textContent = "推进月份";
       });
@@ -2202,6 +2219,9 @@
       loadNeighbors();
     } else if (tabId === "tab-officialdom") {
       loadOfficialdom();
+    } else if (tabId === "tab-letters") {
+      var g = Game.state.currentGame;
+      if (g) Game.letter.loadForScreen("county", g.id);
     }
   };
 
@@ -2698,6 +2718,75 @@
       .catch(function (err) {
         components.showToast(err.message, "error");
       });
+  }
+
+  // ==================== 书信系统 ====================
+
+  // 阻断弹窗辅助
+  function _showLetterBlockingModal(blockingLetters, gameId, screen) {
+    var body = el("letter-blocking-modal-body");
+    if (!body) return;
+    screen = screen || (Game.state.currentGame ? "county" : "pref");
+    body.innerHTML =
+      "<p>以下公文须先行处理，否则无法推进月份：</p><ul>" +
+      blockingLetters.map(function (l) {
+        return (
+          '<li><a href="#" class="letter-blocking-link" data-id="' + l.id + '">' +
+          l.subject + "</a> — " + l.sender_name + "</li>"
+        );
+      }).join("") +
+      "</ul>";
+    el("letter-blocking-modal").classList.remove("hidden");
+    body.querySelectorAll(".letter-blocking-link").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        el("letter-blocking-modal").classList.add("hidden");
+        // 导航到信箱 tab
+        if (screen === "county") {
+          Game.screens.showTab("tab-letters");
+        } else {
+          showPrefTab("pref-tab-letters");
+        }
+        // 延迟打开详情（等待 tab 渲染）
+        setTimeout(function () {
+          Game.letter.openDetail(parseInt(a.dataset.id));
+        }, 150);
+      });
+    });
+  }
+
+  // 写信按钮（知县信箱 tab 内）
+  var btnCountyCompose = el("btn-county-letter-compose");
+  if (btnCountyCompose) {
+    btnCountyCompose.addEventListener("click", function () {
+      var g = Game.state.currentGame;
+      if (!g) return;
+      api.getAgents(g.id).then(function (data) {
+        var agents = (data.agents || data || []).filter(function (a) {
+          return a.id && (a.name || a.role_title);
+        });
+        Game.letter.openCompose(g.id, agents);
+      }).catch(function (err) {
+        components.showToast(err.message || "加载联系人失败", "error");
+      });
+    });
+  }
+
+  // 写信按钮（知府信箱 tab 内）
+  var btnPrefCompose = el("btn-pref-letter-compose");
+  if (btnPrefCompose) {
+    btnPrefCompose.addEventListener("click", function () {
+      var pg = Game.state.prefectureGame;
+      if (!pg) return;
+      api.getAgents(pg.game_id).then(function (data) {
+        var agents = (data.agents || data || []).filter(function (a) {
+          return a.id && (a.name || a.role_title);
+        });
+        Game.letter.openCompose(pg.game_id, agents);
+      }).catch(function (err) {
+        components.showToast(err.message || "加载联系人失败", "error");
+      });
+    });
   }
 
   // ==================== Auto-login on page load ====================

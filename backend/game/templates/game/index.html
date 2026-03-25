@@ -148,6 +148,7 @@
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-officialdom">官场</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
+    <button class="tab-btn" data-tab="tab-letters">信箱<span id="letter-badge-county" class="letter-badge hidden">0</span></button>
   </nav>
 
   <!-- Tab: Dashboard -->
@@ -358,6 +359,10 @@
         <option value="INVESTMENT">投资</option>
         <option value="TAX">税率</option>
         <option value="NEGOTIATION">谈判</option>
+        <option value="JUDICIAL">司法</option>
+        <option value="LETTER">书信</option>
+        <option value="BRIBERY">行贿</option>
+        <option value="PROFILE">声望</option>
         <option value="DISASTER">灾害</option>
         <option value="SETTLEMENT">结算</option>
         <option value="ANNEXATION">兼并</option>
@@ -367,6 +372,20 @@
       <button id="btn-refresh-events" class="btn btn-small">刷新</button>
     </div>
     <div id="events-list"></div>
+  </div>
+
+  <!-- Tab: Letters (信箱) -->
+  <div id="tab-letters" class="tab-content hidden">
+    <div class="letter-tab-toolbar">
+      <nav id="county-letter-tabs" class="letter-tabs">
+        <button class="letter-tab-btn active" data-tab="inbox">收件箱</button>
+        <button class="letter-tab-btn" data-tab="sent">发件箱</button>
+        <button class="letter-tab-btn" data-tab="pending">待回复</button>
+      </nav>
+      <button id="btn-county-letter-compose" class="btn btn-primary btn-small">写信</button>
+    </div>
+    <div id="county-letter-list" class="letter-pane"></div>
+    <div id="county-letter-detail" class="letter-pane hidden"></div>
   </div>
 
 </section>
@@ -596,6 +615,7 @@
     <button class="tab-btn" data-tab="pref-tab-infra">公共事业</button>
     <button class="tab-btn pref-judicial-tab-btn" data-tab="pref-tab-judicial">司法<span id="judicial-tab-badge" class="judicial-tab-badge hidden"></span></button>
     <button class="tab-btn" data-tab="pref-tab-log">府志</button>
+    <button class="tab-btn" data-tab="pref-tab-letters">信箱<span id="letter-badge-pref" class="letter-badge hidden">0</span></button>
   </nav>
 
   <!-- Tab: Overview -->
@@ -633,6 +653,20 @@
   <!-- Tab: Log (府志) -->
   <div id="pref-tab-log" class="tab-content hidden">
     <div id="pref-log-content"><p class="hint">尚无府志记录</p></div>
+  </div>
+
+  <!-- Tab: Letters (信箱) -->
+  <div id="pref-tab-letters" class="tab-content hidden">
+    <div class="letter-tab-toolbar">
+      <nav id="pref-letter-tabs" class="letter-tabs">
+        <button class="letter-tab-btn active" data-tab="inbox">收件箱</button>
+        <button class="letter-tab-btn" data-tab="sent">发件箱</button>
+        <button class="letter-tab-btn" data-tab="pending">待回复</button>
+      </nav>
+      <button id="btn-pref-letter-compose" class="btn btn-primary btn-small">写信</button>
+    </div>
+    <div id="pref-letter-list" class="letter-pane"></div>
+    <div id="pref-letter-detail" class="letter-pane hidden"></div>
   </div>
 </section>
 
@@ -705,6 +739,49 @@
 <button id="btn-feedback-entry" class="btn btn-small feedback-fab hidden" type="button">反馈</button>
 <div id="toast-container"></div>
 
+<!-- ==================== 书信系统 Modals ==================== -->
+
+<!-- 信箱主 Modal -->
+<!-- 写信 Modal -->
+<div id="letter-compose-modal" class="modal hidden">
+  <div class="modal-content modal-sm">
+    <h4 style="margin-bottom:12px;">写信</h4>
+    <div class="letter-compose-form">
+      <label class="letter-form-label">收件人
+        <select id="letter-compose-recipient" class="letter-form-select"></select>
+      </label>
+      <label class="letter-form-label">信件类型
+        <select id="letter-compose-type" class="letter-form-select">
+          <option value="PERSONAL">私信</option>
+          <option value="MEMORIAL">奏折</option>
+          <option value="OFFICIAL">公文</option>
+        </select>
+      </label>
+      <label class="letter-form-label">主题
+        <input id="letter-compose-subject" type="text" class="letter-form-input" placeholder="信件主题（不超过50字）" maxlength="50">
+      </label>
+      <label class="letter-form-label">正文
+        <textarea id="letter-compose-body" rows="6" class="letter-form-textarea" placeholder="书写正文…"></textarea>
+      </label>
+    </div>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button id="btn-letter-compose-send" class="btn btn-primary btn-small">发出</button>
+      <button id="btn-letter-compose-cancel" class="btn btn-small">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 阻断提示 Modal -->
+<div id="letter-blocking-modal" class="modal hidden">
+  <div class="modal-content modal-sm">
+    <h4 style="margin-bottom:10px;color:#8b0000;">⚠ 有紧急公文待处理</h4>
+    <div id="letter-blocking-modal-body"></div>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button id="btn-letter-blocking-close" class="btn btn-small">知道了</button>
+    </div>
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="{% static 'game/js/api.js' %}"></script>
 <script src="{% static 'game/js/state.js' %}"></script>
@@ -715,6 +792,7 @@
 <script src="{% static 'game/js/components-neighbors.js' %}"></script>
 <script src="{% static 'game/js/components-officialdom.js' %}"></script>
 <script src="{% static 'game/js/components-prefecture.js' %}"></script>
+<script src="{% static 'game/js/components-letter.js' %}"></script>
 <script src="{% static 'game/js/screens.js' %}"></script>
 <script src="{% static 'game/js/app.js' %}"></script>
 

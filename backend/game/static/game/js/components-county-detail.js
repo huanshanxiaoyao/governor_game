@@ -33,11 +33,13 @@
   var GAZETTE_CAT_COLORS = {
     AI_DECISION: "#8e44ad", SETTLEMENT: "#27ae60", DISASTER: "#c0392b",
     INVESTMENT: "#2e86c1", TAX: "#d4a017", NEGOTIATION: "#16a085",
-    PROMISE: "#8b4513", SYSTEM: "#8a7a5a",
+    PROMISE: "#8b4513", SYSTEM: "#8a7a5a", JUDICIAL: "#2c5aa0",
+    LETTER: "#7f8c8d", BRIBERY: "#a93226", PROFILE: "#6c5ce7",
   };
   var GAZETTE_CAT_LABELS = {
     AI_DECISION: "AI决策", SETTLEMENT: "月结算", DISASTER: "灾害",
     INVESTMENT: "投资", TAX: "税务", NEGOTIATION: "谈判", PROMISE: "承诺", SYSTEM: "系统",
+    JUDICIAL: "司法", LETTER: "书信", BRIBERY: "行贿", PROFILE: "声望",
   };
   var MONTH_NAMES = ["正月","二月","三月","四月","五月","六月","七月","八月","九月","十月","冬月","腊月"];
 

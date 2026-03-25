@@ -275,6 +275,34 @@
     decidePrefectureCase: function (gameId, caseId, action) {
       return request("POST", "/api/prefecture/" + gameId + "/judicial/decide/", { case_id: caseId, action: action });
     },
+    // Letters (书信系统)
+    getLetterInbox: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/letters/");
+    },
+    getLetterSent: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/letters/sent/");
+    },
+    getLetterPending: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/letters/pending/");
+    },
+    getLetterBlockingCheck: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/letters/blocking-check/");
+    },
+    getLetterSummary: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/letters/summary/");
+    },
+    getLetterDetail: function (gameId, letterId) {
+      return request("GET", "/api/games/" + gameId + "/letters/" + letterId + "/");
+    },
+    replyLetter: function (gameId, letterId, payload) {
+      return request("POST", "/api/games/" + gameId + "/letters/" + letterId + "/reply/", payload);
+    },
+    archiveLetter: function (gameId, letterId) {
+      return request("POST", "/api/games/" + gameId + "/letters/" + letterId + "/archive/", {});
+    },
+    composeLetter: function (gameId, payload) {
+      return request("POST", "/api/games/" + gameId + "/letters/", payload);
+    },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {
       var params = [];
