@@ -105,7 +105,7 @@ class DisasterMixin:
                     morale_hit = round(base_morale_hit * 0.85 ** (1 + medical_level))
                 else:
                     morale_hit = base_morale_hit
-                county["morale"] = max(0, county["morale"] + morale_hit)
+                cls.apply_county_stat_delta(county, "morale", morale_hit)
 
                 # 灾害对商业的冲击
                 commercial_hit = round(3 + 7 * severity)

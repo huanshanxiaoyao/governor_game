@@ -205,8 +205,17 @@ class RumorsService:
             return rumors
 
         ps = county_data.get("peasant_surplus", {})
-        monthly_pcs = ps.get("monthly_per_capita_surplus", 0)
-        demand_factor = ps.get("demand_factor", 1.0)
+        # `peasant_surplus` fields were renamed during the monthly grain refactor.
+        # Keep rumor generation aligned with the current snapshot, while remaining
+        # backward-compatible with older saves that still carry legacy keys.
+        monthly_pcs = ps.get("consumer_confidence")
+        if monthly_pcs is None:
+            monthly_pcs = ps.get("monthly_per_capita_surplus", 0)
+
+        demand_factor = ps.get("confidence_index")
+        if demand_factor is None:
+            demand_factor = ps.get("demand_factor", 1.0)
+
         months_to_harvest = ps.get("months_to_harvest", 6)
 
         if monthly_pcs >= 5:

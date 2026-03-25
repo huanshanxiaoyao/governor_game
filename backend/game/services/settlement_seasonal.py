@@ -414,8 +414,8 @@ class SeasonalMixin:
                 f"{'（府仓调拨）' if pref_granary_active else ''}")
             # 赈灾额外民心加成
             if disaster.get("relieved"):
-                county["morale"] = min(100, county["morale"] + 2)
-                report["events"].append("赈灾安民: 民心+2")
+                morale_gain = cls.apply_county_stat_delta(county, "morale", 2)
+                report["events"].append(f"赈灾安民: 民心+{morale_gain:.1f}")
 
             if granary_active:
                 county["has_granary"] = False

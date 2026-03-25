@@ -221,6 +221,8 @@ class SettlementService(
         else:
             report["game_over"] = False
 
+        cls.refresh_metric_report_lines(county, report)
+
         save_player_state(game, county)
         game.save(update_fields=["current_season", "updated_at"])
 

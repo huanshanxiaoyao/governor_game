@@ -18,6 +18,10 @@ class MetricsMixin:
     """民心、治安、商业、粮食生产等月度指标更新"""
 
     @staticmethod
+    def _clamp_public_stat(value):
+        return max(0.0, min(100.0, float(value)))
+
+    @staticmethod
     def _months_to_harvest(month, pre_harvest=False):
         """Distance to next autumn harvest from the current state."""
         moy = month_of_year(month)
@@ -146,11 +150,61 @@ class MetricsMixin:
         return county["peasant_surplus"]
 
     @classmethod
+    def apply_county_stat_delta(cls, county, field, delta, *, village_delta=None):
+        """Apply a county public-stat delta and keep village values moving in the same direction."""
+        old = float(county.get(field, 50.0))
+        county[field] = cls._clamp_public_stat(old + float(delta))
+        actual_county_delta = county[field] - old
+
+        if village_delta is None:
+            village_delta = actual_county_delta
+
+        if village_delta:
+            for village in county.get("villages", []):
+                village[field] = cls._clamp_public_stat(
+                    float(village.get(field, 50.0)) + float(village_delta)
+                )
+
+        return round(float(county.get(field, 50.0)) - old, 1)
+
+    @classmethod
+    def refresh_metric_report_lines(cls, county, report):
+        """Rewrite metric summary lines against final county values after all late-stage effects."""
+        metric_bases = report.pop("_metric_bases", None) or {}
+        if not metric_bases:
+            return
+
+        labels = {
+            "morale": "民心变化",
+            "security": "治安变化",
+        }
+        events = report.get("events", [])
+
+        for field, label in labels.items():
+            if field not in metric_bases:
+                continue
+            current = float(county.get(field, 50.0))
+            actual_change = round(current - float(metric_bases[field]), 1)
+            line = (
+                f"{label}: {'+' if actual_change > 0 else ''}"
+                f"{actual_change:.1f} (当前: {current:.1f})"
+            )
+            replaced = False
+            for idx, event in enumerate(events):
+                if isinstance(event, str) and event.startswith(f"{label}:"):
+                    events[idx] = line
+                    replaced = True
+                    break
+            if not replaced:
+                events.append(line)
+
+    @classmethod
     def _update_morale(cls, county, report):
         """Calculate morale change per doc 06 §4.5, with county↔village sync.
         Monthly tick — deltas scaled to ~1/3 of old seasonal values.
         """
         old = county["morale"]
+        report.setdefault("_metric_bases", {})["morale"] = float(old)
 
         # Base decay: -0.33/month (was -1/season, same -4/year)
         delta = -0.33
@@ -191,6 +245,7 @@ class MetricsMixin:
         Monthly tick — deltas scaled to ~1/3 of old seasonal values.
         """
         old = county["security"]
+        report.setdefault("_metric_bases", {})["security"] = float(old)
 
         # Base decay: -0.33/month (was -1/season)
         delta = -0.33

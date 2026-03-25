@@ -7,6 +7,7 @@ from .constants import (
     calculate_infra_cost, calculate_infra_months,
 )
 from .ledger import ensure_county_ledgers, ensure_village_ledgers
+from .settlement_metrics import MetricsMixin
 from .state import load_county_state, save_player_state
 
 
@@ -263,18 +264,19 @@ class InvestmentService:
         # Apply immediate or delayed effects
         if action == "hire_bailiffs":
             county["bailiff_level"] += 1
-            county["security"] = min(100, county["security"] + 8)
             village_security_bonus = 5
-            for village in county.get("villages", []):
-                village["security"] = max(
-                    0, min(100, village.get("security", 50) + village_security_bonus)
-                )
+            actual_security_gain = MetricsMixin.apply_county_stat_delta(
+                county,
+                "security",
+                8,
+                village_delta=village_security_bonus,
+            )
             admin_increase = round(40 * price_index)
             county["admin_cost"] += admin_increase
             if "admin_cost_detail" in county:
                 county["admin_cost_detail"]["bailiff_cost"] += admin_increase
             msg = (
-                f"衙役等级提升至{county['bailiff_level']}，县治安+8、"
+                f"衙役等级提升至{county['bailiff_level']}，县治安+{actual_security_gain:.1f}、"
                 f"各村治安+{village_security_bonus}，年行政开支+{admin_increase}两"
             )
             return actual_cost, msg
@@ -285,18 +287,18 @@ class InvestmentService:
             county["granary_needs_rebuild"] = False
             if not county.get("granary_rebuild_cost"):
                 county["granary_rebuild_cost"] = round(actual_cost)
-            county["morale"] = min(100, county["morale"] + 5)
+            actual_morale_gain = MetricsMixin.apply_county_stat_delta(county, "morale", 5)
             msg = (
-                "义仓重建完成，民心+5，秋季灾害人口损失×0.65"
+                f"义仓重建完成，民心+{actual_morale_gain:.1f}，秋季灾害人口损失×0.65"
                 if is_rebuild else
-                "义仓建成，民心+5，秋季灾害人口损失×0.65"
+                f"义仓建成，民心+{actual_morale_gain:.1f}，秋季灾害人口损失×0.65"
             )
             return actual_cost, msg
 
         if action == "relief":
             county["disaster_this_year"]["relieved"] = True
-            county["morale"] = min(100, county["morale"] + 8)
-            msg = "赈灾救济已实施，民心+8，秋季灾害人口损失×0.65"
+            actual_morale_gain = MetricsMixin.apply_county_stat_delta(county, "morale", 8)
+            msg = f"赈灾救济已实施，民心+{actual_morale_gain:.1f}，秋季灾害人口损失×0.65"
             return actual_cost, msg
 
         # Delayed investments: compute completion month

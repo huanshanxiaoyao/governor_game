@@ -230,7 +230,7 @@ class EmergencyService:
 
         county["peasant_grain_reserve"] = reserve_before + grant
         if grant > 0:
-            county["morale"] = min(100.0, float(county.get("morale", 50.0)) + 1.0)
+            MetricsMixin.apply_county_stat_delta(county, "morale", 1.0)
 
         refresh_village_grain_ledgers(county, current_season=game.current_season)
         cls.refresh_state(county)
@@ -635,7 +635,7 @@ class EmergencyService:
 
         baseline = float(county["emergency"].get("baseline_monthly_consumption", 1.0))
         morale_gain = min(22.0, 6.0 + collected / max(baseline, 1.0) * 2.4)
-        county["morale"] = min(100.0, float(county.get("morale", 50.0)) + morale_gain)
+        actual_morale_gain = MetricsMixin.apply_county_stat_delta(county, "morale", morale_gain)
 
         village_map = {v.get("name"): v for v in county.get("villages", [])}
         gentry_agents = list(Agent.objects.filter(game=game, role="GENTRY", role_title="地主"))
@@ -728,7 +728,7 @@ class EmergencyService:
             else ""
         )
         msg = (
-            f"已强制征调地主余粮{round(collected)}斤，民心+{round(morale_gain, 1)}，"
+            f"已强制征调地主余粮{round(collected)}斤，民心+{round(actual_morale_gain, 1)}，"
             f"地主关系显著下降{hidden_note}"
         )
 
@@ -741,7 +741,7 @@ class EmergencyService:
             data={
                 "requested": amount,
                 "collected": collected,
-                "morale_gain": round(morale_gain, 1),
+                "morale_gain": round(actual_morale_gain, 1),
                 "complaint_severity": severity,
                 "affinity_loss": affinity_details,
                 "levy_breakdown": levy_breakdown,
@@ -751,7 +751,7 @@ class EmergencyService:
         return {
             "success": True,
             "collected": collected,
-            "morale_gain": round(morale_gain, 1),
+            "morale_gain": round(actual_morale_gain, 1),
             "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
             "complaint_severity": severity if debug_on else None,
             "levy_breakdown": levy_breakdown,
@@ -790,7 +790,7 @@ class EmergencyService:
 
         # 平息民心：紧急购粮略提振（小幅，体现知县爱民之举）
         morale_gain = min(5.0, amount_jin / 10000)
-        county["morale"] = min(100, county.get("morale", 50) + morale_gain)
+        actual_morale_gain = MetricsMixin.apply_county_stat_delta(county, "morale", morale_gain)
 
         refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
         cls.refresh_state(county)
@@ -804,7 +804,7 @@ class EmergencyService:
         msg = (
             f"动用县库{cost:.1f}两，紧急购粮{round(amount_jin)}斤"
             f"（灾时粮价：每两{EMERGENCY_BUY_GRAIN_RATE}斤），"
-            f"民心+{morale_gain:.1f}"
+            f"民心+{actual_morale_gain:.1f}"
         )
 
         EventLog.objects.create(
@@ -817,7 +817,7 @@ class EmergencyService:
                 "amount_jin": round(amount_jin),
                 "cost_liang": round(cost, 2),
                 "rate": EMERGENCY_BUY_GRAIN_RATE,
-                "morale_gain": round(morale_gain, 1),
+                "morale_gain": round(actual_morale_gain, 1),
                 "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
                 "treasury_after": round(county.get("treasury", 0.0), 2),
             },
@@ -827,7 +827,7 @@ class EmergencyService:
             "success": True,
             "amount_jin": round(amount_jin),
             "cost_liang": round(cost, 2),
-            "morale_gain": round(morale_gain, 1),
+            "morale_gain": round(actual_morale_gain, 1),
             "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
             "treasury_after": round(county.get("treasury", 0.0), 2),
             "message": msg,
