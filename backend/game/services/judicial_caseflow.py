@@ -18,9 +18,11 @@ from django.utils import timezone
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
 
-from ..models import AdminUnit, GameState, JudicialCaseInstance, JudicialGenerationState, PlayerProfile
+from ..models import AdminUnit, GameState, JudicialCaseInstance, JudicialGenerationState
 from .constants import MAX_MONTH, month_of_year, month_name
+from .eventlog import adjust_player_profile_stat, log_game_event
 from .local_npc import ensure_county_local_cast, surname_from_village
+from .settlement_metrics import MetricsMixin
 
 logger = logging.getLogger("game")
 
@@ -259,6 +261,19 @@ class JudicialCaseflowService:
         instance.magistrate_rounds = magistrate_rounds
         instance.save(update_fields=["assistant_rounds", "magistrate_rounds", "status", "submitted_to_prefect", "submitted_season", "updated_at"])
 
+        last_round = (instance.magistrate_rounds or [])[-1] if instance.magistrate_rounds else {}
+        cls._log_player_case_action(
+            game,
+            instance,
+            action,
+            season,
+            verdict_code=last_round.get("verdict_code"),
+            verdict_label=last_round.get("verdict_label", ""),
+            round_no=int(last_round.get("round_no", 0) or 0),
+            status_after=instance.status,
+            applied_effects=applied_effects,
+        )
+
         resp: dict = {
             "case": cls._serialize_county_case(instance),
             "message": f"已处理：{instance.local_payload.get('case_name', '')} - {action}",
@@ -306,17 +321,94 @@ class JudicialCaseflowService:
 
     @classmethod
     def _apply_verdict_effects(cls, game, verdict_option: dict) -> None:
-        """玩家路径：将判决效果写入县域 unit_data + 玩家声誉（competence）。"""
+        """玩家路径：将判决效果写入县域 unit_data。"""
         if not game.player_unit_id:
             return
         cls._apply_verdict_effects_to_unit(game.player_unit, verdict_option)
-        effects = verdict_option.get("immediate_effects") or {}
-        reputation_delta = effects.get("reputation", 0)
-        if reputation_delta:
-            player = PlayerProfile.objects.filter(game=game).first()
-            if player:
-                player.competence = max(0, min(100, round(player.competence + reputation_delta)))
-                player.save(update_fields=["competence", "updated_at"])
+
+    @classmethod
+    def _log_player_case_action(
+        cls,
+        game,
+        instance: JudicialCaseInstance,
+        action: str,
+        season: int,
+        *,
+        verdict_code: Optional[str] = None,
+        verdict_label: str = "",
+        round_no: int = 0,
+        status_after: str = "",
+        applied_effects: Optional[dict] = None,
+    ) -> None:
+        case_name = (instance.local_payload or {}).get("case_name", "未名案件")
+        if action == "判决":
+            event_type = "player_judicial_verdict"
+            description = f"《{case_name}》第{round_no}轮判决：{verdict_label or verdict_code or '未定'}"
+        elif action == "打回重审":
+            event_type = "player_judicial_remand"
+            description = f"《{case_name}》第{round_no}轮打回重审"
+        else:
+            event_type = "player_judicial_defer"
+            description = f"《{case_name}》第{round_no}轮搁置并委托知府裁定"
+
+        log_game_event(
+            game,
+            event_type=event_type,
+            category="JUDICIAL",
+            season=season,
+            description=description,
+            choice=action,
+            data={
+                "case_id": instance.id,
+                "case_name": case_name,
+                "round_no": round_no,
+                "action": action,
+                "verdict_code": verdict_code,
+                "verdict_label": verdict_label,
+                "status_after": status_after,
+                "immediate_effects": applied_effects or {},
+            },
+        )
+
+    @classmethod
+    def _settle_player_competence_after_prefect_review(
+        cls,
+        game,
+        instance: JudicialCaseInstance,
+        *,
+        season: int,
+        overturned: bool,
+        prefect_verdict_code: Optional[str],
+    ) -> int:
+        last_verdict = None
+        for item in reversed(instance.magistrate_rounds or []):
+            if item.get("action") == "VERDICT":
+                last_verdict = item
+                break
+        if last_verdict is None:
+            return 0
+
+        payload = instance.local_payload or {}
+        difficulty = payload.get("difficulty", "")
+        delta = 2 if difficulty == "高难" else 1
+        if overturned:
+            delta = -delta
+
+        return adjust_player_profile_stat(
+            game,
+            "competence",
+            delta,
+            source_event="prefect_judicial_review",
+            source_label=payload.get("case_name", "司法复审"),
+            extra_data={
+                "case_id": instance.id,
+                "difficulty": difficulty,
+                "overturned": overturned,
+                "magistrate_verdict_code": last_verdict.get("verdict_code"),
+                "prefect_verdict_code": prefect_verdict_code,
+                "season": season,
+            },
+        )
 
     @classmethod
     def auto_process_ai_counties(cls, game, season: int) -> dict:
@@ -1058,6 +1150,14 @@ class JudicialCaseflowService:
                 'prefect_verdict': prefect_verdict_code,
             },
         )
+        if not is_deferred:
+            cls._settle_player_competence_after_prefect_review(
+                instance.game,
+                instance,
+                season=season,
+                overturned=overturned,
+                prefect_verdict_code=prefect_verdict_code,
+            )
 
     @classmethod
     def _build_prefect_review_context(
@@ -1204,10 +1304,14 @@ class JudicialCaseflowService:
     def _apply_verdict_effects_to_county_dict(cls, county: dict, verdict_option: dict) -> None:
         """将判决效果写入县域 dict（知府改判/上裁路径，不触达 AdminUnit）。"""
         effects = verdict_option.get('immediate_effects') or {}
-        for field in ('morale', 'security', 'gentry_favor', 'commercial', 'education'):
+        for field in ('gentry_favor', 'commercial', 'education'):
             delta = effects.get(field, 0)
             if delta:
                 county[field] = max(0, min(100, round(float(county.get(field, 50)) + delta, 1)))
+        for field in ('morale', 'security'):
+            delta = effects.get(field, 0)
+            if delta:
+                MetricsMixin.apply_county_stat_delta(county, field, delta)
         treasury_delta = effects.get('treasury', 0)
         if treasury_delta:
             county['treasury'] = max(0, round(float(county.get('treasury', 0)) + treasury_delta, 2))
@@ -1266,9 +1370,17 @@ class JudicialCaseflowService:
 
     @classmethod
     def _apply_defer_penalty(cls, game) -> None:
-        player = PlayerProfile.objects.filter(game=game).first()
-        if player is None:
-            return
-        player.competence = max(0, player.competence - 2)
-        player.popularity = max(0, player.popularity - 1)
-        player.save(update_fields=["competence", "popularity", "updated_at"])
+        adjust_player_profile_stat(
+            game,
+            "competence",
+            -2,
+            source_event="player_judicial_defer",
+            source_label="司法搁置上裁",
+        )
+        adjust_player_profile_stat(
+            game,
+            "popularity",
+            -1,
+            source_event="player_judicial_defer",
+            source_label="司法搁置上裁",
+        )

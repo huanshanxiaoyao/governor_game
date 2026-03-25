@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import OperationalError
 from rest_framework.test import APIClient
 
-from game.models import AdminUnit, GameState, JudicialCaseInstance, PlayerProfile
+from game.models import AdminUnit, EventLog, GameState, JudicialCaseInstance, PlayerProfile
 from game.services.county import CountyService
 from game.services.judicial_caseflow import JudicialCaseflowService
 from game.services.prefecture import PrefectureService
@@ -115,6 +115,8 @@ def test_county_judicial_api_and_defer_penalty():
     assert case.status == "DEFERRED_TO_PREFECT"
     assert after.competence == before.competence - 2
     assert after.popularity == before.popularity - 1
+    assert EventLog.objects.filter(game=game, event_type="player_judicial_defer", category="JUDICIAL").exists()
+    assert EventLog.objects.filter(game=game, event_type="player_competence_changed", category="PROFILE").exists()
 
 
 @pytest.mark.django_db
@@ -266,3 +268,72 @@ def test_county_judicial_api_returns_clear_error_when_storage_unavailable(monkey
 
     assert response.status_code == 503
     assert response.json()["error"] == "司法系统数据库未初始化，请先执行迁移。"
+
+
+@pytest.mark.django_db
+def test_player_verdict_logs_event_without_immediate_competence_gain():
+    user, game, _unit = _make_county_game(season=2)
+    JudicialCaseflowService.ensure_generation_progress(game, budget_windows=1)
+    case = JudicialCaseInstance.objects.filter(game=game, county_review_season=2).order_by("id").first()
+    verdict_code = (case.local_payload.get("verdict_options") or [])[0]["verdict_code"]
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    before = PlayerProfile.objects.get(game=game)
+    response = client.post(
+        f"/api/games/{game.id}/judicial/decide/",
+        {"case_id": case.id, "action": "判决", "verdict_code": verdict_code},
+        format="json",
+    )
+    after = PlayerProfile.objects.get(game=game)
+
+    assert response.status_code == 200
+    assert after.competence == before.competence
+    log = EventLog.objects.get(game=game, event_type="player_judicial_verdict")
+    assert log.category == "JUDICIAL"
+    assert log.data["case_id"] == case.id
+    assert log.data["verdict_code"] == verdict_code
+
+
+@pytest.mark.django_db
+def test_prefect_review_competence_settles_after_review_outcome():
+    _user, game, _unit = _make_county_game(season=3)
+    player = PlayerProfile.objects.get(game=game)
+    player.competence = 30
+    player.save(update_fields=["competence"])
+    instance = JudicialCaseInstance.objects.create(
+        game=game,
+        county_unit=game.player_unit,
+        template_case_id="county_test",
+        county_review_season=2,
+        prefect_review_season=3,
+        status="SUBMITTED_TO_PREFECT",
+        local_payload={
+            "case_name": "高难疑案",
+            "difficulty": "高难",
+            "verdict_options": [],
+        },
+        magistrate_rounds=[
+            {
+                "round_no": 1,
+                "season": 2,
+                "action": "VERDICT",
+                "verdict_code": "ACQUIT",
+                "verdict_label": "无罪开释",
+                "immediate_effects": {"reputation": 8},
+            }
+        ],
+    )
+
+    delta = JudicialCaseflowService._settle_player_competence_after_prefect_review(
+        game,
+        instance,
+        season=3,
+        overturned=True,
+        prefect_verdict_code="CONVICT_HEAVY",
+    )
+    player.refresh_from_db()
+
+    assert delta == -2
+    assert player.competence == 28
+    assert EventLog.objects.filter(game=game, event_type="player_competence_changed", category="PROFILE").exists()
