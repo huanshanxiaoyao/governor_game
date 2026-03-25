@@ -48,6 +48,9 @@ from .new_term import NewTermService, TERMINAL_REASONS
 from .feedback import FeedbackService
 from .letter import LetterService
 from .state import load_player_state, load_county_state, save_player_state, mutate_player_state
+from .counsel import CounselService
+from .policy_review import PolicyReviewService
+from .policy_sync import PolicySyncService
 
 __all__ = [
     "MONTHS_PER_YEAR",

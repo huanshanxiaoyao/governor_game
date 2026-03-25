@@ -608,6 +608,108 @@ class JudicialCaseInstance(models.Model):
         return f"JudicialCase {self.template_case_id} {county_name} S{self.county_review_season} [{self.status}]"
 
 
+class ProposedPolicy(models.Model):
+    """玩家自创施政选项 — 经省布政司审批后落地为可执行投资动作"""
+
+    class Status(models.TextChoices):
+        PENDING  = 'PENDING',  '待审核'
+        APPROVED = 'APPROVED', '已批准'
+        REJECTED = 'REJECTED', '已拒绝'
+        ARCHIVED = 'ARCHIVED', '管理员归档（不采纳）'
+        PROMOTED = 'PROMOTED', '已提升为标准选项'
+
+    game         = models.ForeignKey(
+        GameState, on_delete=models.CASCADE, related_name='proposed_policies',
+    )
+    proposer     = models.CharField(max_length=50, help_text='提案人：知县 / 师爷 / 县丞')
+    raw_proposal = models.TextField(help_text='原始申请描述（玩家/NPC 的自然语言表述）')
+    policy_name  = models.CharField(max_length=100, help_text='施政选项名称')
+    action_key   = models.CharField(
+        max_length=100, blank=True,
+        help_text='布政使批准后生成的唯一动作标识，供 InvestmentService 识别',
+    )
+    status       = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING,
+        db_index=True,
+    )
+    cost         = models.IntegerField(null=True, blank=True, help_text='批准花费（两），批复后填入')
+    delay_months = models.IntegerField(null=True, blank=True, help_text='工期（月），批复后填入')
+    effects_data = models.JSONField(
+        default=dict,
+        help_text=(
+            '效果定义，格式：'
+            '{"immediate": {"morale": 3}, "on_complete": {"commercial": 15}, '
+            '"add_market": {"merchants": 10}, "description": "..."}'
+        ),
+    )
+    rationale        = models.TextField(blank=True, help_text='布政使批复原文（批准或拒绝均填写）')
+    rejection_reason = models.TextField(blank=True, help_text='拒绝原因（REJECTED 时填写）')
+    synced_from      = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='synced_copies',
+        help_text='邻县同步时指向原始申请记录，本县原始申请此字段为 null',
+    )
+    is_executed  = models.BooleanField(default=False, help_text='本县是否已执行过此选项')
+    created_at   = models.DateTimeField(auto_now_add=True)
+    reviewed_at  = models.DateTimeField(null=True, blank=True, help_text='布政使批复时间')
+    rejected_at  = models.DateTimeField(null=True, blank=True, help_text='拒绝时间，用于6个月冷却计算')
+
+    class Meta:
+        db_table = 'proposed_policies'
+        indexes = [
+            models.Index(fields=['game', 'status']),
+            models.Index(fields=['game', 'policy_name']),
+            models.Index(fields=['synced_from']),
+        ]
+
+    def __str__(self):
+        return f"ProposedPolicy#{self.id} 「{self.policy_name}」 [{self.get_status_display()}] Game#{self.game_id}"
+
+
+class StandardPolicy(models.Model):
+    """
+    标准施政选项（数据库级）— 由管理员从 ProposedPolicy 提升而来。
+    新对局的 InvestmentService 初始化时会合并此表与内置 INVESTMENT_TYPES。
+    已有对局不受此表影响。
+    """
+
+    action_key       = models.CharField(
+        max_length=100, unique=True,
+        help_text='唯一动作标识，不可与内置 INVESTMENT_TYPES 键名重复',
+    )
+    policy_name      = models.CharField(max_length=100, help_text='施政选项名称（投资面板展示用）')
+    cost_base        = models.IntegerField(help_text='基准花费（两），实际花费 = cost_base × price_index')
+    delay_months     = models.IntegerField(help_text='工期（月）；0 表示即时生效')
+    requires_village = models.BooleanField(default=False, help_text='是否需要指定目标村庄')
+    effects_data     = models.JSONField(
+        default=dict,
+        help_text='效果定义，格式同 ProposedPolicy.effects_data',
+    )
+    description      = models.TextField(blank=True, help_text='施政选项简述，显示在投资面板')
+    source_policy    = models.ForeignKey(
+        ProposedPolicy, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='standard_versions',
+        help_text='来源 ProposedPolicy，追溯用',
+    )
+    is_active        = models.BooleanField(
+        default=True, db_index=True,
+        help_text='False 时不出现在新对局中（管理员可临时停用）',
+    )
+    promoted_at  = models.DateTimeField(auto_now_add=True, help_text='提升时间')
+    promoted_by  = models.CharField(max_length=100, help_text='操作管理员用户名')
+    notes        = models.TextField(blank=True, help_text='管理员备注（平衡性说明等）')
+
+    class Meta:
+        db_table = 'standard_policies'
+        indexes = [
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        status = '启用' if self.is_active else '停用'
+        return f"StandardPolicy 「{self.policy_name}」 ({self.action_key}) [{status}]"
+
+
 class Letter(models.Model):
     """书信 — 官场社交基础设施，支持知府指令、私信往来、公文传递"""
 

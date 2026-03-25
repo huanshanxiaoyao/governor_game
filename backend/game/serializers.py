@@ -156,7 +156,7 @@ class GameDetailSerializer(serializers.ModelSerializer):
         from .services import InvestmentService
         from .services.state import load_county_state
         return InvestmentService.get_available_actions(
-            load_county_state(obj), season=obj.current_season,
+            load_county_state(obj), season=obj.current_season, game=obj,
         )
 
     def get_disaster_relief_advice(self, obj):

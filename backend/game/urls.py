@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_prefecture, views_letter
+from . import views, views_prefecture, views_letter, views_counsel
 
 urlpatterns = [
     path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
@@ -75,6 +75,12 @@ urlpatterns = [
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/", views.NeighborDetailView.as_view(), name="neighbor-detail"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/events/", views.NeighborEventsView.as_view(), name="neighbor-events"),
     path("games/<int:game_id>/neighbors/<int:neighbor_id>/summary-v2/", views.NeighborSummaryV2View.as_view(), name="neighbor-summary-v2"),
+    # Counsel (幕僚群聊 + 自创施政)
+    path("games/<int:game_id>/counsel/message/", views_counsel.CounselMessageView.as_view(), name="counsel-message"),
+    path("games/<int:game_id>/counsel/propose/", views_counsel.CounselProposeView.as_view(), name="counsel-propose"),
+    path("games/<int:game_id>/counsel/policies/", views_counsel.CounselPoliciesView.as_view(), name="counsel-policies"),
+    path("games/<int:game_id>/counsel/pending-notifications/", views_counsel.CounselPendingNotificationsView.as_view(), name="counsel-pending-notifications"),
+    path("games/<int:game_id>/counsel/proactive/", views_counsel.CounselProactiveView.as_view(), name="counsel-proactive"),
     # Prefecture (知府) endpoints
     path("prefecture/create/", views_prefecture.PrefectureCreateView.as_view(), name="prefecture-create"),
     path("prefecture/<int:game_id>/", views_prefecture.PrefectureOverviewView.as_view(), name="prefecture-overview"),

@@ -922,6 +922,112 @@ PromptRegistry.register(
 # 书信系统 — NPC 回复玩家来信
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 对话施政 — 幕僚群聊
+# ---------------------------------------------------------------------------
+
+PromptRegistry.register(
+    name='counsel_chat_json',
+    description='幕僚三人群聊（师爷+县丞+知县），返回建议卡片',
+    system=(
+        '这是一个中国明代县治模拟游戏中的幕僚议事场景。\n'
+        '以下两位幕僚轮流辅佐知县处理政务：\n'
+        '\n'
+        '【师爷 — {shiye_name}】\n'
+        '简介：{shiye_bio}\n'
+        '性格：{shiye_personality}\n'
+        '政治理念：{shiye_ideology}\n'
+        '目标：{shiye_goals}\n'
+        '对知县好感度：{shiye_affinity}/100\n'
+        '\n'
+        '【县丞 — {xiancheng_name}】\n'
+        '简介：{xiancheng_bio}\n'
+        '性格：{xiancheng_personality}\n'
+        '政治理念：{xiancheng_ideology}\n'
+        '目标：{xiancheng_goals}\n'
+        '对知县好感度：{xiancheng_affinity}/100\n'
+        '\n'
+        '【当前县情】\n'
+        '{county_snapshot}\n'
+        '\n'
+        '【可用标准施政选项】\n'
+        '{available_actions_summary}\n'
+        '\n'
+        '【行为规则】\n'
+        '- 根据知县的问题，由最适合回答的一方（师爷或县丞）作答\n'
+        '- 师爷擅长策略、时局分析、人情世故；县丞擅长具体事务、财政基建、执行评估\n'
+        '- 回复须符合说话者的性格、理念及对知县的好感度\n'
+        '- 好感度低于40时：措辞疏远，可能回避对知县有利的方案\n'
+        '- 好感度高于70时：主动提供更多信息，支持知县长远利益\n'
+        '- 语气须有古风官场色彩，不超过120字\n'
+        '- 若对话中涉及可执行的标准施政，在 suggested_actions 中列出\n'
+        '- 若对话中涉及现有施政清单之外的新构想，在 proposed_policies 中列出\n'
+        '- 不可在 proposed_policies 中重复已有标准施政选项\n'
+        '\n'
+        '必须以JSON格式回复，包含以下字段：\n'
+        '{{"speaker": "shiye或xiancheng",'
+        ' "reply": "回复正文（古风口吻，不超过120字）",'
+        ' "reasoning": "内心想法（不展示给玩家）",'
+        ' "suggested_actions": ['
+        '{{"action": "action_key", "target_village": null或"村名", "rationale": "建议原因（15字内）"}},'
+        ' ...],'
+        ' "proposed_policies": ['
+        '{{"name": "构想名称（10字内）", "rationale": "简要说明（20字内）"}},'
+        ' ...]}}'
+    ),
+    user=(
+        '当前是第{season}月。\n'
+        '知县说："{player_message}"\n\n'
+        '（必须以JSON格式回复，不要有JSON之外的任何文字）'
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
+# 对话施政 — 省布政使批量审核
+# ---------------------------------------------------------------------------
+
+PromptRegistry.register(
+    name='provincial_review_json',
+    description='省布政使批量审核各县非常规施政申请，返回裁定数组',
+    system=(
+        '你是大明{province_name}省布政使，负责裁定各县非常规施政申请。\n'
+        '\n'
+        '【裁定原则】\n'
+        '- 在维护财政平衡的前提下，给出合理的成本与收益定额\n'
+        '- 效果幅度应与现有标准施政选项保持平衡，不可过强或过廉\n'
+        '- 若某申请与近期已拒申请高度相似，直接拒绝并注明\n'
+        '- 批准时须给出：花费（两）、工期（月）、预期效果（指标变化量）\n'
+        '- 裁定一锤定音，不提供议价\n'
+        '\n'
+        '【现有标准施政参考】（用于平衡成本/收益）\n'
+        '{existing_policies_summary}\n'
+        '\n'
+        '【申请县当前状况】\n'
+        '{county_snapshot}\n'
+        '\n'
+        '【近期已拒绝的申请】（相似构想应直接拒绝）\n'
+        '{recent_rejections}\n'
+        '\n'
+        '你必须以JSON数组格式回复，数组长度与输入申请数量严格对应：\n'
+        '[{{"proposal_id": 整数,'
+        ' "approved": true或false,'
+        ' "policy_name": "选项名称（approved=true时填写）",'
+        ' "action_key": "snake_case唯一标识（approved=true时填写，如build_new_market）",'
+        ' "cost": 整数两（approved=true时填写）,'
+        ' "delay_months": 整数（approved=true时填写）,'
+        ' "effects_data": {{"immediate": {{...}}, "on_complete": {{...}}, "description": "..."}}（approved=true时填写）,'
+        ' "rationale": "批复原文（文言措辞，30-60字）"'
+        '}}, ...]'
+    ),
+    user=(
+        '以下是本次待审申请列表：\n'
+        '{proposals_json}\n\n'
+        '（必须以JSON数组格式回复，不要有JSON之外的任何文字）'
+    ),
+)
+
+
 PromptRegistry.register(
     name='letter_npc_reply',
     description='NPC回复玩家来信，生成书信正文',

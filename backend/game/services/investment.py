@@ -1,5 +1,7 @@
 """投资行动处理服务"""
 
+import logging
+
 from ..models import EventLog
 from .constants import (
     MAX_MONTH, month_name, month_of_year,
@@ -9,6 +11,8 @@ from .constants import (
 from .ledger import ensure_county_ledgers, ensure_village_ledgers
 from .settlement_metrics import MetricsMixin
 from .state import load_county_state, save_player_state
+
+logger = logging.getLogger(__name__)
 
 
 class InvestmentService:
@@ -87,6 +91,175 @@ class InvestmentService:
         "build_medical": "medical_level",
     }
 
+    # -----------------------------------------------------------------------
+    # 自创/标准施政选项支持
+    # -----------------------------------------------------------------------
+
+    @classmethod
+    def _load_custom_policies(cls, game):
+        """加载本局可用的自创施政选项（StandardPolicy + 本局 APPROVED 的 ProposedPolicy）。
+        返回 list of dict，每项含 action_key / cost_info / delay_months / effects_data 等。
+        game=None 时仅加载 StandardPolicy。
+        """
+        from ..models import StandardPolicy, ProposedPolicy
+        result = []
+
+        for sp in StandardPolicy.objects.filter(is_active=True):
+            result.append({
+                'action': sp.action_key,
+                'name': sp.policy_name,
+                'cost_type': 'base',          # 乘以 price_index
+                'cost_base': sp.cost_base,
+                'delay_months': sp.delay_months,
+                'requires_village': sp.requires_village,
+                'effects_data': sp.effects_data,
+                'description': sp.description,
+                'source': 'standard',
+                'policy_id': sp.id,
+            })
+
+        if game is not None:
+            for pp in ProposedPolicy.objects.filter(
+                game=game, status=ProposedPolicy.Status.APPROVED,
+            ):
+                result.append({
+                    'action': pp.action_key,
+                    'name': pp.policy_name,
+                    'cost_type': 'fixed',         # LLM 已定价，直接使用
+                    'cost_fixed': pp.cost or 0,
+                    'delay_months': pp.delay_months or 0,
+                    'requires_village': False,
+                    'effects_data': pp.effects_data,
+                    'description': pp.effects_data.get('description', ''),
+                    'source': 'proposed',
+                    'policy_id': pp.id,
+                    'is_custom': True,
+                })
+
+        return result
+
+    @classmethod
+    def _find_custom_policy(cls, action_key, game=None):
+        """按 action_key 找到自创/标准选项定义，找不到返回 None。"""
+        for p in cls._load_custom_policies(game):
+            if p['action'] == action_key:
+                return p
+        return None
+
+    @classmethod
+    def _get_custom_cost(cls, policy_def, county):
+        """计算自创选项实际花费。"""
+        if policy_def['cost_type'] == 'base':
+            price_index = county.get('price_index', 1.0)
+            return round(policy_def['cost_base'] * price_index)
+        return policy_def['cost_fixed']  # fixed: LLM 已定好
+
+    @classmethod
+    def _apply_custom_effects(cls, county, policy_def, season, game=None):
+        """通用效果引擎：处理自创/标准选项的 effects_data。
+        返回 (actual_cost, message)。
+        """
+        effects = policy_def.get('effects_data', {})
+        actual_cost = cls._get_custom_cost(policy_def, county)
+        policy_name = policy_def['name']
+        delay = policy_def.get('delay_months', 0)
+
+        county['treasury'] -= actual_cost
+
+        # immediate 效果：立即 apply delta
+        immediate = effects.get('immediate', {})
+        if immediate:
+            for stat, delta in immediate.items():
+                if stat in ('morale', 'security', 'commercial', 'education'):
+                    MetricsMixin.apply_county_stat_delta(county, stat, delta)
+                elif stat in county:
+                    county[stat] = county[stat] + delta
+
+        if delay == 0:
+            # 立即完成：apply on_complete
+            cls._apply_on_complete(county, policy_def)
+            desc = effects.get('description', policy_name)
+            msg = f'{policy_name}已完成（花费{actual_cost}两）：{desc}'
+        else:
+            # 延迟：加入 active_investments，结算时处理
+            completion = season + delay
+            investment = {
+                'action': policy_def['action'],
+                'started_season': season,
+                'completion_season': completion,
+                'description': policy_name,
+                'custom_policy_id': policy_def['policy_id'],
+                'custom_policy_source': policy_def.get('source', 'proposed'),
+            }
+            county.setdefault('active_investments', []).append(investment)
+            if completion > MAX_MONTH:
+                msg = f'{policy_name}已启动（花费{actual_cost}两），但将在任期结束后才完成'
+            else:
+                msg = f'{policy_name}已启动（花费{actual_cost}两），预计{month_name(completion)}完成'
+
+        return actual_cost, msg
+
+    @classmethod
+    def _apply_on_complete(cls, county, policy_def):
+        """将 on_complete 效果 apply 到 county（结算或即时均调用此方法）。"""
+        effects = policy_def.get('effects_data', {})
+        on_complete = effects.get('on_complete', {})
+        if not on_complete:
+            return
+
+        # 普通指标 delta
+        for stat, delta in on_complete.items():
+            if stat == 'add_market':
+                # 特殊：新增集市
+                market_spec = delta if isinstance(delta, dict) else {}
+                new_market = {
+                    'name': f'{policy_def["name"]}集',
+                    'merchants': market_spec.get('merchants', 10),
+                    'gmv': 0.0,
+                }
+                county.setdefault('markets', []).append(new_market)
+            elif stat in ('morale', 'security', 'commercial', 'education'):
+                MetricsMixin.apply_county_stat_delta(county, stat, delta)
+            elif stat in county:
+                county[stat] = county[stat] + delta
+
+    @classmethod
+    def complete_custom_investment(cls, county, investment):
+        """结算时调用：完成一条 active_investments 中的自创施政。"""
+        from ..models import ProposedPolicy, StandardPolicy
+        source = investment.get('custom_policy_source', 'proposed')
+        policy_id = investment.get('custom_policy_id')
+        if policy_id is None:
+            return f'{investment.get("description", "施政")}已完成'
+
+        try:
+            if source == 'standard':
+                sp = StandardPolicy.objects.get(id=policy_id)
+                policy_def = {
+                    'action': sp.action_key,
+                    'name': sp.policy_name,
+                    'effects_data': sp.effects_data,
+                }
+            else:
+                pp = ProposedPolicy.objects.get(id=policy_id)
+                policy_def = {
+                    'action': pp.action_key,
+                    'name': pp.policy_name,
+                    'effects_data': pp.effects_data,
+                }
+                pp.is_executed = True
+                pp.save(update_fields=['is_executed'])
+        except Exception as e:
+            logger.warning('complete_custom_investment: policy not found id=%s source=%s err=%s',
+                           policy_id, source, e)
+            return f'{investment.get("description", "施政")}已完成'
+
+        cls._apply_on_complete(county, policy_def)
+        effects_desc = policy_def['effects_data'].get('description', policy_def['name'])
+        return f'{policy_def["name"]}建成：{effects_desc}'
+
+    # -----------------------------------------------------------------------
+
     @classmethod
     def _get_infra_target_level(cls, county, action):
         """获取基建升级目标等级（当前等级+1）"""
@@ -127,12 +300,18 @@ class InvestmentService:
         }
 
     @classmethod
-    def get_actual_cost(cls, county, action):
+    def get_actual_cost(cls, county, action, game=None):
         """获取投资项目的实际花费"""
         infra_type = cls.INFRA_ACTIONS.get(action)
         if infra_type:
             target_level = cls._get_infra_target_level(county, action)
             return calculate_infra_cost(infra_type, target_level, county)
+        if action not in cls.INVESTMENT_TYPES:
+            # 自创/标准选项
+            custom = cls._find_custom_policy(action, game)
+            if custom:
+                return cls._get_custom_cost(custom, county)
+            return 0
         spec = cls.INVESTMENT_TYPES[action]
         price_index = county.get("price_index", 1.0)
 
@@ -161,25 +340,42 @@ class InvestmentService:
         return round(spec["cost"] * price_index)
 
     @classmethod
-    def get_delay_months(cls, county, action):
+    def get_delay_months(cls, county, action, game=None):
         """获取投资工期"""
         infra_type = cls.INFRA_ACTIONS.get(action)
         if infra_type:
             target_level = cls._get_infra_target_level(county, action)
             return calculate_infra_months(infra_type, target_level)
+        if action not in cls.INVESTMENT_TYPES:
+            custom = cls._find_custom_policy(action, game)
+            if custom:
+                return custom.get('delay_months', 0)
+            return 0
         spec = cls.INVESTMENT_TYPES[action]
         return spec.get("delay_months", 0)
 
     @classmethod
-    def validate(cls, county, action, target_village=None, season=None):
+    def validate(cls, county, action, target_village=None, season=None, game=None):
         """
         验证投资操作是否合法。
         Returns (is_valid: bool, reason: str). reason 为空字符串表示合法。
         season: 可选，传入时检查月份限制（如开垦荒地不可在七月八月）。
+        game: 可选，传入时支持自创/标准选项校验。
         """
         ensure_county_ledgers(county)
         if action not in cls.INVESTMENT_TYPES:
-            return False, f"未知的投资类型: {action}"
+            # 尝试自创/标准选项
+            custom = cls._find_custom_policy(action, game)
+            if custom is None:
+                return False, f"未知的投资类型: {action}"
+            actual_cost = cls._get_custom_cost(custom, county)
+            if county.get("treasury", 0) < actual_cost:
+                return False, f"资金不足，需要{actual_cost}两，当前{round(county.get('treasury', 0))}两"
+            # 同 action_key 在建检查
+            active_actions = [inv["action"] for inv in county.get("active_investments", [])]
+            if action in active_actions and custom.get('delay_months', 0) > 0:
+                return False, f"{custom['name']}建设中"
+            return True, ""
 
         spec = cls.INVESTMENT_TYPES[action]
         actual_cost = cls.get_actual_cost(county, action)
@@ -249,11 +445,18 @@ class InvestmentService:
         return True, ""
 
     @classmethod
-    def apply_effects(cls, county, action, season, target_village=None):
+    def apply_effects(cls, county, action, season, target_village=None, game=None):
         """Pure-data investment application — no game.save(), no EventLog.
         Shared by player execute() and AI governor paths.
         Returns (actual_cost, message).
         """
+        # 自创/标准选项走独立路径
+        if action not in cls.INVESTMENT_TYPES:
+            custom = cls._find_custom_policy(action, game)
+            if custom:
+                return cls._apply_custom_effects(county, custom, season, game)
+            return 0, f"未知投资类型: {action}"
+
         spec = cls.INVESTMENT_TYPES[action]
         price_index = county.get("price_index", 1.0)
         actual_cost = cls.get_actual_cost(county, action)
@@ -338,12 +541,13 @@ class InvestmentService:
             return False, "游戏已结束，无法投资"
 
         # Validate
-        is_valid, reason = cls.validate(county, action, target_village, season=game.current_season)
+        is_valid, reason = cls.validate(
+            county, action, target_village, season=game.current_season, game=game)
         if not is_valid:
             return False, reason
 
         actual_cost, msg = cls.apply_effects(
-            county, action, game.current_season, target_village)
+            county, action, game.current_season, target_village, game=game)
 
         if action == 'build_irrigation':
             msg += '。您可以与各村地主协商，请其出资分担费用。'
@@ -373,14 +577,18 @@ class InvestmentService:
         return "暂无可选目标村庄"
 
     @classmethod
-    def get_available_actions(cls, county, season=None):
-        """Return list of investment actions with pre-calculated costs and disable reasons."""
+    def get_available_actions(cls, county, season=None, game=None):
+        """Return list of investment actions with pre-calculated costs and disable reasons.
+
+        game: 可选，传入时合并 StandardPolicy + 本局 APPROVED ProposedPolicy。
+        """
         ensure_county_ledgers(county)
         result = []
+
+        # ── 内置标准选项 ──
         for action, spec in cls.INVESTMENT_TYPES.items():
             actual_cost = cls.get_actual_cost(county, action)
 
-            # Current/max level for infra actions
             current_level = None
             max_level = None
             if action in cls.INFRA_LEVEL_KEYS:
@@ -393,7 +601,6 @@ class InvestmentService:
 
             disabled_reason = None
             if spec["requires_village"]:
-                # For village-targeted actions, only disable when no valid village can be selected.
                 disabled_reason = cls._get_target_village_disabled_reason(county, action, season=season)
             else:
                 _, reason = cls.validate(county, action, season=season)
@@ -408,9 +615,9 @@ class InvestmentService:
                 "disabled_reason": disabled_reason,
                 "current_level": current_level,
                 "max_level": max_level,
+                "is_custom": False,
             }
 
-            # 过度开发预警 (doc 06a §2.5): reclaim_land 时标记高利用率村庄
             if action == "reclaim_land":
                 warnings = []
                 blocked_villages = []
@@ -419,9 +626,7 @@ class InvestmentService:
                     if projection["ceiling"] <= 0:
                         continue
                     if projection["current_utilization"] > cls.RECLAIM_WARNING_THRESHOLD:
-                        warnings.append({
-                            "village": v["name"],
-                        })
+                        warnings.append({"village": v["name"]})
                     if projection["projected_utilization"] > cls.RECLAIM_HARD_CAP:
                         blocked_villages.append(v["name"])
                 if warnings:
@@ -430,6 +635,25 @@ class InvestmentService:
                     item["blocked_villages"] = blocked_villages
 
             result.append(item)
+
+        # ── 自创/标准数据库选项（StandardPolicy + ProposedPolicy APPROVED）──
+        for custom in cls._load_custom_policies(game):
+            action = custom['action']
+            actual_cost = cls._get_custom_cost(custom, county)
+            _, reason = cls.validate(county, action, season=season, game=game)
+            result.append({
+                "action": action,
+                "name": custom['name'],
+                "cost": actual_cost,
+                "requires_village": custom.get('requires_village', False),
+                "disabled_reason": reason or None,
+                "current_level": None,
+                "max_level": None,
+                "is_custom": True,
+                "custom_source": custom.get('source', 'proposed'),
+                "description": custom.get('description', ''),
+            })
+
         return result
 
     @classmethod
