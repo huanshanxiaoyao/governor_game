@@ -4872,3 +4872,440 @@ body {
   color: #3a2810;
   line-height: 1.7;
 }
+
+/* ══════════════════════════════════════════════
+   幕僚室 (counsel-*)
+   ══════════════════════════════════════════════ */
+
+/* 自创施政分区标题 */
+.invest-custom-title {
+  margin: 18px 0 8px;
+  font-size: 0.95em;
+  color: #6a4a20;
+  border-bottom: 1px solid #d8c898;
+  padding-bottom: 4px;
+}
+
+/* ── 施政 tab 入口卡片 ────────────────────────────────── */
+.counsel-entry-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fdf5e0;
+  border: 1px solid #c8b07a;
+  border-radius: 8px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+  user-select: none;
+}
+.counsel-entry-card:hover {
+  background: #f5e8c0;
+  border-color: #a07840;
+}
+.counsel-entry-icon {
+  font-size: 1.7em;
+  flex-shrink: 0;
+}
+.counsel-entry-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.counsel-entry-text strong {
+  font-size: 0.98em;
+  color: #4a2e0a;
+}
+.counsel-entry-text span {
+  font-size: 0.82em;
+  color: #8a6840;
+}
+
+/* ── 红点 badge ────────────────────────────────────────── */
+.counsel-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #e03030;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-left: 5px;
+  flex-shrink: 0;
+}
+.counsel-entry-card .counsel-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 10px;
+  height: 10px;
+  margin: 0;
+}
+
+/* ── Modal 外壳 ────────────────────────────────────────── */
+.counsel-modal-content {
+  width: min(820px, 96vw);
+  height: min(680px, 88vh);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────*/
+.counsel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #d8c898;
+  background: #fdf5e0;
+  flex-shrink: 0;
+}
+.counsel-header-title {
+  margin: 0;
+  font-size: 1em;
+  color: #5a3e1b;
+  font-weight: bold;
+}
+.counsel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.counsel-sidebar-btn {
+  position: relative;
+}
+.counsel-sidebar-btn.active {
+  background: #5a3e1b;
+  color: #f5e8c8;
+  border-color: #3a2810;
+}
+
+/* ── Body: chat + sidebar ─────────────────────────────── */
+.counsel-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Main chat area ───────────────────────────────────── */
+.counsel-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 消息滚动区 */
+.counsel-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fdf8f0;
+}
+
+/* 消息气泡 — 通用行 */
+.counsel-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 82%;
+}
+
+/* NPC 靠左 */
+.counsel-msg-npc {
+  align-self: flex-start;
+}
+.counsel-msg-avatar {
+  font-size: 1.3em;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.counsel-msg-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.counsel-msg-label {
+  font-size: 0.75em;
+  color: #9a7040;
+  padding: 0 2px;
+}
+
+/* 气泡 */
+.counsel-msg-bubble {
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 0.91em;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+}
+.counsel-bubble-npc {
+  background: #fff;
+  border: 1px solid #d8c898;
+  border-top-left-radius: 2px;
+  color: #3a2810;
+}
+.counsel-bubble-user {
+  background: #d4e8c0;
+  border: 1px solid #a0c070;
+  border-top-right-radius: 2px;
+  color: #253a10;
+}
+
+/* 知县 靠右 */
+.counsel-msg-user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.counsel-msg-user .counsel-msg-inner {
+  align-items: flex-end;
+}
+
+/* 系统消息 居中 */
+.counsel-msg-system {
+  align-self: center;
+  max-width: 90%;
+}
+.counsel-system-text {
+  background: #fff8e6;
+  border: 1px solid #e0c060;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.82em;
+  color: #7a5a10;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── 建议施政卡片区 ───────────────────────────────────── */
+.counsel-action-cards {
+  padding: 10px 14px;
+  border-top: 1px solid #e8d8b0;
+  background: #f8f4e8;
+  flex-shrink: 0;
+}
+.counsel-cards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.counsel-cards-label {
+  font-size: 0.75em;
+  color: #9a7040;
+  font-weight: bold;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.counsel-cards-toggle {
+  border: 1px solid #cfbb93;
+  background: #fff8e8;
+  color: #7a5730;
+  border-radius: 6px;
+  font-size: 0.75em;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.counsel-cards-toggle:hover {
+  background: #f5e8c8;
+  border-color: #b89662;
+}
+.counsel-action-cards.collapsed {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.counsel-action-cards.collapsed .counsel-cards-head {
+  margin-bottom: 0;
+}
+.counsel-action-cards.collapsed .counsel-cards-grid {
+  display: none;
+}
+.counsel-cards-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.counsel-action-card {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #c8b07a;
+  border-radius: 7px;
+  padding: 8px 10px 8px 12px;
+  cursor: pointer;
+  flex: 1 1 calc(50% - 4px);
+  min-width: 120px;
+  max-width: calc(50% - 4px);
+  box-sizing: border-box;
+  transition: background 0.12s;
+}
+.counsel-action-card:hover:not(.disabled) {
+  background: #f5e8c8;
+  border-color: #a07840;
+}
+.counsel-action-card.disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.counsel-card-body  { flex: 1; min-width: 0; }
+.counsel-card-name  { font-weight: bold; font-size: 0.88em; color: #5a3e1b; }
+.counsel-card-cost  { font-size: 0.78em; color: #8a6840; }
+.counsel-card-rationale { font-size: 0.78em; color: #6a6050; line-height: 1.4; }
+.counsel-card-disabled  { font-size: 0.76em; color: #c06040; }
+.counsel-card-dismiss {
+  align-self: flex-start;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #b09060;
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 0 0 6px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.1s;
+}
+.counsel-card-dismiss:hover { opacity: 1; color: #8a3020; }
+
+/* ── 输入栏 ───────────────────────────────────────────── */
+.counsel-input-area {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #d8c898;
+  background: #fdf5e0;
+  flex-shrink: 0;
+}
+.counsel-input {
+  flex: 1;
+  padding: 7px 11px;
+  border: 1px solid #c8b98a;
+  border-radius: 6px;
+  font-size: 0.93em;
+  background: #fff;
+  color: #3a2810;
+  outline: none;
+}
+.counsel-input:focus {
+  border-color: #8a6840;
+}
+
+/* ── 侧边栏 ───────────────────────────────────────────── */
+.counsel-sidebar {
+  width: 0;
+  overflow: hidden;
+  border-left: 0px solid #d8c898;
+  background: #faf6ec;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.22s ease, border-left-width 0.22s ease;
+  flex-shrink: 0;
+}
+.counsel-sidebar.open {
+  width: 260px;
+  border-left-width: 1px;
+  overflow-y: auto;
+}
+.counsel-sidebar-inner {
+  width: 260px;
+  padding: 14px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.counsel-sidebar-section-title {
+  font-size: 0.78em;
+  font-weight: bold;
+  color: #8a6030;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e0d0a0;
+  padding-bottom: 4px;
+}
+
+/* 申报表单 */
+.counsel-propose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.counsel-form-input {
+  padding: 6px 8px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  font-size: 0.88em;
+  background: #fff;
+  color: #3a2810;
+  width: 100%;
+  box-sizing: border-box;
+}
+.counsel-form-textarea {
+  padding: 6px 8px;
+  border: 1px solid #c8b98a;
+  border-radius: 4px;
+  font-size: 0.87em;
+  resize: vertical;
+  background: #fff;
+  color: #3a2810;
+  line-height: 1.55;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 申报记录列表 */
+.counsel-policy-group {
+  margin-bottom: 10px;
+}
+.counsel-policy-group-hd {
+  font-size: 0.78em;
+  font-weight: bold;
+  color: #7a6040;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.counsel-policy-count {
+  background: #d8c898;
+  color: #5a4020;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 0.9em;
+}
+.counsel-policy-item {
+  padding: 6px 9px;
+  border-radius: 5px;
+  margin-bottom: 4px;
+  font-size: 0.83em;
+  line-height: 1.45;
+}
+.counsel-policy-item.status-pending {
+  background: #fffae8;
+  border: 1px solid #d8c060;
+}
+.counsel-policy-item.status-approved {
+  background: #eef7e6;
+  border: 1px solid #90c070;
+}
+.counsel-policy-item.status-rejected {
+  background: #fdf0f0;
+  border: 1px solid #d09080;
+}
+.counsel-policy-item-name { font-weight: bold; color: #3a2810; }
+.counsel-policy-item-meta { font-size: 0.85em; color: #6a8050; margin-top: 2px; }
+.counsel-policy-item-reason { font-size: 0.83em; color: #a04030; margin-top: 2px; }

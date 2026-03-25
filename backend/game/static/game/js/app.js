@@ -1639,6 +1639,79 @@
     return action;
   }
 
+  // ==================== Counsel (幕僚室) ====================
+
+  // 入口卡片（施政 tab 内）
+  var _counselEntryCard = el("counsel-entry-card");
+  if (_counselEntryCard) {
+    _counselEntryCard.addEventListener("click", function () {
+      var g = Game.state.currentGame;
+      if (g) Game.counsel.open(g.id);
+    });
+    _counselEntryCard.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        var g = Game.state.currentGame;
+        if (g) Game.counsel.open(g.id);
+      }
+    });
+  }
+
+  // Modal 关闭
+  if (el("counsel-close")) {
+    el("counsel-close").addEventListener("click", function () {
+      el("counsel-modal").classList.add("hidden");
+    });
+  }
+  if (el("counsel-modal")) {
+    el("counsel-modal").addEventListener("click", function (e) {
+      if (e.target === this) this.classList.add("hidden");
+    });
+  }
+
+  // 侧边栏 toggle
+  if (el("counsel-sidebar-toggle")) {
+    el("counsel-sidebar-toggle").addEventListener("click", function () {
+      Game.counsel.toggleSidebar();
+    });
+  }
+
+  // 发送消息
+  if (el("counsel-send")) {
+    el("counsel-send").addEventListener("click", function () {
+      var g = Game.state.currentGame;
+      if (g) Game.counsel.sendMessage(g.id);
+    });
+  }
+  if (el("counsel-input")) {
+    el("counsel-input").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        var g = Game.state.currentGame;
+        if (g) Game.counsel.sendMessage(g.id);
+      }
+    });
+  }
+
+  // 提交申报
+  if (el("counsel-propose-submit")) {
+    el("counsel-propose-submit").addEventListener("click", function () {
+      var g = Game.state.currentGame;
+      if (g) Game.counsel.submitPropose(g.id);
+    });
+  }
+
+  // 手动施政 — 自创施政卡片（施政面板内直接执行）
+  if (el("invest-custom-cards")) {
+    el("invest-custom-cards").addEventListener("click", function (e) {
+      var card = e.target.closest(".invest-card");
+      if (!card || card.classList.contains("disabled")) return;
+      var action = card.dataset.action;
+      if (!action) return;
+      doInvest(action, null);
+    });
+  }
+
   // ==================== Advance Season ====================
 
   // 邻县预计算轮询
@@ -1808,6 +1881,24 @@
             Game.letter.updateBadge(g.id);
             api.precomputeNeighbors(g.id).catch(function () {});
             startPrecomputePolling(g.id);
+            // 若有布政司批复通知，标记红点 + 月报底部提示
+            var notifs = (data.county_data || {}).pending_policy_notifications;
+            if (notifs && notifs.length) {
+              Game.counsel.markNewNotifications();
+              var resultBody = el("advance-result-body");
+              if (resultBody) {
+                var hint = document.createElement("div");
+                hint.className = "report-event";
+                hint.style.cssText = "background:#fff8e6;border-color:#e0c060;cursor:pointer;";
+                hint.textContent = "布政司批复已到（" + notifs.length + " 项），点此前往幕僚室查阅。";
+                hint.addEventListener("click", function () {
+                  el("advance-result-modal").classList.add("hidden");
+                  Game.screens.showTab("tab-actions");
+                  Game.counsel.open(data.id);
+                });
+                resultBody.appendChild(hint);
+              }
+            }
           });
         }
       })

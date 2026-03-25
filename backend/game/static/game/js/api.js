@@ -303,6 +303,28 @@
     composeLetter: function (gameId, payload) {
       return request("POST", "/api/games/" + gameId + "/letters/", payload);
     },
+    // Counsel (幕僚群聊 + 自创施政)
+    counselMessage: function (gameId, message, history) {
+      return request("POST", "/api/games/" + gameId + "/counsel/message/", {
+        message: message,
+        history: history || [],
+      });
+    },
+    counselPropose: function (gameId, policyName, rationale) {
+      return request("POST", "/api/games/" + gameId + "/counsel/propose/", {
+        policy_name: policyName,
+        rationale: rationale || "",
+      });
+    },
+    counselPolicies: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/counsel/policies/");
+    },
+    counselPendingNotifications: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/counsel/pending-notifications/");
+    },
+    counselProactive: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/counsel/proactive/");
+    },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {
       var params = [];

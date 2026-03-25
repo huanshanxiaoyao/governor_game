@@ -1110,7 +1110,10 @@
     var defMap = {};
     INVEST_DEFS.forEach(function (def) { defMap[def.action] = def; });
 
-    actions.forEach(function (item) {
+    var standardActions = actions.filter(function (a) { return !a.is_custom; });
+    var customActions   = actions.filter(function (a) { return  a.is_custom; });
+
+    standardActions.forEach(function (item) {
       var def = defMap[item.action] || {};
       var reason = item.disabled_reason || null;
       var isGameOver = g.current_season > Game.MAX_MONTH;
@@ -1135,6 +1138,33 @@
 
       container.appendChild(card);
     });
+
+    // 自创施政选项
+    var customSection = el("invest-custom-section");
+    var customContainer = el("invest-custom-cards");
+    if (customSection && customContainer) {
+      if (customActions.length > 0) {
+        customSection.classList.remove("hidden");
+        customContainer.innerHTML = "";
+        customActions.forEach(function (item) {
+          var reason = item.disabled_reason || null;
+          var isGameOver = g.current_season > Game.MAX_MONTH;
+          var disabled = reason !== null || isGameOver;
+          var card = h("div", "invest-card" + (disabled ? " disabled" : ""));
+          card.innerHTML =
+            '<div class="card-name">' + escapeHtml(item.name) + '</div>' +
+            '<div class="card-cost">费用: ' + item.cost + ' 两</div>' +
+            (reason ? '<div class="card-reason">' + escapeHtml(reason) + '</div>' : '');
+          if (!disabled) {
+            card.dataset.action = item.action;
+            card.dataset.needsVillage = "0";
+          }
+          customContainer.appendChild(card);
+        });
+      } else {
+        customSection.classList.add("hidden");
+      }
+    }
 
     // Disable advance button if game is over
     var advBtn = el("btn-advance");

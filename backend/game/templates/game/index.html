@@ -274,8 +274,24 @@
     </div>
 
     <div class="action-section">
-      <h3>投资施政</h3>
+      <h3>对话施政</h3>
+      <div id="counsel-entry-card" class="counsel-entry-card" role="button" tabindex="0">
+        <div class="counsel-entry-icon">💬</div>
+        <div class="counsel-entry-text">
+          <strong>进入幕僚室</strong>
+          <span>向师爷与县丞问询，获取施政建议</span>
+        </div>
+        <span id="counsel-entry-badge" class="counsel-badge hidden"></span>
+      </div>
+    </div>
+
+    <div class="action-section">
+      <h3>手动施政</h3>
       <div id="invest-cards" class="invest-grid"></div>
+      <div id="invest-custom-section" class="hidden">
+        <h4 class="invest-custom-title">自创施政</h4>
+        <div id="invest-custom-cards" class="invest-grid"></div>
+      </div>
     </div>
 
     <!-- Village target modal -->
@@ -782,6 +798,61 @@
   </div>
 </div>
 
+<!-- ==================== Counsel Modal (幕僚室) ==================== -->
+<div id="counsel-modal" class="modal hidden">
+  <div class="modal-content counsel-modal-content">
+
+    <!-- Header -->
+    <div class="counsel-header">
+      <h4 class="counsel-header-title">幕僚室 · 师爷 &amp; 县丞</h4>
+      <div class="counsel-header-actions">
+        <button id="counsel-sidebar-toggle" class="btn btn-small counsel-sidebar-btn" type="button">
+          自创施政<span id="counsel-sidebar-badge" class="counsel-badge hidden"></span>
+        </button>
+        <button id="counsel-close" class="btn btn-small">关闭</button>
+      </div>
+    </div>
+
+    <!-- Body: chat main + collapsible sidebar -->
+    <div class="counsel-body">
+
+      <!-- Main chat area -->
+      <div class="counsel-main">
+        <div id="counsel-messages" class="counsel-messages"></div>
+        <!-- Suggested action cards (below messages) -->
+        <div id="counsel-action-cards" class="counsel-action-cards hidden"></div>
+        <!-- Input bar -->
+        <div class="counsel-input-area">
+          <input type="text" id="counsel-input" class="counsel-input"
+                 placeholder="征求师爷和县丞的意见……" maxlength="500" autocomplete="off">
+          <button id="counsel-send" class="btn btn-primary btn-small">问询</button>
+        </div>
+      </div>
+
+      <!-- Sidebar: 自创施政 -->
+      <div id="counsel-sidebar" class="counsel-sidebar">
+        <div class="counsel-sidebar-inner">
+          <div class="counsel-sidebar-section">
+            <div class="counsel-sidebar-section-title">申报新构想</div>
+            <div class="counsel-propose-form">
+              <input type="text" id="counsel-propose-name" class="counsel-form-input"
+                     placeholder="施政构想名称（必填）" maxlength="50">
+              <textarea id="counsel-propose-rationale" class="counsel-form-textarea"
+                        rows="3" placeholder="向布政司陈述缘由（可选）"></textarea>
+              <button id="counsel-propose-submit" class="btn btn-small btn-primary">递交申请</button>
+            </div>
+          </div>
+          <div class="counsel-sidebar-section">
+            <div class="counsel-sidebar-section-title">申报记录</div>
+            <div id="counsel-policy-list"><p class="hint" style="font-size:0.82em;padding:4px 0;">尚无申报记录。</p></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.counsel-body -->
+  </div><!-- /.counsel-modal-content -->
+</div>
+
 <!-- Scripts -->
 <script src="{% static 'game/js/api.js' %}"></script>
 <script src="{% static 'game/js/state.js' %}"></script>
@@ -793,6 +864,7 @@
 <script src="{% static 'game/js/components-officialdom.js' %}"></script>
 <script src="{% static 'game/js/components-prefecture.js' %}"></script>
 <script src="{% static 'game/js/components-letter.js' %}"></script>
+<script src="{% static 'game/js/components-counsel.js' %}"></script>
 <script src="{% static 'game/js/screens.js' %}"></script>
 <script src="{% static 'game/js/app.js' %}"></script>
 
