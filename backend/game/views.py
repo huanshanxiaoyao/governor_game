@@ -2087,6 +2087,18 @@ class AdminPlayerStatsView(APIView):
         return Response({"players": rows})
 
 
+class AdminToolsIndexPageView(APIView):
+    """GET /api/admin/tools/  — 后台工具索引页"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        denied = _ensure_staff(request)
+        if denied:
+            return denied
+        return TemplateResponse(request, "game/admin_tools_index.html", {})
+
+
 class AdminPanelPageView(APIView):
     """GET /admin-panel/  — 管理员统计面板页面"""
 

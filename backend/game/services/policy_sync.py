@@ -15,12 +15,14 @@ class PolicySyncService:
         """
         from ..models import ProposedPolicy
 
-        # 仅处理本局原始批准（非同步来的）且尚未同步的记录
+        # 仅处理本局原始批准（非同步来的）且尚未同步的 Tier 1 记录
+        # Tier 2 须激活后才同步
         to_sync = list(ProposedPolicy.objects.filter(
             game=game,
             status=ProposedPolicy.Status.APPROVED,
             synced_from__isnull=True,
             is_synced_to_neighbors=False,
+            tier=1,
         ))
         if not to_sync:
             return

@@ -74,6 +74,7 @@ class CountyService:
             "granary_rebuild_cost": None,
             "granary_last_used_season": None,
             "bailiff_level": 0,
+            "agriculture_bonus": 0,  # 农业类施政累积加成，单位：百分点，结算时乘入秋收
             "admin_cost_detail": dict(ADMIN_COST_DETAIL[county_type]),
             "admin_cost": sum(ADMIN_COST_DETAIL[county_type].values()),
             "advisor_level": 1,

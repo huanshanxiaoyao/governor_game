@@ -281,21 +281,10 @@ class NeighborService:
         return decision_results
 
     @classmethod
-    def _settle_and_save(cls, neighbors, season, decision_results, player_county_data=None):
-        """物理结算 + 保存 + 写事件日志"""
-        all_logs = []
-        county_snapshots = {}
-        for n in neighbors:
-            EmergencyService.ensure_state(n.county_data)
-            snapshot = copy.deepcopy(n.county_data)
-            snapshot["_peer_name"] = n.county_name
-            county_snapshots[n.id] = snapshot
-        player_snapshot = copy.deepcopy(player_county_data) if isinstance(player_county_data, dict) else None
-        if player_snapshot is not None:
-            EmergencyService.ensure_state(player_snapshot)
-            player_snapshot["_peer_name"] = "玩家本县"
-
-        for neighbor in neighbors:
+    def _settle_one(cls, neighbor, season, decision_results, county_snapshots, player_snapshot):
+        """单个邻县结算（在线程中调用）。返回 (neighbor, logs列表)。"""
+        from django.db import connection
+        try:
             report = {"season": season, "events": []}
             decision_events = decision_results.get(neighbor.id, [])
             cls._ensure_initial_baseline(neighbor.county_data)
@@ -316,6 +305,7 @@ class NeighborService:
             )
             neighbor.save(update_fields=['county_data', 'last_reasoning'])
 
+            logs = []
             snapshot_payload = {
                 "monthly_snapshot": cls._build_monthly_snapshot(neighbor.county_data, season),
                 "autumn": report.get("autumn"),
@@ -326,7 +316,7 @@ class NeighborService:
                     neighbor.county_data.get("disaster_this_year")
                 ),
             }
-            all_logs.append(NeighborEventLog(
+            logs.append(NeighborEventLog(
                 neighbor_county=neighbor,
                 season=season,
                 event_type='season_snapshot',
@@ -334,9 +324,8 @@ class NeighborService:
                 description=f"{month_name(season)}结算快照",
                 data=snapshot_payload,
             ))
-
             for evt in decision_events:
-                all_logs.append(NeighborEventLog(
+                logs.append(NeighborEventLog(
                     neighbor_county=neighbor,
                     season=season,
                     event_type='ai_decision',
@@ -344,13 +333,45 @@ class NeighborService:
                     description=evt,
                 ))
             for evt in report['events']:
-                all_logs.append(NeighborEventLog(
+                logs.append(NeighborEventLog(
                     neighbor_county=neighbor,
                     season=season,
                     event_type='season_settlement',
                     category='SETTLEMENT',
                     description=evt,
                 ))
+            return logs
+        except Exception as e:
+            logger.warning("邻县结算失败 %s: %s", neighbor.county_name, e)
+            return []
+        finally:
+            connection.close()
+
+    @classmethod
+    def _settle_and_save(cls, neighbors, season, decision_results, player_county_data=None):
+        """物理结算 + 保存 + 写事件日志（各邻县并行执行）"""
+        county_snapshots = {}
+        for n in neighbors:
+            EmergencyService.ensure_state(n.county_data)
+            snapshot = copy.deepcopy(n.county_data)
+            snapshot["_peer_name"] = n.county_name
+            county_snapshots[n.id] = snapshot
+        player_snapshot = copy.deepcopy(player_county_data) if isinstance(player_county_data, dict) else None
+        if player_snapshot is not None:
+            EmergencyService.ensure_state(player_snapshot)
+            player_snapshot["_peer_name"] = "玩家本县"
+
+        all_logs = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(
+                    cls._settle_one, n, season, decision_results,
+                    county_snapshots, player_snapshot
+                ): n
+                for n in neighbors
+            }
+            for future in as_completed(futures):
+                all_logs.extend(future.result())
 
         if all_logs:
             NeighborEventLog.objects.bulk_create(all_logs)

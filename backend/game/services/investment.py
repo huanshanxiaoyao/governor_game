@@ -91,6 +91,18 @@ class InvestmentService:
         "build_medical": "medical_level",
     }
 
+    # effects_data 中允许的中文/别名 → county 英文字段名映射
+    # 兜底处理 LLM 输出非标准键名的情况
+    EFFECTS_STAT_ALIASES: dict = {
+        '民心': 'morale',
+        '治安': 'security',
+        '商业': 'commercial',
+        '文教': 'education',
+        'agriculture': 'agriculture_bonus',  # 农业收成加成（%），结算时乘入秋收产出
+    }
+    # 四大核心指标（有上下限约束，需通过 MetricsMixin 处理）
+    CORE_STATS = frozenset({'morale', 'security', 'commercial', 'education'})
+
     # -----------------------------------------------------------------------
     # 自创/标准施政选项支持
     # -----------------------------------------------------------------------
@@ -119,9 +131,36 @@ class InvestmentService:
             })
 
         if game is not None:
+            game_id = game.id if hasattr(game, 'id') else int(game)
             for pp in ProposedPolicy.objects.filter(
                 game=game, status=ProposedPolicy.Status.APPROVED,
             ):
+                # Tier 1 始终可用；Tier 2 需要已激活（含全局推广）
+                if pp.tier == 2:
+                    activated = (
+                        game_id in (pp.activated_game_ids or [])
+                        or pp.global_promotion
+                    )
+                    if not activated:
+                        # 返回待激活占位（Phase 3: 前端显示状态徽章）
+                        result.append({
+                            'action': pp.action_key,
+                            'name': pp.policy_name,
+                            'cost_type': 'fixed',
+                            'cost_fixed': pp.cost or 0,
+                            'delay_months': pp.delay_months or 0,
+                            'requires_village': False,
+                            'effects_data': pp.effects_data,
+                            'description': pp.effects_data.get('description', ''),
+                            'source': 'proposed',
+                            'policy_id': pp.id,
+                            'is_custom': True,
+                            'tier': 2,
+                            'code_status': pp.code_status,
+                            'pending_activation': True,  # 前端据此展示等待状态
+                        })
+                        continue
+
                 result.append({
                     'action': pp.action_key,
                     'name': pp.policy_name,
@@ -134,6 +173,8 @@ class InvestmentService:
                     'source': 'proposed',
                     'policy_id': pp.id,
                     'is_custom': True,
+                    'tier': pp.tier,
+                    'code_status': pp.code_status,
                 })
 
         return result
@@ -170,10 +211,7 @@ class InvestmentService:
         immediate = effects.get('immediate', {})
         if immediate:
             for stat, delta in immediate.items():
-                if stat in ('morale', 'security', 'commercial', 'education'):
-                    MetricsMixin.apply_county_stat_delta(county, stat, delta)
-                elif stat in county:
-                    county[stat] = county[stat] + delta
+                cls._apply_stat_delta(county, stat, delta)
 
         if delay == 0:
             # 立即完成：apply on_complete
@@ -200,6 +238,20 @@ class InvestmentService:
         return actual_cost, msg
 
     @classmethod
+    def _apply_stat_delta(cls, county, stat, delta):
+        """将单个指标 delta 应用到 county，支持中文别名和 agriculture_bonus。"""
+        normalized = cls.EFFECTS_STAT_ALIASES.get(stat, stat)
+        if normalized == 'agriculture_bonus':
+            county['agriculture_bonus'] = round(
+                county.get('agriculture_bonus', 0) + delta, 4)
+        elif normalized in cls.CORE_STATS:
+            MetricsMixin.apply_county_stat_delta(county, normalized, delta)
+        elif normalized in county:
+            county[normalized] = county[normalized] + delta
+        else:
+            logger.debug('_apply_stat_delta: unknown stat %r (normalized=%r), skipped', stat, normalized)
+
+    @classmethod
     def _apply_on_complete(cls, county, policy_def):
         """将 on_complete 效果 apply 到 county（结算或即时均调用此方法）。"""
         effects = policy_def.get('effects_data', {})
@@ -207,7 +259,6 @@ class InvestmentService:
         if not on_complete:
             return
 
-        # 普通指标 delta
         for stat, delta in on_complete.items():
             if stat == 'add_market':
                 # 特殊：新增集市
@@ -218,10 +269,8 @@ class InvestmentService:
                     'gmv': 0.0,
                 }
                 county.setdefault('markets', []).append(new_market)
-            elif stat in ('morale', 'security', 'commercial', 'education'):
-                MetricsMixin.apply_county_stat_delta(county, stat, delta)
-            elif stat in county:
-                county[stat] = county[stat] + delta
+            else:
+                cls._apply_stat_delta(county, stat, delta)
 
     @classmethod
     def complete_custom_investment(cls, county, investment):
@@ -640,6 +689,32 @@ class InvestmentService:
         for custom in cls._load_custom_policies(game):
             action = custom['action']
             actual_cost = cls._get_custom_cost(custom, county)
+
+            # Tier 2 待激活：直接作为 disabled 卡片返回，不走 validate
+            if custom.get('pending_activation'):
+                code_status = custom.get('code_status', 'pending_dev')
+                status_labels = {
+                    'pending_dev':  '等待系统审批中',
+                    'dev_complete': '即将上线',
+                }
+                disabled_label = status_labels.get(code_status, '暂不可用')
+                result.append({
+                    "action": action,
+                    "name": custom['name'],
+                    "cost": actual_cost,
+                    "requires_village": False,
+                    "disabled_reason": disabled_label,
+                    "current_level": None,
+                    "max_level": None,
+                    "is_custom": True,
+                    "custom_source": 'proposed',
+                    "description": custom.get('description', ''),
+                    "tier": 2,
+                    "code_status": code_status,
+                    "pending_activation": True,
+                })
+                continue
+
             _, reason = cls.validate(county, action, season=season, game=game)
             result.append({
                 "action": action,
@@ -652,6 +727,7 @@ class InvestmentService:
                 "is_custom": True,
                 "custom_source": custom.get('source', 'proposed'),
                 "description": custom.get('description', ''),
+                "tier": custom.get('tier', 1),
             })
 
         return result

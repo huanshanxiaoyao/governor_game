@@ -373,9 +373,11 @@ class SeasonalMixin:
 
         # Agricultural output per village
         base_yield = 0.5  # 两/亩
+        # agriculture_bonus 由农业类施政（如农技传习所）累积，单位：百分点
+        agri_bonus_mult = 1 + county.get('agriculture_bonus', 0) / 100
         total_agri_output = 0
         for v in county["villages"]:
-            output = v["farmland"] * base_yield * suitability * (1 + irrigation_bonus)
+            output = v["farmland"] * base_yield * suitability * (1 + irrigation_bonus) * agri_bonus_mult
             total_agri_output += output
 
         # Disaster damage (non-plague disasters reduce output; all disasters cause pop loss)

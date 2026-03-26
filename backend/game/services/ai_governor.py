@@ -437,7 +437,7 @@ class AIGovernorService:
 
     @classmethod
     def _build_available_investments(cls, county):
-        """构建可用投资清单文本和可用 action 列表"""
+        """构建可用投资清单文本和可用 action 列表（含邻县同步的自创施政）"""
         price_index = county.get('price_index', 1.0)
         available = []
         available_actions = []
@@ -455,6 +455,22 @@ class AIGovernorService:
             status = f"（不可用：{reason}）" if not is_valid else ""
             available.append(
                 f"  - {action}({spec['description']}): {actual_cost}两 {status}")
+            if is_valid:
+                available_actions.append(action)
+
+        # ── 邻县同步的自创施政选项（Tier 1，写入 county_data['synced_custom_policies']）──
+        for custom in county.get('synced_custom_policies', []):
+            action = custom.get('action_key', '')
+            if not action or action in available_actions:
+                continue
+            cost = custom.get('cost', 0) or 0
+            name = custom.get('policy_name', action)
+            description = custom.get('effects_data', {}).get('description', '')
+            treasury = county.get('treasury', 0)
+            is_valid = treasury >= cost
+            status = '' if is_valid else f'（不可用：县库不足，需{cost}两）'
+            available.append(
+                f"  - {action}（自创施政：{name}，{description}）: {cost}两 {status}")
             if is_valid:
                 available_actions.append(action)
 
@@ -581,7 +597,11 @@ class AIGovernorService:
 
                 if not action or str(action).lower() == 'null':
                     continue
-                if action not in InvestmentService.INVESTMENT_TYPES:
+                # 允许自创施政（synced_custom_policies）或内置类型
+                custom_actions = [
+                    c.get('action_key') for c in county.get('synced_custom_policies', [])
+                ]
+                if action not in InvestmentService.INVESTMENT_TYPES and action not in custom_actions:
                     continue
 
                 inv_events = cls._apply_investment(
@@ -666,7 +686,14 @@ class AIGovernorService:
         actual_cost, _msg = InvestmentService.apply_effects(
             county, investment, season, target_village)
 
-        spec = InvestmentService.INVESTMENT_TYPES[investment]
+        spec = InvestmentService.INVESTMENT_TYPES.get(investment)
+        if spec is None:
+            # 自创施政：从 synced_custom_policies 查找描述
+            custom_match = next(
+                (c for c in county.get('synced_custom_policies', [])
+                 if c.get('action_key') == investment), None)
+            desc = (custom_match or {}).get('policy_name', investment)
+            return [f"{neighbor.governor_name}执行自创施政「{desc}」，花费{actual_cost}两"]
 
         # Build AI-governor-flavored event description
         if investment == "hire_bailiffs":
@@ -930,7 +957,7 @@ class AIGovernorService:
                 break
 
             target_village = cls._pick_target_village(county, best_action)
-            spec = InvestmentService.INVESTMENT_TYPES[best_action]
+            spec = InvestmentService.INVESTMENT_TYPES.get(best_action, {})
             if spec.get("requires_village") and not target_village:
                 break
 

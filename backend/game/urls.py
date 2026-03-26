@@ -1,9 +1,16 @@
 from django.urls import path
-from . import views, views_prefecture, views_letter, views_counsel
+from . import views, views_prefecture, views_letter, views_counsel, views_bench
 
 urlpatterns = [
     path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
     path("admin/panel/", views.AdminPanelPageView.as_view(), name="admin-panel"),
+    path("admin/tools/", views.AdminToolsIndexPageView.as_view(), name="admin-tools-index"),
+    path("admin/policy-review/", views_counsel.PolicyReviewDebugPageView.as_view(), name="admin-policy-review"),
+    path("admin/policy-review/run/", views_counsel.PolicyReviewDebugRunView.as_view(), name="admin-policy-review-run"),
+    path("admin/policy-queue/", views_counsel.PolicyQueuePageView.as_view(), name="admin-policy-queue"),
+    path("admin/policy-queue/<int:policy_id>/mark-dev-complete/", views_counsel.PolicyQueueMarkDevCompleteView.as_view(), name="admin-policy-queue-mark-dev"),
+    path("admin/policy-queue/<int:policy_id>/activate/", views_counsel.PolicyQueueActivateView.as_view(), name="admin-policy-queue-activate"),
+    path("admin/policy-queue/<int:policy_id>/promote-global/", views_counsel.PolicyQueuePromoteGlobalView.as_view(), name="admin-policy-queue-promote"),
     path("login/", views.LoginView.as_view(), name="api-login"),
     path("logout/", views.LogoutView.as_view(), name="api-logout"),
     path("game-knowledge/", views.GameKnowledgeView.as_view(), name="api-game-knowledge"),
@@ -11,6 +18,10 @@ urlpatterns = [
     path("npc/debug/page/", views.NPCDebugPageView.as_view(), name="npc-debug-page"),
     path("games/", views.GameListCreateView.as_view(), name="game-list-create"),
     path("games/<int:game_id>/feedback/", views.GameFeedbackView.as_view(), name="game-feedback"),
+    # LLM bench APIs
+    path("bench/games/", views_bench.BenchGamesView.as_view(), name="bench-games"),
+    path("bench/context/", views_bench.BenchContextView.as_view(), name="bench-context"),
+    path("bench/run/", views_bench.BenchRunView.as_view(), name="bench-run"),
     path("games/<int:game_id>/", views.GameDetailView.as_view(), name="game-detail"),
     path("games/<int:game_id>/npc-debug/", views.NPCDebugListView.as_view(), name="game-npc-debug"),
     path("games/<int:game_id>/npc-debug/detail/", views.NPCDebugDetailView.as_view(), name="game-npc-debug-detail"),

@@ -5,9 +5,32 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 现有引擎支持的 effect 键集合（与 InvestmentService.EFFECTS_STAT_ALIASES 对应）
+_SUPPORTED_STAT_KEYS = frozenset({
+    'morale', 'security', 'commercial', 'education', 'agriculture',
+    '民心', '治安', '商业', '文教',
+})
+_SUPPORTED_SPECIAL_KEYS = frozenset({'add_market'})
+
 
 class PolicyReviewService:
     """月度结算末尾：审核本局所有 PENDING 的 ProposedPolicy。"""
+
+    @staticmethod
+    def _analyze_effects(effects_data):
+        """分析 effects_data，返回不被现有引擎支持的 key 列表（即 needs_new_code 的部分）。"""
+        unsupported = []
+        for section in ('immediate', 'on_complete'):
+            section_data = effects_data.get(section, {})
+            if not isinstance(section_data, dict):
+                continue
+            for key in section_data:
+                if key not in _SUPPORTED_STAT_KEYS and key not in _SUPPORTED_SPECIAL_KEYS:
+                    unsupported.append(f'{section}.{key}')
+        # add_market at top level
+        if 'add_market' in effects_data and not isinstance(effects_data.get('add_market'), dict):
+            unsupported.append('add_market(invalid)')
+        return unsupported
 
     @classmethod
     def review_pending_proposals(cls, game, county):
@@ -51,15 +74,27 @@ class PolicyReviewService:
                 proposal.effects_data = decision.get('effects_data', {})
                 proposal.rationale    = decision.get('rationale', '')
                 proposal.reviewed_at  = now
+                # 自动分级
+                unsupported = cls._analyze_effects(proposal.effects_data)
+                proposal.unsupported_effects = unsupported
+                if unsupported:
+                    proposal.tier        = 2
+                    proposal.code_status = ProposedPolicy.CodeStatus.PENDING_DEV
+                else:
+                    proposal.tier        = 1
+                    proposal.code_status = None
                 notifications.append({
-                    'proposal_id':  proposal.id,
-                    'policy_name':  proposal.policy_name,
-                    'approved':     True,
-                    'rationale':    proposal.rationale,
-                    'cost':         proposal.cost,
-                    'delay_months': proposal.delay_months,
-                    'effects_data': proposal.effects_data,
-                    'action_key':   proposal.action_key,
+                    'proposal_id':        proposal.id,
+                    'policy_name':        proposal.policy_name,
+                    'approved':           True,
+                    'rationale':          proposal.rationale,
+                    'cost':               proposal.cost,
+                    'delay_months':       proposal.delay_months,
+                    'effects_data':       proposal.effects_data,
+                    'action_key':         proposal.action_key,
+                    'tier':               proposal.tier,
+                    'code_status':        proposal.code_status,
+                    'unsupported_effects': proposal.unsupported_effects,
                 })
             else:
                 proposal.status           = ProposedPolicy.Status.REJECTED
@@ -79,7 +114,8 @@ class PolicyReviewService:
             ProposedPolicy.objects.bulk_update(
                 pending,
                 ['status', 'policy_name', 'action_key', 'cost', 'delay_months',
-                 'effects_data', 'rationale', 'rejection_reason', 'reviewed_at', 'rejected_at'],
+                 'effects_data', 'rationale', 'rejection_reason', 'reviewed_at', 'rejected_at',
+                 'tier', 'code_status', 'unsupported_effects'],
             )
 
         # 写入 county_data，前端下次打开面板时读取

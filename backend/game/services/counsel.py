@@ -103,10 +103,23 @@ class CounselService:
             inv.get('description', inv.get('action', '')) for inv in active_inv
         )
 
+        # 即时行动当前状态（供 LLM 判断是否需要再次建议）
+        bailiff_level  = county.get('bailiff_level', 0)
+        has_granary    = county.get('has_granary', False)
+        disaster       = county.get('disaster_this_year')
+        relief_done    = bool(disaster and disaster.get('relieved'))
+
+        state_parts = [f'衙役等级：{bailiff_level}/3']
+        if has_granary:
+            state_parts.append('义仓：已建成')
+        if relief_done:
+            state_parts.append('赈灾：本年已执行')
+
         return (
             f'民心{morale} · 治安{security} · 商业{commercial} · 文教{education}\n'
             f'县库：{treasury}两\n'
-            f'在建工程：{inv_desc}'
+            f'在建工程：{inv_desc}\n'
+            f'施政状态：{"、".join(state_parts)}'
         )
 
     @classmethod

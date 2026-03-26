@@ -41,19 +41,9 @@ class CreatePrefectureSerializer(serializers.Serializer):
 
 
 class InvestActionSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(
-        choices=[
-            ("reclaim_land", "开垦荒地"),
-            ("build_irrigation", "修建水利"),
-            ("expand_school", "扩建县学"),
-            ("build_medical", "建设医疗"),
-            ("fund_village_school", "资助村塾"),
-            ("hire_bailiffs", "增设衙役"),
-            ("repair_roads", "修缮道路"),
-            ("build_granary", "开设义仓"),
-            ("relief", "赈灾救济"),
-        ],
-        help_text="投资类型",
+    action = serializers.CharField(
+        max_length=100,
+        help_text="投资类型（内置选项或自创选项的 action_key）",
     )
     target_village = serializers.CharField(
         required=False,

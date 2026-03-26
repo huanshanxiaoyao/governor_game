@@ -650,6 +650,38 @@ class ProposedPolicy(models.Model):
         help_text='邻县同步时指向原始申请记录，本县原始申请此字段为 null',
     )
     is_executed  = models.BooleanField(default=False, help_text='本县是否已执行过此选项')
+
+    # ── 分级施政系统 (Phase 1) ──
+    class CodeStatus(models.TextChoices):
+        PENDING_DEV   = 'pending_dev',  '待开发'
+        DEV_COMPLETE  = 'dev_complete', '开发完成'
+        ACTIVATED     = 'activated',    '已激活'
+
+    tier                 = models.IntegerField(
+        default=1,
+        help_text='施政分级：1=无需代码改动，2=需要新增后端代码',
+    )
+    code_status          = models.CharField(
+        max_length=20, choices=CodeStatus.choices, null=True, blank=True,
+        help_text='Tier 2 专用：开发状态（pending_dev/dev_complete/activated）',
+    )
+    activated_game_ids   = models.JSONField(
+        default=list,
+        help_text='Tier 2 已激活的 game_id 列表（仅对这些对局可执行）',
+    )
+    unsupported_effects  = models.JSONField(
+        default=list,
+        help_text='无法被现有引擎处理的 effect 键，批复时自动分析填入',
+    )
+    global_promotion     = models.BooleanField(
+        default=False,
+        help_text='Tier 2 激活后：是否推广为全局可用（对所有对局生效）',
+    )
+    is_synced_to_neighbors = models.BooleanField(
+        default=False,
+        help_text='Tier 1 批准后是否已同步至邻县',
+    )
+
     created_at   = models.DateTimeField(auto_now_add=True)
     reviewed_at  = models.DateTimeField(null=True, blank=True, help_text='布政使批复时间')
     rejected_at  = models.DateTimeField(null=True, blank=True, help_text='拒绝时间，用于6个月冷却计算')
@@ -660,6 +692,7 @@ class ProposedPolicy(models.Model):
             models.Index(fields=['game', 'status']),
             models.Index(fields=['game', 'policy_name']),
             models.Index(fields=['synced_from']),
+            models.Index(fields=['tier', 'code_status']),
         ]
 
     def __str__(self):
