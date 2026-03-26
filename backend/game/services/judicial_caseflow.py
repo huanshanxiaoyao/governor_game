@@ -227,15 +227,14 @@ class JudicialCaseflowService:
                 instance.status = "SUBMITTED_TO_PREFECT"
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
-            elif action == "打回重审":
-                second = cls._build_assistant_opinion(instance.local_payload, round_no=2, previous_opinion=latest_assistant.get("opinion"))
-                assistant_rounds = list(instance.assistant_rounds or [])
-                assistant_rounds.append(second)
-                instance.assistant_rounds = assistant_rounds
-                instance.status = "PENDING_MAGISTRATE_ROUND_2"
-                magistrate_rounds.append({"round_no": 1, "season": season, "action": "REMAND_TO_ASSISTANT", "action_label": "打回重审"})
+            elif action == "搁置委托上级裁定":
+                magistrate_rounds.append({"round_no": 1, "season": season, "action": "DEFER_TO_PREFECT", "action_label": "搁置委托上级裁定"})
+                instance.submitted_to_prefect = True
+                instance.submitted_season = season
+                instance.status = "DEFERRED_TO_PREFECT"
+                cls._apply_defer_penalty(game)
             else:
-                return {"error": "第一轮仅可选择判决或打回重审"}
+                return {"error": "第一轮仅可选择判决或搁置委托上级裁定"}
 
         elif status == "PENDING_MAGISTRATE_ROUND_2":
             if action == "判决":
@@ -312,6 +311,7 @@ class JudicialCaseflowService:
         for field in ("morale", "security", "gentry_favor", "commercial", "education"):
             delta = effects.get(field, 0)
             if delta:
+                delta = max(-5, min(5, delta))  # 单案判决上限 ±5
                 data[field] = max(0, min(100, round(float(data.get(field, 50)) + delta, 1)))
         treasury_delta = effects.get("treasury", 0)
         if treasury_delta:
@@ -665,7 +665,7 @@ class JudicialCaseflowService:
         verdict_options = payload.get("verdict_options") or []
         is_round2 = instance.status == "PENDING_MAGISTRATE_ROUND_2"
         # 可选过程动作（判决 + 程序动作）
-        procedural = ["搁置委托上级裁定"] if is_round2 else ["打回重审"]
+        procedural = ["搁置委托上级裁定"]
         available_actions = ["判决"] + procedural
         payload.update({
             "instance_id": instance.id,
@@ -772,10 +772,10 @@ class JudicialCaseflowService:
         verdict_options = instance.local_payload.get("verdict_options") or []
 
         if instance.status == "PENDING_MAGISTRATE_ROUND_1":
-            # 清廉知县面对大量疑点倾向先打回重审；其余直接判决
+            # 清廉知县面对大量疑点倾向搁置委托上级裁定；其余直接判决
             if archetype == "VIRTUOUS" and critical >= 2:
-                action, action_code, verdict_code = "打回重审", "REMAND_TO_ASSISTANT", None
-                reason = "知县性格清直，疑点较多时倾向先打回重审再判。"
+                action, action_code, verdict_code = "搁置委托上级裁定", "DEFER_TO_PREFECT", None
+                reason = "知县性格清直，疑点较多时选择搁置并委托知府裁定。"
             else:
                 action, action_code = "判决", "VERDICT"
                 verdict_code = cls._pick_verdict_for_archetype(verdict_options, archetype, factors)
@@ -825,7 +825,7 @@ class JudicialCaseflowService:
             for o in verdict_options
         ) or "- 无"
         verdict_codes_allowed = " / ".join(o.get("verdict_code", "") for o in verdict_options)
-        procedural_options = "搁置委托上级裁定（DEFER_TO_PREFECT）" if round_no == 2 else "打回重审（REMAND）"
+        procedural_options = "搁置委托上级裁定（DEFER_TO_PREFECT）"
         factors = baseline.get("factors") or cls._estimate_case_factors(payload)
         attachments = payload.get("attachments") or []
         suspicion = payload.get("suspicion_markers") or {}
@@ -837,11 +837,7 @@ class JudicialCaseflowService:
             f"治安: {round(county.get('security', 50))}；商业: {round(county.get('commercial', 30))}；"
             f"文教: {round(county.get('education', 30))}；税率: {county.get('tax_rate', 0.12):.0%}。"
         )
-        round_rules = (
-            "这是第二轮。必须结案，只能从判决方向中选择verdict_code直接判决，或搁置委托上级裁定（DEFER_TO_PREFECT）。"
-            if round_no == 2 else
-            "这是第一轮。可从判决方向中选择verdict_code直接判决，也可打回重审（REMAND）等候补证。"
-        )
+        round_rules = "必须结案，只能从判决方向中选择verdict_code直接判决，或搁置委托上级裁定（DEFER_TO_PREFECT）。"
 
         return {
             "season_label": f"第{season}月（{month_name(month_of_year(season))}）",
@@ -895,11 +891,7 @@ class JudicialCaseflowService:
             action_code = "VERDICT"
             action_label = "判决"
             verdict_code = verdict_code_raw
-        elif action_raw == "REMAND" and not is_round2:
-            action_code = "REMAND_TO_ASSISTANT"
-            action_label = "打回重审"
-            verdict_code = None
-        elif action_raw == "DEFER_TO_PREFECT" and is_round2:
+        elif action_raw == "DEFER_TO_PREFECT":
             action_code = "DEFER_TO_PREFECT"
             action_label = "搁置委托上级裁定"
             verdict_code = None

@@ -134,11 +134,6 @@
       ' <span class="judicial-badge ' + diffClass + '">' + (c.difficulty || '') + '</span>' +
       ' · 第' + (c.current_round || 1) + '轮</div>' +
       '<div>' + (c.category || '') + '</div></div>';
-    // 县丞意见（仅显示意见，不标注推荐）
-    var ao = c.assistant_opinion || {};
-    html += '<div class="pref-personnel-block">' +
-      '<div><strong>县丞意见：</strong>' + (ao.opinion_label || '—') + '</div>' +
-      '<div class="hint">' + (ao.reason || '') + '</div></div>';
     // 卷宗正文
     html += '<div class="pref-personnel-block">' +
       '<div><strong>卷宗正文：</strong></div>' +
@@ -181,6 +176,9 @@
       html += '<div class="pref-review-actions">';
       procActions.forEach(function (act) {
         html += '<button class="btn btn-small btn-county-judicial-action" data-case-id="' + c.instance_id + '" data-action="' + act + '">' + act + '</button>';
+        if (act === '搁置委托上级裁定') {
+          html += '<span class="hint" style="margin-left:6px">（会损失 2 点能名）</span>';
+        }
       });
       html += '</div>';
     }
