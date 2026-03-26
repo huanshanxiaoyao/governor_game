@@ -1151,9 +1151,23 @@
           var isGameOver = g.current_season > Game.MAX_MONTH;
           var disabled = reason !== null || isGameOver;
           var card = h("div", "invest-card" + (disabled ? " disabled" : ""));
+          var desc = item.description || "";
+
+          // Tier 2 待激活：特殊徽章 + 状态标签
+          var tierTag = "";
+          if (item.pending_activation) {
+            var codeStatus = item.code_status || "pending_dev";
+            var statusLabel = codeStatus === "dev_complete" ? "即将上线" : "等待系统审批中";
+            tierTag = ' <span class="tag-tier2">[Tier 2]</span>'
+                    + ' <span class="tag-tier2-status">' + statusLabel + '</span>';
+          } else {
+            tierTag = ' <span class="tag-custom">[新增]</span>';
+          }
+
           card.innerHTML =
-            '<div class="card-name">' + escapeHtml(item.name) + '</div>' +
+            '<div class="card-name">' + escapeHtml(item.name) + tierTag + '</div>' +
             '<div class="card-cost">费用: ' + item.cost + ' 两</div>' +
+            (desc ? '<div class="card-desc">' + escapeHtml(desc) + '</div>' : '') +
             (reason ? '<div class="card-reason">' + escapeHtml(reason) + '</div>' : '');
           if (!disabled) {
             card.dataset.action = item.action;

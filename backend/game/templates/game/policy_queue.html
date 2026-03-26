@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>施政队列管理</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  .page { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  .top-actions { display: flex; gap: 10px; margin-bottom: 20px; }
+  .btn {
+    display: inline-block; text-decoration: none;
+    border: none; border-radius: 7px; padding: 7px 14px;
+    font-size: 13px; cursor: pointer;
+  }
+  .btn-blue  { background: #2563eb; color: #fff; }
+  .btn-blue:hover  { background: #1d4ed8; }
+  .btn-gray  { background: #334155; color: #e2e8f0; }
+  .btn-gray:hover  { background: #475569; }
+  .btn-green { background: #16a34a; color: #fff; }
+  .btn-green:hover { background: #15803d; }
+  .btn-amber { background: #d97706; color: #fff; }
+  .btn-amber:hover { background: #b45309; }
+  .btn-purple { background: #7c3aed; color: #fff; }
+  .btn-purple:hover { background: #6d28d9; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid #1e293b; margin-bottom: 20px; }
+  .tab-btn {
+    padding: 9px 22px; background: none; border: none; border-bottom: 2px solid transparent;
+    color: #94a3b8; font-size: 14px; cursor: pointer; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 9px 10px; background: #111827;
+    border-bottom: 1px solid #1e293b; color: #94a3b8; font-weight: 600;
+  }
+  td {
+    padding: 9px 10px; border-bottom: 1px solid #1e293b;
+    vertical-align: top;
+  }
+  tr:hover td { background: #111827; }
+
+  .badge {
+    display: inline-block; font-size: 11px; padding: 2px 7px;
+    border-radius: 4px; font-weight: 600;
+  }
+  .badge-green  { background: #14532d; color: #86efac; }
+  .badge-amber  { background: #451a03; color: #fcd34d; }
+  .badge-blue   { background: #1e3a5f; color: #93c5fd; }
+  .badge-purple { background: #2e1065; color: #c4b5fd; }
+  .badge-gray   { background: #1e293b; color: #94a3b8; }
+
+  .effects-list { margin: 0; padding: 0 0 0 14px; }
+  .effects-list li { margin-bottom: 2px; color: #cbd5e1; }
+  .unsupported-key { color: #f87171; font-family: monospace; }
+
+  .actions-col { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .toggle-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #94a3b8; cursor: pointer;
+  }
+  .toggle-label input[type=checkbox] { cursor: pointer; }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px;
+    color: #475569; font-size: 14px;
+  }
+
+  .policy-name { font-weight: 600; color: #e2e8f0; }
+  .game-tag {
+    font-size: 11px; color: #64748b; font-family: monospace;
+  }
+  .rationale { color: #94a3b8; font-size: 12px; line-height: 1.5; max-width: 260px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #e2e8f0; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { background: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top-actions">
+    <a class="btn btn-gray" href="/api/admin/tools/">← 返回工具索引</a>
+  </div>
+  <h1>施政队列管理</h1>
+  <div class="sub">Tier 1（无需代码改动，已可执行）与 Tier 2（需开发者改代码）的自创施政审批队列。</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tier1')">
+      Tier 1 — 已批准可执行
+      <span class="badge badge-green" style="margin-left:6px">{{ tier1_policies|length }}</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('tier2')">
+      Tier 2 — 需要代码改动
+      <span class="badge badge-amber" style="margin-left:6px">{{ tier2_policies|length }}</span>
+    </button>
+  </div>
+
+  <!-- Tier 1 tab -->
+  <div id="tab-tier1" class="tab-panel active">
+    {% if tier1_policies %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">ID</th>
+          <th style="width:140px">施政名称</th>
+          <th style="width:80px">对局</th>
+          <th style="width:80px">花费/工期</th>
+          <th>效果</th>
+          <th style="width:200px">布政使批复</th>
+          <th style="width:100px">同步状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in tier1_policies %}
+        <tr>
+          <td class="game-tag">#{{ p.id }}</td>
+          <td>
+            <div class="policy-name">{{ p.policy_name }}</div>
+            <div class="game-tag">{{ p.action_key }}</div>
+          </td>
+          <td class="game-tag">Game #{{ p.game_id }}</td>
+          <td>
+            {{ p.cost|default:"—" }} 两<br>
+            <span style="color:#64748b">{{ p.delay_months|default:"0" }} 月</span>
+          </td>
+          <td>
+            {% if p.effects_data %}
+              <ul class="effects-list">
+                {% for k, v in p.effects_data.immediate.items %}
+                  <li>即时 {{ k }}: {{ v }}</li>
+                {% empty %}{% endfor %}
+                {% for k, v in p.effects_data.on_complete.items %}
+                  <li>完成后 {{ k }}: {{ v }}</li>
+                {% empty %}{% endfor %}
+                {% if p.effects_data.add_market %}
+                  <li>新增集市（商人{{ p.effects_data.add_market.merchants }}）</li>
+                {% endif %}
+                {% if p.effects_data.description %}
+                  <li style="color:#64748b;font-style:italic">{{ p.effects_data.description }}</li>
+                {% endif %}
+              </ul>
+            {% else %}—{% endif %}
+          </td>
+          <td class="rationale">{{ p.rationale|truncatechars:120 }}</td>
+          <td>
+            {% if p.is_synced_to_neighbors %}
+              <span class="badge badge-green">已同步邻县</span>
+            {% else %}
+              <span class="badge badge-gray">待同步</span>
+            {% endif %}
+            {% if p.synced_from_id %}
+              <div class="game-tag" style="margin-top:4px">← #{{ p.synced_from_id }}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">暂无 Tier 1 已批准施政</div>
+    {% endif %}
+  </div>
+
+  <!-- Tier 2 tab -->
+  <div id="tab-tier2" class="tab-panel">
+    {% if tier2_policies %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">ID</th>
+          <th style="width:140px">施政名称</th>
+          <th style="width:80px">对局</th>
+          <th style="width:80px">花费/工期</th>
+          <th style="width:200px">未支持的效果键（需改代码）</th>
+          <th style="width:200px">布政使批复</th>
+          <th style="width:80px">状态</th>
+          <th style="width:230px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in tier2_policies %}
+        <tr id="row-{{ p.id }}">
+          <td class="game-tag">#{{ p.id }}</td>
+          <td>
+            <div class="policy-name">{{ p.policy_name }}</div>
+            <div class="game-tag">{{ p.action_key }}</div>
+          </td>
+          <td class="game-tag">Game #{{ p.game_id }}</td>
+          <td>
+            {{ p.cost|default:"—" }} 两<br>
+            <span style="color:#64748b">{{ p.delay_months|default:"0" }} 月</span>
+          </td>
+          <td>
+            {% if p.unsupported_effects %}
+              <ul class="effects-list">
+                {% for k in p.unsupported_effects %}
+                  <li><span class="unsupported-key">{{ k }}</span></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span style="color:#64748b">（无，可能被重新分级）</span>
+            {% endif %}
+          </td>
+          <td class="rationale">{{ p.rationale|truncatechars:120 }}</td>
+          <td id="status-{{ p.id }}">
+            {% if p.code_status == 'pending_dev' %}
+              <span class="badge badge-amber">待开发</span>
+            {% elif p.code_status == 'dev_complete' %}
+              <span class="badge badge-blue">开发完成</span>
+            {% elif p.code_status == 'activated' %}
+              <span class="badge badge-green">已激活</span>
+              {% if p.global_promotion %}
+                <br><span class="badge badge-purple" style="margin-top:4px">全局</span>
+              {% endif %}
+            {% else %}
+              <span class="badge badge-gray">{{ p.code_status|default:"unknown" }}</span>
+            {% endif %}
+          </td>
+          <td id="actions-{{ p.id }}">
+            <div class="actions-col">
+              {% if p.code_status == 'pending_dev' %}
+                <button class="btn btn-amber" onclick="markDevComplete({{ p.id }})">
+                  标记开发完成
+                </button>
+              {% elif p.code_status == 'dev_complete' %}
+                <button class="btn btn-green" onclick="activate({{ p.id }})">
+                  激活（仅本局）
+                </button>
+              {% elif p.code_status == 'activated' %}
+                {% if not p.global_promotion %}
+                  <button class="btn btn-purple" onclick="promoteGlobal({{ p.id }})">
+                    全局推广
+                  </button>
+                {% else %}
+                  <span style="color:#94a3b8;font-size:12px">已全局推广</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">暂无 Tier 2 施政记录</div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(function(b, i) {
+      b.classList.toggle('active', (i === 0) === (name === 'tier1'));
+    });
+    document.querySelectorAll('.tab-panel').forEach(function(p) {
+      p.classList.toggle('active', p.id === 'tab-' + name);
+    });
+  }
+
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(function() { t.classList.remove('show'); }, 3500);
+  }
+
+  function getCsrf() {
+    var c = document.cookie.split(';');
+    for (var i = 0; i < c.length; i++) {
+      var p = c[i].trim().split('=');
+      if (p[0] === 'csrftoken') return decodeURIComponent(p[1]);
+    }
+    return '';
+  }
+
+  function apiPost(url, onSuccess) {
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'Content-Type': 'application/json',
+      },
+      credentials: 'same-origin',
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(res) {
+      if (!res.ok) {
+        showToast(res.data.error || '操作失败', true);
+        return;
+      }
+      showToast(res.data.message || '操作成功');
+      onSuccess(res.data);
+    })
+    .catch(function(e) { showToast('网络错误: ' + e, true); });
+  }
+
+  function markDevComplete(policyId) {
+    apiPost('/api/admin/policy-queue/' + policyId + '/mark-dev-complete/', function(data) {
+      var statusEl = document.getElementById('status-' + policyId);
+      var actionsEl = document.getElementById('actions-' + policyId);
+      if (statusEl) statusEl.innerHTML = '<span class="badge badge-blue">开发完成</span>';
+      if (actionsEl) actionsEl.innerHTML = '<div class="actions-col">'
+        + '<button class="btn btn-green" onclick="activate(' + policyId + ')">激活（仅本局）</button>'
+        + '</div>';
+    });
+  }
+
+  function activate(policyId) {
+    apiPost('/api/admin/policy-queue/' + policyId + '/activate/', function(data) {
+      var statusEl = document.getElementById('status-' + policyId);
+      var actionsEl = document.getElementById('actions-' + policyId);
+      if (statusEl) statusEl.innerHTML = '<span class="badge badge-green">已激活</span>';
+      if (actionsEl) actionsEl.innerHTML = '<div class="actions-col">'
+        + '<button class="btn btn-purple" onclick="promoteGlobal(' + policyId + ')">全局推广</button>'
+        + '</div>';
+    });
+  }
+
+  function promoteGlobal(policyId) {
+    if (!confirm('确认将此施政设为全局推广？将同步至所有邻县。')) return;
+    apiPost('/api/admin/policy-queue/' + policyId + '/promote-global/', function(data) {
+      var statusEl = document.getElementById('status-' + policyId);
+      var actionsEl = document.getElementById('actions-' + policyId);
+      if (statusEl) statusEl.innerHTML = '<span class="badge badge-green">已激活</span>'
+        + '<br><span class="badge badge-purple" style="margin-top:4px">全局</span>';
+      if (actionsEl) actionsEl.innerHTML = '<span style="color:#94a3b8;font-size:12px">已全局推广</span>';
+    });
+  }
+</script>
+</body>
+</html>

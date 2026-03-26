@@ -8,6 +8,18 @@
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0f172a; color:#e2e8f0; }
   .page { max-width: 1400px; margin:0 auto; padding:24px; }
+  .top-nav { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .top-nav a {
+    display:inline-block;
+    text-decoration:none;
+    background:#1e293b;
+    border:1px solid #334155;
+    color:#cbd5e1;
+    border-radius:8px;
+    padding:7px 12px;
+    font-size:12px;
+  }
+  .top-nav a:hover { border-color:#60a5fa; color:#dbeafe; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
   .title h1 { margin:0; font-size:28px; }
   .title p { margin:8px 0 0; color:#94a3b8; }
@@ -44,6 +56,11 @@
 </head>
 <body>
   <div class="page">
+    <div class="top-nav">
+      <a href="/api/admin/tools/">返回工具索引</a>
+      <a href="/api/admin/panel/">玩家统计面板</a>
+    </div>
+
     <div class="panel">
       <h2>选择存档</h2>
       <form method="get" action="/api/judicial/debug/page/" class="toolbar">

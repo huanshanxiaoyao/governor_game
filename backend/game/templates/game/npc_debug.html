@@ -9,6 +9,18 @@
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
   a { color: inherit; text-decoration: none; }
   .page { max-width: 1600px; margin: 0 auto; padding: 24px; }
+  .top-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .top-nav a {
+    display: inline-block;
+    text-decoration: none;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+  .top-nav a:hover { border-color: #60a5fa; color: #dbeafe; }
   .panel { background: #111827; border: 1px solid #243041; border-radius: 14px; padding: 18px; margin-bottom: 20px; }
   .panel h2 { margin: 0 0 12px; font-size: 18px; }
   .panel h3 { margin: 0 0 10px; font-size: 15px; color: #cbd5e1; }
@@ -56,6 +68,11 @@
 </head>
 <body>
   <div class="page">
+    <div class="top-nav">
+      <a href="/api/admin/tools/">返回工具索引</a>
+      <a href="/api/admin/panel/">玩家统计面板</a>
+    </div>
+
     <div class="panel">
       <h2>选择存档</h2>
       <form method="get" action="/api/npc/debug/page/" class="toolbar">

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后台工具索引</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 40px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  h1 { margin: 0; font-size: 24px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-top: 6px; }
+  .top-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block;
+    text-decoration: none;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn.secondary {
+    background: #334155;
+    color: #e2e8f0;
+  }
+  .btn.secondary:hover { background: #475569; }
+  .notice {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: #cbd5e1;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: 17px;
+  }
+  .card p {
+    margin: 0 0 12px;
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .path {
+    margin-top: 10px;
+    color: #64748b;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+  .quick {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .quick h2 {
+    margin: 0 0 12px;
+    font-size: 17px;
+  }
+  .quick-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .quick-row:last-child { margin-bottom: 0; }
+  .quick-row label {
+    min-width: 150px;
+    color: #cbd5e1;
+    font-size: 13px;
+  }
+  .quick-row input {
+    width: 140px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: #e2e8f0;
+  }
+  .quick-row input:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+  .hint {
+    color: #64748b;
+    font-size: 12px;
+  }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+    .header { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>后台工具索引</h1>
+        <div class="sub">汇总游戏相关调试与运营工具，减少手工记忆 URL。</div>
+      </div>
+      <div class="top-actions">
+        <a class="btn secondary" href="/">返回游戏首页</a>
+        <a class="btn" href="/api/admin/panel/">玩家统计面板</a>
+      </div>
+    </div>
+
+    <div class="notice">
+      本页为后台工具聚合入口。所有工具均走现有权限校验，若权限不足会返回 403。
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>玩家运营</h2>
+        <p>查看账号登录、开档数量、推进月数、在线时长等汇总数据。</p>
+        <div class="links">
+          <a class="btn" href="/api/admin/panel/">打开玩家统计面板</a>
+        </div>
+        <div class="path">/api/admin/panel/</div>
+      </div>
+
+      <div class="card">
+        <h2>司法调试（统一页）</h2>
+        <p>按存档选择查看司法实例化、知县处理、知府复审状态。</p>
+        <div class="links">
+          <a class="btn" href="/api/judicial/debug/page/">打开统一司法调试页</a>
+        </div>
+        <div class="path">/api/judicial/debug/page/</div>
+      </div>
+
+      <div class="card">
+        <h2>NPC 调试</h2>
+        <p>查看 NPC 画像、记忆、运行态、Prompt 预览与关系数据。</p>
+        <div class="links">
+          <a class="btn" href="/api/npc/debug/page/">打开 NPC 调试页</a>
+        </div>
+        <div class="path">/api/npc/debug/page/</div>
+      </div>
+
+      <div class="card">
+        <h2>LLM Benchmark</h2>
+        <p>对比不同模型的输出与延迟，查看 Prompt 与解析结果。</p>
+        <div class="links">
+          <a class="btn" href="/llm-bench/">打开 LLM Bench</a>
+        </div>
+        <div class="path">/llm-bench/</div>
+      </div>
+
+      <div class="card">
+        <h2>施政提议审核调试</h2>
+        <p>测试自创施政提议是否通过省布政使审核，分析投入/收益是否合理，以及效果是否需要新增后端代码。</p>
+        <div class="links">
+          <a class="btn" href="/api/admin/policy-review/">打开调试页</a>
+        </div>
+        <div class="path">/api/admin/policy-review/</div>
+      </div>
+
+      <div class="card">
+        <h2>施政队列管理</h2>
+        <p>查看所有已批准的自创施政。Tier 1 只读展示；Tier 2 支持标记开发完成、激活（仅本局）、全局推广三步操作。</p>
+        <div class="links">
+          <a class="btn" href="/api/admin/policy-queue/">打开队列管理</a>
+        </div>
+        <div class="path">/api/admin/policy-queue/</div>
+      </div>
+    </div>
+
+    <div class="quick">
+      <h2>按存档快速跳转</h2>
+
+      <div class="quick-row">
+        <label for="county-game-id">县级司法调试页</label>
+        <input id="county-game-id" type="number" min="1" placeholder="game_id">
+        <button class="btn" type="button" onclick="openCountyJudicial()">打开</button>
+        <span class="hint">/api/games/&lt;game_id&gt;/judicial/debug/page/</span>
+      </div>
+
+      <div class="quick-row">
+        <label for="prefecture-game-id">府级司法调试页</label>
+        <input id="prefecture-game-id" type="number" min="1" placeholder="game_id">
+        <button class="btn" type="button" onclick="openPrefectureJudicial()">打开</button>
+        <span class="hint">/api/prefecture/&lt;game_id&gt;/judicial/debug/page/</span>
+      </div>
+
+      <div class="quick-row">
+        <label for="npc-game-id">NPC 调试页（带默认存档）</label>
+        <input id="npc-game-id" type="number" min="1" placeholder="可留空">
+        <button class="btn" type="button" onclick="openNpcDebug()">打开</button>
+        <span class="hint">/api/npc/debug/page/?game_id=&lt;game_id&gt;</span>
+      </div>
+
+      <div class="quick-row">
+        <label for="policy-review-game-id">施政提议审核调试（带存档）</label>
+        <input id="policy-review-game-id" type="number" min="1" placeholder="可留空">
+        <button class="btn" type="button" onclick="openPolicyReview()">打开</button>
+        <span class="hint">/api/admin/policy-review/?game_id=&lt;game_id&gt;</span>
+      </div>
+
+      <div class="quick-row">
+        <label>施政队列管理</label>
+        <button class="btn" type="button" onclick="window.location.href='/api/admin/policy-queue/'">打开</button>
+        <span class="hint">/api/admin/policy-queue/</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function _readId(id) {
+      var el = document.getElementById(id);
+      if (!el) return "";
+      return String(el.value || "").trim();
+    }
+
+    function openCountyJudicial() {
+      var gameId = _readId("county-game-id");
+      if (!gameId) return;
+      window.location.href = "/api/games/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
+    }
+
+    function openPrefectureJudicial() {
+      var gameId = _readId("prefecture-game-id");
+      if (!gameId) return;
+      window.location.href = "/api/prefecture/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
+    }
+
+    function openNpcDebug() {
+      var gameId = _readId("npc-game-id");
+      if (!gameId) {
+        window.location.href = "/api/npc/debug/page/";
+        return;
+      }
+      window.location.href = "/api/npc/debug/page/?game_id=" + encodeURIComponent(gameId);
+    }
+
+    function openPolicyReview() {
+      var gameId = _readId("policy-review-game-id");
+      if (!gameId) {
+        window.location.href = "/api/admin/policy-review/";
+        return;
+      }
+      window.location.href = "/api/admin/policy-review/?game_id=" + encodeURIComponent(gameId);
+    }
+  </script>
+</body>
+</html>

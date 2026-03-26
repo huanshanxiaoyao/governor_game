@@ -15,6 +15,7 @@
   var _currentGameId = null;
   var _notificationsShown = false;
   var _proactiveShown = false;
+  var _proposedInSession = {};  // 本次会话已提报的构想名 → true（防重复）
   var _sidebarOpen = false;
   var _hasBadge = false;
 
@@ -159,6 +160,8 @@
         var label = name + (village ? "（" + village + "）" : "");
         _appendMessage("system", null, null,
           "✅ 已下令「" + label + "」。" + (data.message || ""));
+        // 将执行记录注入 LLM 历史，避免后续对话重复建议同一施政
+        _history.push({ role: "user", content: "（已执行施政：" + label + "）" });
         cardEl.remove();
         if (onCardsChanged) onCardsChanged();
         // 刷新库银 / 在建项目等
@@ -269,6 +272,95 @@
     _keepLatestMessageVisible();
   }
 
+  // ── 新构想申报卡片 ────────────────────────────────────────
+
+  function _renderProposeCards(items, gameId) {
+    var area = el("counsel-propose-cards");
+    if (!area) return;
+
+    // 过滤掉本次会话中已提报过的构想
+    var newItems = (items || []).filter(function (item) {
+      return item.name && !_proposedInSession[item.name];
+    });
+
+    if (!newItems.length) {
+      return;  // 没有新构想，不改变现有区域状态
+    }
+
+    area.classList.remove("hidden");
+
+    var head = document.createElement("div");
+    head.className = "counsel-propose-cards-head";
+    var label = document.createElement("span");
+    label.className = "counsel-propose-cards-label";
+    label.textContent = "新构想申报（" + newItems.length + "）";
+    head.appendChild(label);
+
+    newItems.forEach(function (item) {
+      var name      = item.name || "";
+      var rationale = item.rationale || "";
+
+      var cardEl = document.createElement("div");
+      cardEl.className = "counsel-propose-card";
+      cardEl.innerHTML =
+        '<div class="counsel-propose-card-body">' +
+          '<div class="counsel-propose-card-name">' + escapeHtml(name) + '</div>' +
+          (rationale ? '<div class="counsel-propose-card-rationale">' + escapeHtml(rationale) + '</div>' : '') +
+          '<div class="counsel-propose-card-hint">此举非常规，需报请省布政司核准方可执行。</div>' +
+          '<div class="counsel-propose-card-actions">' +
+            '<button class="counsel-propose-card-submit">申报省布政司</button>' +
+            '<button class="counsel-propose-card-dismiss">暂不考虑</button>' +
+          '</div>' +
+        '</div>';
+
+      var submitBtn  = cardEl.querySelector(".counsel-propose-card-submit");
+      var dismissBtn = cardEl.querySelector(".counsel-propose-card-dismiss");
+
+      dismissBtn.addEventListener("click", function () {
+        cardEl.remove();
+        _syncProposeArea();
+      });
+
+      submitBtn.addEventListener("click", function () {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "提交中…";
+
+        api.counselPropose(gameId, name, rationale)
+          .then(function (res) {
+            _proposedInSession[name] = true;
+            _appendMessage("system", null, null,
+              "已向省布政司递交申请「" + name + "」，请等候下月批复。");
+            _history.push({ role: "user", content: "（已申报新施政构想：" + name + "）" });
+            cardEl.remove();
+            _syncProposeArea();
+            _loadPolicies(gameId);
+          })
+          .catch(function (err) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "申报省布政司";
+            _appendMessage("system", null, null,
+              "❌ 申报失败：" + ((err && err.message) || "未知错误"));
+          });
+      });
+
+      area.appendChild(cardEl);
+    });
+
+    // head 插到第一张卡片之前
+    area.insertBefore(head, area.firstChild);
+    _keepLatestMessageVisible();
+  }
+
+  function _syncProposeArea() {
+    var area = el("counsel-propose-cards");
+    if (!area) return;
+    var remaining = area.querySelectorAll(".counsel-propose-card").length;
+    if (!remaining) {
+      area.innerHTML = "";
+      area.classList.add("hidden");
+    }
+  }
+
   // ── 侧边栏：申报记录 ──────────────────────────────────────
 
   function _renderPolicyList(policies) {
@@ -342,6 +434,7 @@
         _appendMessage("npc", speaker, name, reply);
         _history.push({ role: "assistant", content: reply });
         _renderActionCards(res.suggested_actions || [], gameId);
+        _renderProposeCards(res.proposed_policies || [], gameId);
       })
       .catch(function (err) {
         _appendMessage("system", null, null, "问询失败：" + (err.message || "未知错误"));
@@ -388,12 +481,15 @@
     if (_currentGameId !== gameId) {
       _currentGameId    = gameId;
       _history          = [];
+      _proposedInSession = {};
       _notificationsShown = false;
       _proactiveShown   = false;
       var box = el("counsel-messages");
       if (box) box.innerHTML = "";
       var cards = el("counsel-action-cards");
       if (cards) { cards.innerHTML = ""; cards.classList.add("hidden"); }
+      var pCards = el("counsel-propose-cards");
+      if (pCards) { pCards.innerHTML = ""; pCards.classList.add("hidden"); }
     }
 
     el("counsel-modal").classList.remove("hidden");

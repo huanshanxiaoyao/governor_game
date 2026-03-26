@@ -738,6 +738,39 @@ body {
   margin-top: 4px;
   font-style: italic;
 }
+.tag-custom {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: normal;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #d4eec8;
+  color: #3a6820;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tag-tier2 {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: normal;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #e8d5f0;
+  color: #6b3a8a;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tag-tier2-status {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: normal;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #f5e6c8;
+  color: #8a5a0a;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 
 /* === Modal === */
 .modal {
@@ -5180,6 +5213,56 @@ body {
   transition: opacity 0.1s;
 }
 .counsel-card-dismiss:hover { opacity: 1; color: #8a3020; }
+
+/* ── 新构想申报卡片区 ─────────────────────────────────── */
+.counsel-propose-cards {
+  padding: 10px 14px;
+  border-top: 1px solid #c8d8b0;
+  background: #f4f9ec;
+  flex-shrink: 0;
+}
+.counsel-propose-cards-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.counsel-propose-cards-label {
+  font-size: 0.75em;
+  font-weight: bold;
+  color: #4a6830;
+  flex: 1;
+}
+.counsel-propose-card {
+  background: #edf5e0;
+  border: 1px solid #a8c480;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: default;
+}
+.counsel-propose-card-body { flex: 1; min-width: 0; }
+.counsel-propose-card-name { font-weight: bold; font-size: 0.88em; color: #3a5820; }
+.counsel-propose-card-rationale { font-size: 0.78em; color: #5a6850; line-height: 1.4; margin-top: 3px; }
+.counsel-propose-card-hint { font-size: 0.75em; color: #7a9060; margin-top: 4px; }
+.counsel-propose-card-actions { display: flex; gap: 6px; margin-top: 6px; }
+.counsel-propose-card-submit {
+  font-size: 0.78em; padding: 3px 8px;
+  background: #6a9040; color: #fff; border: none;
+  border-radius: 4px; cursor: pointer;
+}
+.counsel-propose-card-submit:hover { background: #507030; }
+.counsel-propose-card-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+.counsel-propose-card-dismiss {
+  font-size: 0.78em; padding: 3px 8px;
+  background: none; color: #7a9060; border: 1px solid #a8c480;
+  border-radius: 4px; cursor: pointer;
+}
+.counsel-propose-card-dismiss:hover { background: #d8e8c8; }
 
 /* ── 输入栏 ───────────────────────────────────────────── */
 .counsel-input-area {

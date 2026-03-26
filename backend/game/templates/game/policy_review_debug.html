@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>施政提议审核调试</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .back-link:hover { color: #e2e8f0; text-decoration: none; }
+
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .panel {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 16px;
+    color: #f1f5f9;
+  }
+
+  label {
+    display: block;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  label:first-of-type { margin-top: 0; }
+
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%;
+    padding: 9px 11px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+  textarea { resize: vertical; min-height: 100px; }
+
+  .btn {
+    display: inline-block;
+    padding: 9px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  .btn.secondary { background: #334155; color: #e2e8f0; }
+  .btn.secondary:hover { background: #475569; }
+
+  .submit-row {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .spinner {
+    display: none;
+    color: #64748b;
+    font-size: 13px;
+  }
+  .spinner.visible { display: block; }
+
+  /* Context preview */
+  .context-box {
+    margin-top: 16px;
+    background: #0b1220;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.6;
+  }
+  .context-box .ctx-label {
+    color: #64748b;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .context-box pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  /* Right panel results */
+  .results-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    color: #475569;
+    font-size: 14px;
+    border: 1px dashed #1e293b;
+    border-radius: 12px;
+  }
+
+  .section {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+  .section:last-child { margin-bottom: 0; }
+  .section h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Decision card */
+  .decision-card {
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .decision-card.approved {
+    background: #052e16;
+    border: 1px solid #166534;
+  }
+  .decision-card.rejected {
+    background: #2a0b0b;
+    border: 1px solid #7f1d1d;
+  }
+  .decision-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .badge-approved { background: #166534; color: #bbf7d0; }
+  .badge-rejected { background: #7f1d1d; color: #fecaca; }
+  .badge-unknown { background: #1e293b; color: #94a3b8; }
+
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 10px 0;
+  }
+  .decision-field {
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .decision-field .df-label {
+    font-size: 11px;
+    color: #64748b;
+    margin-bottom: 2px;
+  }
+  .decision-field .df-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+  .rationale-text {
+    font-size: 13px;
+    color: #cbd5e1;
+    line-height: 1.6;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  /* Effects analysis table */
+  .effects-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .effects-table th {
+    text-align: left;
+    padding: 6px 10px;
+    color: #64748b;
+    font-weight: 500;
+    border-bottom: 1px solid #1e293b;
+  }
+  .effects-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #1e293b;
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .effects-table tr:last-child td { border-bottom: none; }
+  .effects-table tr.supported td { background: rgba(5,46,22,0.4); }
+  .effects-table tr.unsupported td { background: rgba(42,11,11,0.4); }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-ok { background: #166534; color: #bbf7d0; }
+  .tag-warn { background: #7f1d1d; color: #fecaca; }
+  .tag-section { background: #1e3a5f; color: #93c5fd; }
+
+  /* Overall verdict */
+  .verdict-box {
+    border-radius: 8px;
+    padding: 14px 16px;
+    line-height: 1.6;
+  }
+  .verdict-box.ok { background: #052e16; border: 1px solid #166534; }
+  .verdict-box.warn { background: #2a0b0b; border: 1px solid #7f1d1d; }
+  .verdict-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .verdict-row:last-child { margin-bottom: 0; }
+  .verdict-key { color: #94a3b8; min-width: 120px; flex-shrink: 0; }
+  .verdict-val { color: #f1f5f9; }
+
+  /* Error box */
+  .error-box {
+    background: #2a0b0b;
+    border: 1px solid #7f1d1d;
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #fca5a5;
+    font-size: 13px;
+  }
+
+  /* Collapsible */
+  .collapsible-header {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  .collapsible-header .toggle-icon {
+    color: #64748b;
+    font-size: 12px;
+    transition: transform 0.15s;
+  }
+  .collapsible-header.open .toggle-icon {
+    transform: rotate(90deg);
+  }
+  .collapsible-body {
+    display: none;
+    margin-top: 12px;
+  }
+  .collapsible-body.open { display: block; }
+
+  .prompt-block {
+    background: #0b1220;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .prompt-block:last-child { margin-bottom: 0; }
+  .prompt-block .pb-label {
+    font-size: 11px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .prompt-block pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: #94a3b8;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .decision-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back-link" href="/api/admin/tools/">← 返回工具索引</a>
+
+  <h1>施政提议审核调试</h1>
+  <div class="sub">模拟省布政使对自创施政提议的裁定，检查效果键是否有对应后端实现。</div>
+
+  <div class="layout">
+    <!-- Left: form -->
+    <div class="panel" id="form-panel">
+      <h2>提交测试提议</h2>
+
+      <label for="sel-game">存档选择（可选，提供真实县情）</label>
+      <select id="sel-game">
+        <option value="">-- 使用默认县情快照 --</option>
+        {% for g in games %}
+        <option value="{{ g.id }}">{{ g.id }} — {{ g.county_name|default:"未命名" }}（第{{ g.current_season }}月）</option>
+        {% endfor %}
+      </select>
+
+      <label for="inp-name">施政名称 *</label>
+      <input type="text" id="inp-name" placeholder="例：新建粮仓">
+
+      <label for="inp-desc">施政描述（可选）</label>
+      <textarea id="inp-desc" rows="4" placeholder="例：在县城东区新建一座粮仓，扩大储粮能力，以备灾年赈济。"></textarea>
+
+      <div class="submit-row">
+        <button class="btn" id="btn-submit" onclick="runReview()">模拟审核</button>
+        <span class="spinner" id="spinner">省布政使正在审核…</span>
+      </div>
+
+      <!-- County context preview (populated after load) -->
+      <div id="ctx-preview" style="display:none">
+        <div style="margin-top:18px; margin-bottom:8px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em;">县情快照参考</div>
+        <div class="context-box" id="ctx-snapshot"></div>
+        <div style="margin-top:8px;" class="context-box" id="ctx-policies"></div>
+      </div>
+    </div>
+
+    <!-- Right: results -->
+    <div id="results-col">
+      <div class="results-placeholder" id="placeholder">
+        填写施政名称并点击「模拟审核」查看结果
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Pre-fill game_id from query param if present
+  var params = new URLSearchParams(window.location.search);
+  var qGameId = params.get('game_id');
+  if (qGameId) {
+    var sel = document.getElementById('sel-game');
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === qGameId) {
+        sel.selectedIndex = i;
+        break;
+      }
+    }
+    // If not in list, set a manual fallback via hidden input
+    if (sel.value !== qGameId) {
+      sel.insertAdjacentHTML('afterend',
+        '<input type="number" id="inp-game-id-manual" style="margin-top:6px;width:100%;padding:9px 11px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:#e2e8f0;font-size:13px;" placeholder="手动输入 game_id" value="' + qGameId + '">');
+    }
+  }
+})();
+
+function getCsrfToken() {
+  var name = 'csrftoken';
+  var cookies = document.cookie.split(';');
+  for (var i = 0; i < cookies.length; i++) {
+    var c = cookies[i].trim();
+    if (c.startsWith(name + '=')) {
+      return decodeURIComponent(c.slice(name.length + 1));
+    }
+  }
+  return '';
+}
+
+function esc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function runReview() {
+  var policyName = document.getElementById('inp-name').value.trim();
+  if (!policyName) {
+    alert('请填写施政名称');
+    return;
+  }
+
+  var gameId = document.getElementById('sel-game').value;
+  var manualInput = document.getElementById('inp-game-id-manual');
+  if (!gameId && manualInput) {
+    gameId = manualInput.value.trim();
+  }
+
+  var description = document.getElementById('inp-desc').value.trim();
+
+  var btn = document.getElementById('btn-submit');
+  var spinner = document.getElementById('spinner');
+  btn.disabled = true;
+  spinner.classList.add('visible');
+
+  var placeholder = document.getElementById('placeholder');
+  if (placeholder) placeholder.style.display = 'none';
+
+  var body = { policy_name: policyName, description: description };
+  if (gameId) body.game_id = gameId;
+
+  fetch('/api/admin/policy-review/run/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCsrfToken(),
+    },
+    body: JSON.stringify(body),
+  })
+  .then(function (res) { return res.json(); })
+  .then(function (data) {
+    renderResults(data);
+    // Show context preview in left panel
+    showContextPreview(data.context);
+  })
+  .catch(function (err) {
+    renderError('网络错误：' + err.message);
+  })
+  .finally(function () {
+    btn.disabled = false;
+    spinner.classList.remove('visible');
+  });
+}
+
+function showContextPreview(ctx) {
+  if (!ctx) return;
+  var preview = document.getElementById('ctx-preview');
+  preview.style.display = 'block';
+
+  var snapEl = document.getElementById('ctx-snapshot');
+  snapEl.innerHTML = '<div class="ctx-label">县情快照</div><pre>' + esc(ctx.county_snapshot) + '</pre>';
+
+  var polEl = document.getElementById('ctx-policies');
+  polEl.innerHTML = '<div class="ctx-label">现有施政参考</div><pre>' + esc(ctx.existing_policies) + '</pre>';
+}
+
+function renderError(msg) {
+  var col = document.getElementById('results-col');
+  col.innerHTML = '<div class="error-box">' + esc(msg) + '</div>';
+}
+
+function renderResults(data) {
+  var html = '';
+
+  // LLM error
+  if (data.llm_error) {
+    html += '<div class="section"><h3>错误</h3><div class="error-box">' + esc(data.llm_error) + '</div></div>';
+  }
+
+  // Decision card
+  html += renderDecision(data.decision);
+
+  // Effects analysis
+  if (data.effects_analysis && data.effects_analysis.length > 0) {
+    html += renderEffectsAnalysis(data.effects_analysis);
+  } else if (data.decision && data.decision.approved && !data.decision.effects_data) {
+    html += '<div class="section"><h3>效果分析</h3><div style="color:#64748b;font-size:13px;">LLM 未返回 effects_data，无法分析效果键。</div></div>';
+  }
+
+  // Overall verdict
+  html += renderVerdict(data.overall);
+
+  // Collapsible: full prompt
+  html += renderPromptSection(data.prompt);
+
+  // Collapsible: raw LLM output
+  html += renderRawSection(data.raw_output);
+
+  var col = document.getElementById('results-col');
+  col.innerHTML = html;
+}
+
+function renderDecision(decision) {
+  if (!decision) {
+    return '<div class="section"><h3>省布政使裁定</h3><div style="color:#64748b;font-size:13px;">暂无裁定结果。</div></div>';
+  }
+
+  var approved = decision.approved;
+  var cardClass = approved ? 'approved' : 'rejected';
+  var badgeClass = approved ? 'badge-approved' : 'badge-rejected';
+  var badgeText = approved ? '批准' : '驳回';
+
+  var html = '<div class="section"><h3>省布政使裁定</h3>';
+  html += '<div class="decision-card ' + cardClass + '">';
+  html += '<span class="decision-badge ' + badgeClass + '">' + badgeText + '</span>';
+
+  html += '<div class="decision-grid">';
+  html += '<div class="decision-field"><div class="df-label">施政名称</div><div class="df-value">' + esc(decision.policy_name || '—') + '</div></div>';
+
+  if (approved) {
+    html += '<div class="decision-field"><div class="df-label">费用（两）</div><div class="df-value">' + esc(decision.cost !== undefined ? decision.cost : '—') + '</div></div>';
+    html += '<div class="decision-field"><div class="df-label">工期（月）</div><div class="df-value">' + esc(decision.delay_months !== undefined ? decision.delay_months : '—') + '</div></div>';
+    if (decision.action_key) {
+      html += '<div class="decision-field"><div class="df-label">action_key</div><div class="df-value" style="font-family:monospace;font-size:12px;">' + esc(decision.action_key) + '</div></div>';
+    }
+  }
+  html += '</div>';
+
+  if (decision.rationale) {
+    html += '<div class="rationale-text">' + esc(decision.rationale) + '</div>';
+  }
+
+  // effects_data preview if approved
+  if (approved && decision.effects_data) {
+    var ef = decision.effects_data;
+    html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '<div style="font-size:11px;color:#64748b;margin-bottom:6px;">effects_data</div>';
+    html += '<pre style="margin:0;font-family:monospace;font-size:11px;color:#94a3b8;white-space:pre-wrap;">' + esc(JSON.stringify(ef, null, 2)) + '</pre>';
+    html += '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderEffectsAnalysis(effects) {
+  var html = '<div class="section"><h3>效果分析</h3>';
+  html += '<table class="effects-table">';
+  html += '<thead><tr><th>区间</th><th>键</th><th>值</th><th>状态</th><th>机制</th><th>说明</th></tr></thead>';
+  html += '<tbody>';
+
+  for (var i = 0; i < effects.length; i++) {
+    var e = effects[i];
+    var rowClass = e.supported ? 'supported' : 'unsupported';
+    var statusTag = e.supported
+      ? '<span class="tag tag-ok">已支持</span>'
+      : '<span class="tag tag-warn">需新增代码</span>';
+    var sectionTag = '<span class="tag tag-section">' + esc(e.section) + '</span>';
+    html += '<tr class="' + rowClass + '">';
+    html += '<td>' + sectionTag + '</td>';
+    html += '<td><code style="font-family:monospace;font-size:12px;color:#93c5fd;">' + esc(e.key) + '</code></td>';
+    html += '<td style="font-family:monospace;font-size:12px;">' + esc(JSON.stringify(e.value)) + '</td>';
+    html += '<td>' + statusTag + '</td>';
+    html += '<td style="color:#cbd5e1;">' + esc(e.mechanism) + '</td>';
+    html += '<td style="color:#94a3b8;max-width:280px;">' + esc(e.notes) + '</td>';
+    html += '</tr>';
+  }
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function renderVerdict(overall) {
+  if (!overall) return '';
+
+  var isWarn = overall.needs_new_code || overall.needs_forced_refresh;
+  var boxClass = isWarn ? 'warn' : 'ok';
+
+  var html = '<div class="section"><h3>综合结论</h3>';
+  html += '<div class="verdict-box ' + boxClass + '">';
+
+  html += '<div class="verdict-row">';
+  html += '<span class="verdict-key">需要新增后端代码</span>';
+  html += '<span class="verdict-val">';
+  if (overall.needs_new_code) {
+    html += '<span class="tag tag-warn">是</span>';
+    if (overall.unsupported_keys && overall.unsupported_keys.length) {
+      html += '&nbsp;<code style="font-size:12px;font-family:monospace;color:#fca5a5;">' + esc(overall.unsupported_keys.join(', ')) + '</code>';
+    }
+  } else {
+    html += '<span class="tag tag-ok">否</span>';
+  }
+  html += '</span></div>';
+
+  html += '<div class="verdict-row">';
+  html += '<span class="verdict-key">需要强制刷新</span>';
+  html += '<span class="verdict-val">';
+  html += overall.needs_forced_refresh
+    ? '<span class="tag tag-warn">是</span>'
+    : '<span class="tag tag-ok">否</span>';
+  html += '</span></div>';
+
+  if (overall.summary) {
+    html += '<div class="verdict-row" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '<span style="color:#cbd5e1;font-size:13px;line-height:1.6;">' + esc(overall.summary) + '</span>';
+    html += '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderPromptSection(prompt) {
+  if (!prompt) return '';
+
+  var bodyId = 'prompt-body-' + Date.now();
+  var headId = 'prompt-head-' + Date.now();
+  var html = '<div class="section">';
+  html += '<h3 class="collapsible-header" id="' + headId + '" onclick="toggleCollapsible(\'' + headId + '\',\'' + bodyId + '\')">';
+  html += '<span class="toggle-icon">▶</span> 完整 Prompt';
+  html += '</h3>';
+  html += '<div class="collapsible-body" id="' + bodyId + '">';
+
+  if (prompt.system) {
+    html += '<div class="prompt-block"><div class="pb-label">System</div><pre>' + esc(prompt.system) + '</pre></div>';
+  }
+  if (prompt.user) {
+    html += '<div class="prompt-block"><div class="pb-label">User</div><pre>' + esc(prompt.user) + '</pre></div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderRawSection(raw) {
+  if (raw === undefined || raw === null) return '';
+
+  var bodyId = 'raw-body-' + Date.now();
+  var headId = 'raw-head-' + Date.now();
+  var html = '<div class="section">';
+  html += '<h3 class="collapsible-header" id="' + headId + '" onclick="toggleCollapsible(\'' + headId + '\',\'' + bodyId + '\')">';
+  html += '<span class="toggle-icon">▶</span> 原始 LLM 输出';
+  html += '</h3>';
+  html += '<div class="collapsible-body" id="' + bodyId + '">';
+  html += '<div class="prompt-block"><pre>' + esc(JSON.stringify(raw, null, 2)) + '</pre></div>';
+  html += '</div></div>';
+  return html;
+}
+
+function toggleCollapsible(headId, bodyId) {
+  var head = document.getElementById(headId);
+  var body = document.getElementById(bodyId);
+  if (!head || !body) return;
+  var isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  head.classList.toggle('open', !isOpen);
+}
+
+// Allow Enter key on policy name input to submit
+document.addEventListener('DOMContentLoaded', function () {
+  var nameInput = document.getElementById('inp-name');
+  if (nameInput) {
+    nameInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') runReview();
+    });
+  }
+});
+</script>
+</body>
+</html>
