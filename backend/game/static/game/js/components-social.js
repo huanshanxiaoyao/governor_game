@@ -349,95 +349,115 @@
     });
   }
 
-  // ==================== Relationships ====================
+  // ==================== Relationships / 社交 ====================
 
-  // 人脉 tab 只展示本县/本府 NPC、直线上级、内阁成员、皇帝
-  var CONTACTS_VISIBLE_ROLES = {
-    ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true,   // 本县
-    PREFECT: true,                                                 // 直线上级（知府）
-    PROVINCIAL_GOVERNOR: true, GOVERNOR_GENERAL: true,            // 上级链
-    EMPEROR: true,                                                 // 皇帝
-    CABINET_CHIEF: true, CABINET_MEMBER: true,                    // 内阁
+  var LOCAL_ROLES  = { ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true };
+  var REMOTE_ROLES = {
+    PREFECT: true,
+    PROVINCIAL_GOVERNOR: true, GOVERNOR_GENERAL: true,
+    EMPEROR: true,
+    CABINET_CHIEF: true, CABINET_MEMBER: true,
   };
+
+  function _buildRelCard(a, negoByAgent, isLocal) {
+    var aff = a.affinity;
+    var affClass = aff < 30 ? "affinity-low" : (aff < 60 ? "affinity-mid" : "affinity-high");
+    var barColor = aff < 30 ? "#c0392b" : (aff < 60 ? "#d4a017" : "#27ae60");
+    var barPct   = Math.max(0, Math.min(100, ((aff + 99) / 198) * 100));
+    var roleInfo = a.role_title + (a.village_name ? "（" + a.village_name + "）" : "");
+
+    var actionBtn = isLocal
+      ? '<button class="btn btn-small btn-staff-chat rel-action-btn"' +
+          ' data-agent-id="' + a.id + '" data-agent-name="' + escapeHtml(a.name) + '">交谈</button>'
+      : '<button class="btn btn-small btn-agent-letter rel-action-btn"' +
+          ' data-agent-id="' + a.id + '">书信</button>';
+
+    var html =
+      '<div class="relationship-card-header">' +
+        '<span class="relationship-name">' + escapeHtml(a.name) + '</span>' +
+        '<span class="relationship-role">' + escapeHtml(roleInfo) + '</span>' +
+      '</div>' +
+      '<div class="rel-card-middle">' +
+        '<div>' +
+          '<div class="affinity-value ' + affClass + '">好感度: ' + aff + '</div>' +
+          '<div class="affinity-bar">' +
+            '<div class="affinity-bar-fill" style="width:' + barPct.toFixed(1) + '%;background:' + barColor + ';"></div>' +
+          '</div>' +
+        '</div>' +
+        actionBtn +
+      '</div>';
+
+    var agentNego = negoByAgent[a.name];
+    if (agentNego) {
+      var typeName = EVENT_TYPE_NAMES[agentNego.event_type] || agentNego.event_type;
+      html +=
+        '<div class="nego-agent-badge">' +
+          '<span class="nego-badge-text">' + typeName + '谈判进行中</span>' +
+          '<button class="btn btn-primary btn-small btn-nego-enter" data-session-id="' + agentNego.id + '">进入谈判</button>' +
+        '</div>';
+    }
+
+    if (a.memory && a.memory.length > 0) {
+      html += '<div class="memory-list">';
+      a.memory.forEach(function (m) {
+        html += '<div class="memory-list-item">' + escapeHtml(m) + '</div>';
+      });
+      html += '</div>';
+    }
+
+    var card = document.createElement("div");
+    card.className = "relationship-card";
+    card.id = "agent-card-" + a.id;
+    card.innerHTML = html;
+    return card;
+  }
 
   function renderRelationships(agents) {
     var container = el("relationships-list");
     container.innerHTML = "";
 
     if (!agents || agents.length === 0) {
-      container.innerHTML = '<p class="hint">暂无人脉数据</p>';
+      container.innerHTML = '<p class="hint">暂无社交数据</p>';
       return;
     }
 
-    // 过滤：仅显示本县 NPC、直线上级、内阁成员、皇帝
-    var visible = agents.filter(function (a) { return !!CONTACTS_VISIBLE_ROLES[a.role]; });
+    var localAgents  = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
+    var remoteAgents = agents.filter(function (a) { return !!REMOTE_ROLES[a.role]; });
 
-    if (visible.length === 0) {
-      container.innerHTML = '<p class="hint">暂无人脉数据</p>';
-      return;
-    }
-
-    // Build lookup of active negotiations by agent name
     var negoByAgent = {};
-    var activeNegos = Game.state.activeNegotiations || [];
-    activeNegos.forEach(function (s) {
+    (Game.state.activeNegotiations || []).forEach(function (s) {
       negoByAgent[s.agent_name] = s;
     });
 
-    visible.forEach(function (a) {
-      var card = h("div", "relationship-card");
-      card.id = "agent-card-" + a.name;
+    function renderSection(title, list, isLocal) {
+      if (!list.length) return;
+      var hd = document.createElement("div");
+      hd.className = "social-section-hd";
+      hd.textContent = title;
+      container.appendChild(hd);
 
-      // Affinity coloring
-      var aff = a.affinity;
-      var affClass = aff < 30 ? "affinity-low" : (aff < 60 ? "affinity-mid" : "affinity-high");
-      var barColor = aff < 30 ? "#c0392b" : (aff < 60 ? "#d4a017" : "#27ae60");
+      var grid = document.createElement("div");
+      grid.className = "social-section-grid";
+      list.forEach(function (a) {
+        grid.appendChild(_buildRelCard(a, negoByAgent, isLocal));
+      });
+      container.appendChild(grid);
+    }
 
-      // Affinity bar: map -99..99 to 0..100%
-      var barPct = Math.max(0, Math.min(100, ((aff + 99) / 198) * 100));
+    renderSection("本县人物", localAgents, true);
+    renderSection("往来官员", remoteAgents, false);
 
-      var roleInfo = a.role_title;
-      if (a.village_name) roleInfo += "（" + a.village_name + "）";
-
-      var html =
-        '<div class="relationship-card-header">' +
-          '<span class="relationship-name">' + a.name + '</span>' +
-          '<span class="relationship-role">' + roleInfo + '</span>' +
-        '</div>' +
-        '<div class="affinity-value ' + affClass + '">好感度: ' + aff + '</div>' +
-        '<div class="affinity-bar">' +
-          '<div class="affinity-bar-fill" style="width:' + barPct.toFixed(1) + '%;background:' + barColor + ';"></div>' +
-        '</div>';
-
-      // Negotiation badge
-      var agentNego = negoByAgent[a.name];
-      if (agentNego) {
-        var typeName = EVENT_TYPE_NAMES[agentNego.event_type] || agentNego.event_type;
-        html +=
-          '<div class="nego-agent-badge">' +
-            '<span class="nego-badge-text">' + typeName + '谈判进行中</span>' +
-            '<button class="btn btn-primary btn-small btn-nego-enter" data-session-id="' + agentNego.id + '">进入谈判</button>' +
-          '</div>';
-      }
-
-      // Recent memories
-      if (a.memory && a.memory.length > 0) {
-        html += '<div class="memory-list">';
-        a.memory.forEach(function (m) {
-          html += '<div class="memory-list-item">' + escapeHtml(m) + '</div>';
-        });
-        html += '</div>';
-      }
-
-      card.innerHTML = html;
-      container.appendChild(card);
+    // 绑定「书信」按钮
+    container.querySelectorAll(".btn-agent-letter").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var agentId = parseInt(btn.dataset.agentId, 10);
+        var agent = agents.find(function (a) { return a.id === agentId; });
+        if (!agent) return;
+        var g = Game.state.currentGame;
+        if (!g) return;
+        Game.letter.openCompose(g.id, [agent]);
+      });
     });
-
-    // 社交关系人物（暂未实现）
-    var placeholder = h("div", "relationship-section-placeholder",
-      '<p class="hint" style="margin-top:16px;font-style:italic;">有显示社交关系的人物（功能暂未实现）</p>'
-    );
-    container.appendChild(placeholder);
   }
 
   // ==================== Agent Profile Modal ====================

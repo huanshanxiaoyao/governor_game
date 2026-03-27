@@ -144,7 +144,7 @@
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button id="county-judicial-tab-btn" class="tab-btn hidden" data-tab="tab-judicial">司法</button>
-    <button class="tab-btn" data-tab="tab-relationships">人脉</button>
+    <button class="tab-btn" data-tab="tab-relationships">社交</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-officialdom">官场</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
@@ -461,6 +461,20 @@
     <p id="riot-crisis-body" class="riot-crisis-body"></p>
     <p class="riot-crisis-note">知府已派兵接管，正在镇压，预计需 2～3 个月平息。</p>
     <button id="btn-riot-crisis-close" class="btn-riot-close">知晓，继续</button>
+  </div>
+</div>
+
+<!-- ==================== Imperial Dismissal Modal ==================== -->
+<div id="imperial-dismissal-modal" class="modal hidden">
+  <div class="modal-content dismissal-modal-content">
+    <div class="dismissal-icon">☰</div>
+    <h3 class="dismissal-title">圣旨到</h3>
+    <p class="dismissal-body">
+      天子震怒，钦命罢黜 —— 尔等言辞狂悖、有失臣节，
+      着即卸任，永不叙用。<span id="dismissal-month" class="dismissal-month"></span>
+    </p>
+    <p class="dismissal-note hint">书信已发至信箱，本局游戏结束。</p>
+    <button class="btn btn-small" onclick="document.getElementById('imperial-dismissal-modal').classList.add('hidden')">知晓</button>
   </div>
 </div>
 
