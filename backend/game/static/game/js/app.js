@@ -2327,6 +2327,11 @@
         data.county_data && data.county_data.newbie_tutorial) {
       _maybeShowNewbieTutorial(data);
     }
+    // 皇帝罢黜
+    if (data && data.player_role === "COUNTY_MAGISTRATE" &&
+        data.county_data && data.county_data.imperial_dismissal) {
+      _showImperialDismissal(data.county_data.imperial_dismissal_month);
+    }
   };
 
   // ── 新手引导弹层 ────────────────────────────────────────────
@@ -2380,6 +2385,18 @@
       nextBtn.addEventListener("click", advance);
     };
   }());
+
+  // ── 皇帝罢黜弹层 ────────────────────────────────────────────
+  var _dismissalShown = false;
+  function _showImperialDismissal(month) {
+    if (_dismissalShown) return;
+    _dismissalShown = true;
+    var modal = document.getElementById("imperial-dismissal-modal");
+    if (!modal) return;
+    var monthEl = document.getElementById("dismissal-month");
+    if (monthEl) monthEl.textContent = month ? "第" + month + "月" : "";
+    modal.classList.remove("hidden");
+  }
 
   // 判决方向按钮（选择具体 verdict_code）
   document.addEventListener("click", function (e) {

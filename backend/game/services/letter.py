@@ -107,9 +107,97 @@ class LetterService:
             letter.save(update_fields=['reply_choice_id', 'replied_month', 'status'])
             logger.info("软deadline自动处理 letter#%s → %s", letter.id, choice_id)
 
+    # 本县 NPC 角色集合（直接交谈，书信必回）
+    _LOCAL_ROLES = {'ADVISOR', 'DEPUTY', 'GENTRY', 'VILLAGER'}
+    # 玩家（知县）品级
+    _PLAYER_RANK = 7
+    # 玩家默认理念（偏民本·中立·偏务实）
+    _PLAYER_IDEOLOGY = {
+        'people_vs_authority':    0.6,
+        'reform_vs_tradition':    0.5,
+        'pragmatic_vs_idealist':  0.6,
+    }
+    # 理念相似阈值（欧氏距离，越小越相似）
+    _IDEOLOGY_SIMILARITY_THRESHOLD = 0.35
+    # 皇帝敌意关键词
+    _EMPEROR_HOSTILE_KEYWORDS = [
+        '昏君', '昏庸', '无道', '暴君', '残暴', '不配', '造反', '谋逆', '弑君',
+        '昏聩', '荒淫', '无能', '昏主', '废黜', '推翻', '乱臣', '贼子',
+    ]
+
+    @staticmethod
+    def _ideology_similar(npc_ideology: dict) -> bool:
+        """判断NPC理念是否与玩家相近（欧氏距离 < 阈值）。"""
+        import math
+        pi = LetterService._PLAYER_IDEOLOGY
+        dist_sq = sum(
+            (npc_ideology.get(k, 0.5) - pi.get(k, 0.5)) ** 2
+            for k in pi
+        )
+        return math.sqrt(dist_sq) < LetterService._IDEOLOGY_SIMILARITY_THRESHOLD
+
+    @staticmethod
+    def _is_hostile_to_emperor(body: str) -> bool:
+        return any(kw in body for kw in LetterService._EMPEROR_HOSTILE_KEYWORDS)
+
+    @staticmethod
+    def _create_canned_reply(game, original_letter, agent, body_text, current_month):
+        """创建固定文本回复，不调用 LLM。"""
+        from ..models import Letter
+        reply = Letter.objects.create(
+            game=game,
+            sender_agent=agent,
+            player_is_sender=False,
+            recipient_agent=None,
+            player_is_recipient=True,
+            letter_type=original_letter.letter_type,
+            confidentiality=original_letter.confidentiality,
+            subject=f"回复：{original_letter.subject}",
+            body=body_text,
+            sent_month=current_month,
+            delivery_delay=1,
+            delivered_month=current_month + 1,
+            requires_reply=False,
+            is_blocking=False,
+            status=Letter.Status.IN_TRANSIT,
+            parent_letter=original_letter,
+        )
+        original_letter.status = Letter.Status.REPLIED
+        original_letter.replied_month = current_month
+        original_letter.save(update_fields=['status', 'replied_month'])
+        return reply
+
+    @staticmethod
+    def _trigger_imperial_dismissal(game, letter, current_month):
+        """玩家对皇帝出言不逊 → 触发罢黜事件。"""
+        from .state import load_player_state, save_player_state
+        from .eventlog import log_game_event
+        try:
+            state = load_player_state(game)
+            state['imperial_dismissal'] = True
+            state['imperial_dismissal_month'] = current_month
+            save_player_state(game, state)
+        except Exception as e:
+            logger.warning("罢黜状态写入失败: %s", e)
+        log_game_event(
+            game,
+            event_type='imperial_dismissal',
+            category='DISASTER',
+            season=current_month,
+            description='天子震怒，下旨罢黜知县，即刻离任。',
+            data={'trigger': 'hostile_letter_to_emperor', 'letter_id': letter.id},
+        )
+        # 同时以圣旨形式回信
+        agent = letter.recipient_agent
+        LetterService._create_canned_reply(
+            game, letter, agent,
+            "朕览卿书，言辞狂悖，有失臣节。着即罢黜，令其离任，永不叙用。钦此。",
+            current_month,
+        )
+
     @staticmethod
     def _generate_npc_replies(game, current_month):
-        """为本月刚投递到NPC的玩家来信，用LLM生成回复（下月送达）。"""
+        """为本月刚投递到NPC的玩家来信，依规则决定是否回复及方式。"""
         from ..models import Letter
         player_sent = (
             Letter.objects.filter(
@@ -127,8 +215,43 @@ class LetterService:
             # 避免重复生成
             if Letter.objects.filter(parent_letter=letter).exists():
                 continue
+            agent = letter.recipient_agent
+            attrs = agent.attributes or {}
+            role = agent.role
+
             try:
+                # ── 皇帝特例 ──────────────────────────────────────
+                if role == 'EMPEROR':
+                    if LetterService._is_hostile_to_emperor(letter.body):
+                        LetterService._trigger_imperial_dismissal(game, letter, current_month)
+                    else:
+                        LetterService._create_canned_reply(
+                            game, letter, agent,
+                            "卿书已阅。望卿勤勉任事，安靖地方，不负皇恩。",
+                            current_month,
+                        )
+                    continue
+
+                # ── 本县 NPC：直接走 LLM ──────────────────────────
+                if role in LetterService._LOCAL_ROLES:
+                    LetterService._generate_agent_reply(game, letter, current_month)
+                    continue
+
+                # ── 外部官员：品级高于玩家时检查理念相似度 ──────
+                agent_rank = attrs.get('rank', LetterService._PLAYER_RANK)
+                if agent_rank < LetterService._PLAYER_RANK:
+                    # 品级更高；理念不相近则不回复
+                    npc_ideology = attrs.get('ideology') or {}
+                    if not LetterService._ideology_similar(npc_ideology):
+                        logger.info(
+                            "letter#%s: %s(%s) 与玩家理念不符，不回复",
+                            letter.id, agent.name, role,
+                        )
+                        continue  # 书信石沉大海
+
+                # 品级相近或理念相似 → LLM 正常回复
                 LetterService._generate_agent_reply(game, letter, current_month)
+
             except Exception as e:
                 logger.warning("NPC回复生成失败 letter#%s: %s", letter.id, e)
 
