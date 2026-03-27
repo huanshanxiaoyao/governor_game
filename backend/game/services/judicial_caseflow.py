@@ -308,10 +308,17 @@ class JudicialCaseflowService:
         if not effects:
             return
         data = dict(unit.unit_data or {})
-        for field in ("morale", "security", "gentry_favor", "commercial", "education"):
+        # 民心、治安：上限 ±2，同步更新各村庄数值，防止县级与村级数值不一致
+        for field in ("morale", "security"):
             delta = effects.get(field, 0)
             if delta:
-                delta = max(-5, min(5, delta))  # 单案判决上限 ±5
+                delta = max(-2, min(2, delta))
+                MetricsMixin.apply_county_stat_delta(data, field, delta)
+        # 其他字段：上限 ±5，直接写入
+        for field in ("gentry_favor", "commercial", "education"):
+            delta = effects.get(field, 0)
+            if delta:
+                delta = max(-5, min(5, delta))
                 data[field] = max(0, min(100, round(float(data.get(field, 50)) + delta, 1)))
         treasury_delta = effects.get("treasury", 0)
         if treasury_delta:
@@ -1303,6 +1310,7 @@ class JudicialCaseflowService:
         for field in ('morale', 'security'):
             delta = effects.get(field, 0)
             if delta:
+                delta = max(-2, min(2, delta))  # 单案判决上限 ±2
                 MetricsMixin.apply_county_stat_delta(county, field, delta)
         treasury_delta = effects.get('treasury', 0)
         if treasury_delta:
