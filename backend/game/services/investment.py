@@ -173,6 +173,7 @@ class InvestmentService:
                     'source': 'proposed',
                     'policy_id': pp.id,
                     'is_custom': True,
+                    'is_executed': pp.is_executed,
                     'tier': pp.tier,
                     'code_status': pp.code_status,
                 })
@@ -417,6 +418,9 @@ class InvestmentService:
             custom = cls._find_custom_policy(action, game)
             if custom is None:
                 return False, f"未知的投资类型: {action}"
+            # 自创施政默认只能执行一次
+            if custom.get('is_executed'):
+                return False, f"{custom['name']}已执行过，不可重复累加"
             actual_cost = cls._get_custom_cost(custom, county)
             if county.get("treasury", 0) < actual_cost:
                 return False, f"资金不足，需要{actual_cost}两，当前{round(county.get('treasury', 0))}两"
@@ -725,6 +729,7 @@ class InvestmentService:
                 "current_level": None,
                 "max_level": None,
                 "is_custom": True,
+                "is_executed": custom.get('is_executed', False),
                 "custom_source": custom.get('source', 'proposed'),
                 "description": custom.get('description', ''),
                 "tier": custom.get('tier', 1),

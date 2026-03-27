@@ -131,13 +131,22 @@ class CounselProposeView(APIView):
         if not policy_name:
             return Response({"error": "施政构想名称不能为空"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 已批准的不允许重复提交
+        # 已批准的不允许重复提交（精确名称匹配）
         if ProposedPolicy.objects.filter(
             game=game,
             policy_name=policy_name,
             status=ProposedPolicy.Status.APPROVED,
         ).exists():
             return Response({"error": f"「{policy_name}」已批准，可直接执行"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 同名原始提案已被批准（防止同一构想因审批改名后再次提交）
+        submitted_prefix = f"[{policy_name}]"
+        if ProposedPolicy.objects.filter(
+            game=game,
+            status=ProposedPolicy.Status.APPROVED,
+            raw_proposal__startswith=submitted_prefix,
+        ).exists():
+            return Response({"error": f"与「{policy_name}」相同的构想已被批准，请在申报记录中查看"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 同回合已 PENDING 的不允许重复提交
         if ProposedPolicy.objects.filter(
@@ -147,10 +156,12 @@ class CounselProposeView(APIView):
         ).exists():
             return Response({"error": f"「{policy_name}」已提交审核，等候下月批复"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # raw_proposal 格式：[原始提案名] 申请理由，方便后续去重检查
+        raw_proposal = f"[{policy_name}] {rationale}".strip() if rationale else f"[{policy_name}]"
         pp = ProposedPolicy.objects.create(
             game=game,
             proposer='知县',
-            raw_proposal=rationale or policy_name,
+            raw_proposal=raw_proposal,
             policy_name=policy_name,
             status=ProposedPolicy.Status.PENDING,
         )
@@ -663,3 +674,39 @@ class PolicyQueuePromoteGlobalView(APIView):
             'synced_to_neighbors': synced,
             'message': f'「{pp.policy_name}」已设为全局推广。' + ('邻县同步完成。' if synced else '邻县同步失败，请检查日志。'),
         })
+
+
+class CounselPolicyDiscardView(APIView):
+    """
+    POST /api/games/<game_id>/counsel/policies/<policy_id>/discard/
+
+    玩家丢弃一条已批准（APPROVED/PROMOTED）的自创施政。
+    仅允许丢弃尚未执行过的施政。
+
+    Response:
+        {"message": "已丢弃「xxx」"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id, policy_id):
+        game, err = _get_game(request, game_id)
+        if err:
+            return err
+
+        try:
+            pp = ProposedPolicy.objects.get(
+                id=policy_id,
+                game=game,
+                status__in=[ProposedPolicy.Status.APPROVED, ProposedPolicy.Status.PROMOTED],
+            )
+        except ProposedPolicy.DoesNotExist:
+            return Response({"error": "施政不存在或状态不允许丢弃"}, status=status.HTTP_404_NOT_FOUND)
+
+        if pp.is_executed:
+            return Response({"error": f"「{pp.policy_name}」已执行过，无法丢弃"}, status=status.HTTP_400_BAD_REQUEST)
+
+        policy_name = pp.policy_name
+        pp.status = ProposedPolicy.Status.ARCHIVED
+        pp.save(update_fields=['status'])
+
+        return Response({"message": f"已丢弃「{policy_name}」"})

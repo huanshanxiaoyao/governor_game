@@ -97,7 +97,13 @@
     var villages = ((g || {}).county_data || {}).villages || [];
 
     if (action === "fund_village_school") {
-      var eligible = villages.filter(function (v) { return !v.has_school; });
+      var activeInvs = ((g || {}).county_data || {}).active_investments || [];
+      var buildingSchoolVillages = activeInvs
+        .filter(function (inv) { return inv.action === "fund_village_school"; })
+        .map(function (inv) { return inv.target_village; });
+      var eligible = villages.filter(function (v) {
+        return !v.has_school && buildingSchoolVillages.indexOf(v.name) === -1;
+      });
       if (!eligible.length) return null;
       eligible.sort(function (a, b) { return b.population - a.population; });
       return eligible[0].name;
@@ -363,7 +369,7 @@
 
   // ── 侧边栏：申报记录 ──────────────────────────────────────
 
-  function _renderPolicyList(policies) {
+  function _renderPolicyList(policies, gameId) {
     var area = el("counsel-policy-list");
     if (!area) return;
 
@@ -378,13 +384,13 @@
     });
     var rejected = policies.filter(function (p) { return p.status === "REJECTED"; });
 
-    function group(label, items, cls) {
+    function groupHtml(label, items, cls) {
       if (!items.length) return "";
       var s = '<div class="counsel-policy-group">' +
         '<div class="counsel-policy-group-hd">' + label +
         ' <span class="counsel-policy-count">' + items.length + '</span></div>';
       items.forEach(function (p) {
-        s += '<div class="counsel-policy-item ' + cls + '">' +
+        s += '<div class="counsel-policy-item ' + cls + '" data-policy-id="' + p.id + '">' +
           '<div class="counsel-policy-item-name">' + escapeHtml(p.policy_name) + '</div>';
         if (cls === "status-approved" && p.cost) {
           s += '<div class="counsel-policy-item-meta">' + p.cost + ' 两 · ' + (p.delay_months || 0) + ' 月</div>';
@@ -392,20 +398,45 @@
         if (p.rejection_reason) {
           s += '<div class="counsel-policy-item-reason">' + escapeHtml(p.rejection_reason) + '</div>';
         }
+        if (cls === "status-approved" && !p.is_executed) {
+          s += '<button class="counsel-policy-discard-btn" data-policy-id="' + p.id + '">丢弃</button>';
+        }
         s += '</div>';
       });
       return s + '</div>';
     }
 
     area.innerHTML =
-      group("⏳ 待审核", pending,  "status-pending") +
-      group("✅ 已批准", approved, "status-approved") +
-      group("❌ 已拒绝", rejected, "status-rejected");
+      groupHtml("⏳ 待审核", pending,  "status-pending") +
+      groupHtml("✅ 已批准", approved, "status-approved") +
+      groupHtml("❌ 已拒绝", rejected, "status-rejected");
+
+    // 绑定丢弃按钮事件
+    area.querySelectorAll(".counsel-policy-discard-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var policyId = parseInt(btn.dataset.policyId, 10);
+        var itemEl   = area.querySelector('.counsel-policy-item[data-policy-id="' + policyId + '"]');
+        var name     = itemEl ? itemEl.querySelector(".counsel-policy-item-name").textContent : "";
+        if (!confirm("确认丢弃「" + name + "」？丢弃后不可恢复。")) return;
+        btn.disabled = true;
+        btn.textContent = "丢弃中…";
+        api.counselDiscardPolicy(gameId, policyId)
+          .then(function () {
+            if (itemEl) itemEl.remove();
+            _appendMessage("system", null, null, "已丢弃「" + name + "」。");
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = "丢弃";
+            _appendMessage("system", null, null, "丢弃失败：" + (err.message || "未知错误"));
+          });
+      });
+    });
   }
 
   function _loadPolicies(gameId) {
     api.counselPolicies(gameId)
-      .then(function (res) { _renderPolicyList(res.policies || []); })
+      .then(function (res) { _renderPolicyList(res.policies || [], gameId); })
       .catch(function () {});
   }
 

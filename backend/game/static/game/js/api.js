@@ -67,6 +67,9 @@
     getGame: function (id) {
       return request("GET", "/api/games/" + id + "/");
     },
+    dismissTutorial: function (id) {
+      return request("POST", "/api/games/" + id + "/dismiss-tutorial/");
+    },
     submitFeedback: function (id, content) {
       return request("POST", "/api/games/" + id + "/feedback/", { content: content });
     },
@@ -318,6 +321,9 @@
     },
     counselPolicies: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/counsel/policies/");
+    },
+    counselDiscardPolicy: function (gameId, policyId) {
+      return request("POST", "/api/games/" + gameId + "/counsel/policies/" + policyId + "/discard/");
     },
     counselPendingNotifications: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/counsel/pending-notifications/");

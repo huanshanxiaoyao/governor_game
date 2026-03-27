@@ -790,6 +790,38 @@ body {
   min-width: 300px;
   border: 2px solid #c8b98a;
 }
+.newbie-tutorial-content {
+  width: min(480px, 90vw);
+}
+.newbie-tutorial-speaker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.newbie-tutorial-avatar {
+  font-size: 1.3em;
+}
+.newbie-tutorial-name {
+  font-weight: bold;
+  color: #5a3a10;
+  font-size: 0.92em;
+}
+.newbie-tutorial-bubble {
+  min-height: 80px;
+  margin-bottom: 16px;
+  font-size: 0.93em;
+  line-height: 1.75;
+}
+.newbie-tutorial-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.newbie-tutorial-step {
+  font-size: 0.82em;
+  color: #999;
+}
 .knowledge-modal-content {
   width: min(920px, 92vw);
   max-width: 920px;
@@ -5392,3 +5424,16 @@ body {
 .counsel-policy-item-name { font-weight: bold; color: #3a2810; }
 .counsel-policy-item-meta { font-size: 0.85em; color: #6a8050; margin-top: 2px; }
 .counsel-policy-item-reason { font-size: 0.83em; color: #a04030; margin-top: 2px; }
+.counsel-policy-discard-btn {
+  display: block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  font-size: 0.78em;
+  color: #a04030;
+  background: transparent;
+  border: 1px solid #c07060;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.counsel-policy-discard-btn:hover { background: #fdf0f0; }
+.counsel-policy-discard-btn:disabled { opacity: 0.5; cursor: not-allowed; }

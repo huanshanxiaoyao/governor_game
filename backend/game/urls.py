@@ -29,6 +29,7 @@ urlpatterns = [
     path("games/<int:game_id>/judicial/decide/", views.CountyJudicialDecideView.as_view(), name="game-judicial-decide"),
     path("games/<int:game_id>/judicial/debug/", views.CountyJudicialDebugView.as_view(), name="game-judicial-debug"),
     path("games/<int:game_id>/judicial/debug/page/", views.CountyJudicialDebugPageView.as_view(), name="game-judicial-debug-page"),
+    path("games/<int:game_id>/dismiss-tutorial/", views.DismissTutorialView.as_view(), name="game-dismiss-tutorial"),
     path("games/<int:game_id>/annual-review/", views.AnnualReviewSubmitView.as_view(), name="game-annual-review"),
     path("games/<int:game_id>/annual-review/draft/", views.AnnualReviewDraftView.as_view(), name="game-annual-review-draft"),
     path("games/<int:game_id>/invest/", views.InvestView.as_view(), name="game-invest"),
@@ -92,6 +93,7 @@ urlpatterns = [
     path("games/<int:game_id>/counsel/policies/", views_counsel.CounselPoliciesView.as_view(), name="counsel-policies"),
     path("games/<int:game_id>/counsel/pending-notifications/", views_counsel.CounselPendingNotificationsView.as_view(), name="counsel-pending-notifications"),
     path("games/<int:game_id>/counsel/proactive/", views_counsel.CounselProactiveView.as_view(), name="counsel-proactive"),
+    path("games/<int:game_id>/counsel/policies/<int:policy_id>/discard/", views_counsel.CounselPolicyDiscardView.as_view(), name="counsel-policy-discard"),
     # Prefecture (知府) endpoints
     path("prefecture/create/", views_prefecture.PrefectureCreateView.as_view(), name="prefecture-create"),
     path("prefecture/<int:game_id>/", views_prefecture.PrefectureOverviewView.as_view(), name="prefecture-overview"),
