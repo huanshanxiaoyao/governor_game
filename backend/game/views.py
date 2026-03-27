@@ -274,6 +274,11 @@ class GameListCreateView(APIView):
             'peasant_grain_reserve': county_data.get('peasant_grain_reserve', 0),
         }
 
+        # 前三局显示新手引导
+        prior_count = GameState.objects.filter(user=request.user).count()
+        if prior_count < 3:
+            county_data['newbie_tutorial'] = True
+
         game = GameState.objects.create(
             user=request.user,
             current_season=1,
@@ -330,6 +335,22 @@ class GameDetailView(APIView):
 
         serializer = GameDetailSerializer(game)
         return Response(serializer.data)
+
+
+class DismissTutorialView(APIView):
+    """POST /api/games/{id}/dismiss-tutorial/ — 关闭新手引导（清除 newbie_tutorial 标志）"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+        from .services.state import load_player_state, save_player_state
+        state = load_player_state(game)
+        state['newbie_tutorial'] = False
+        save_player_state(game, state)
+        return Response({"ok": True})
 
 
 class AnnualReviewSubmitView(APIView):

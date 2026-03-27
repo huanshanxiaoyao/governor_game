@@ -2322,7 +2322,64 @@
     if (data && data.player_role === "COUNTY_MAGISTRATE") {
       loadRumorsBoard();
     }
+    // 新手引导（前三局首次加载时触发）
+    if (data && data.player_role === "COUNTY_MAGISTRATE" &&
+        data.county_data && data.county_data.newbie_tutorial) {
+      _maybeShowNewbieTutorial(data);
+    }
   };
+
+  // ── 新手引导弹层 ────────────────────────────────────────────
+  (function () {
+    var _tutorialShownForGame = null;
+
+    var STEPS = [
+      function (countyName) {
+        return "下官师爷有礼。大人初莅" + countyName + "，前路任重。为官一任，须保境安民、使黎庶衣食无虞；亦须按期足额上缴赋税，以应府道考成。此外，道路、学舍、仓廒等长远营建，切不可因眼前财力而一概搁置——百姓之安乐，往往正系于此。大人勤勉有为，必能赢得民心，届时或得上宪青眼、擢升重任，方可施展更大抱负。";
+      },
+      function (_countyName) {
+        return "大人，日常施政均可在「施政」页面操作，下官与县丞随时在侧，可为大人出谋划策。另，本县积压案牍颇多，司法审断亦需大人亲力裁夺，切莫久拖。此外，还请大人留意各项县务指标、各村庄的民生状况，以及与乡绅、胥吏等各方的往来周旋——诸事缺一不可，方能治县有声有色。";
+      },
+    ];
+
+    window._maybeShowNewbieTutorial = function (data) {
+      var gameId = data.id;
+      if (_tutorialShownForGame === gameId) return; // 同局只触发一次
+      _tutorialShownForGame = gameId;
+
+      // 立即清除标志，防止刷新重复弹出
+      api.dismissTutorial(gameId).catch(function () {});
+
+      var countyName = (data.county_data || {}).county_name || "本县";
+      var modal   = document.getElementById("newbie-tutorial-modal");
+      var bubble  = document.getElementById("newbie-tutorial-bubble");
+      var stepEl  = document.getElementById("newbie-tutorial-step");
+      var nextBtn = document.getElementById("btn-newbie-tutorial-next");
+      if (!modal || !bubble || !nextBtn) return;
+
+      var step = 0;
+
+      function render() {
+        bubble.textContent = STEPS[step](countyName);
+        stepEl.textContent = (step + 1) + " / " + STEPS.length;
+        nextBtn.textContent = step < STEPS.length - 1 ? "知道了 →" : "开始施政";
+      }
+
+      function advance() {
+        if (step < STEPS.length - 1) {
+          step++;
+          render();
+        } else {
+          modal.classList.add("hidden");
+          nextBtn.removeEventListener("click", advance);
+        }
+      }
+
+      render();
+      modal.classList.remove("hidden");
+      nextBtn.addEventListener("click", advance);
+    };
+  }());
 
   // 判决方向按钮（选择具体 verdict_code）
   document.addEventListener("click", function (e) {
