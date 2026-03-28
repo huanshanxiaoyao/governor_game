@@ -1901,14 +1901,22 @@
         }
       })
       .catch(function (err) {
+        // 皇帝罢黜阻断
+        if (err.data && err.data.imperial_dismissal) {
+          _showImperialDismissal((Game.state.currentGame || {}).county_data &&
+            Game.state.currentGame.county_data.imperial_dismissal_month);
+          btn.disabled = true;
+          btn.textContent = "已罢黜";
         // 书信阻断处理
-        if (err.data && err.data.blocking_letters && err.data.blocking_letters.length) {
+        } else if (err.data && err.data.blocking_letters && err.data.blocking_letters.length) {
           _showLetterBlockingModal(err.data.blocking_letters, g.id, "county");
+          btn.disabled = false;
+          btn.textContent = "推进月份";
         } else {
           components.showToast(err.message, "error");
+          btn.disabled = false;
+          btn.textContent = "推进月份";
         }
-        btn.disabled = false;
-        btn.textContent = "推进月份";
       });
   }
 
@@ -2331,6 +2339,8 @@
     if (data && data.player_role === "COUNTY_MAGISTRATE" &&
         data.county_data && data.county_data.imperial_dismissal) {
       _showImperialDismissal(data.county_data.imperial_dismissal_month);
+      var advBtn = document.getElementById("btn-advance");
+      if (advBtn) { advBtn.disabled = true; advBtn.textContent = "已罢黜"; }
     }
   };
 

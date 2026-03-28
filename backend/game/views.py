@@ -73,9 +73,15 @@ def _check_game_playable(game):
     返回 Response(error) 若游戏不可继续操作，否则返回 None。
     替换各视图中重复的 current_season > MAX_MONTH 检查。
     """
-    end_reason = load_county_state(game).get("term_end_reason")
+    state = load_county_state(game)
+    end_reason = state.get("term_end_reason")
     if end_reason in TERMINAL_REASONS:
         return Response({"error": "游戏已结束，请查看总结"}, status=status.HTTP_400_BAD_REQUEST)
+    if state.get("imperial_dismissal"):
+        return Response(
+            {"error": "已遭皇帝罢黜，本局游戏结束。", "imperial_dismissal": True},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if game.current_season > MAX_MONTH:
         return Response(
             {"error": "任期已届满，请先续任", "term_complete": True},
