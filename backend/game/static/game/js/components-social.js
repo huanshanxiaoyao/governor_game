@@ -351,13 +351,28 @@
 
   // ==================== Relationships / 社交 ====================
 
-  var LOCAL_ROLES  = { ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true };
-  var REMOTE_ROLES = {
+  var LOCAL_ROLES = { ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true };
+
+  // 汇报链（知县视角；知府玩家时 PREFECT 不在链内）
+  var CHAIN_ROLES = {
     PREFECT: true,
-    PROVINCIAL_GOVERNOR: true, GOVERNOR_GENERAL: true,
-    EMPEROR: true,
-    CABINET_CHIEF: true, CABINET_MEMBER: true,
+    PROVINCIAL_GOVERNOR: true,
+    GOVERNOR_GENERAL: true,
+    PROVINCIAL_COMMISSIONER: true,   // 布政使 / 按察使
   };
+  // 中央官员
+  var CENTRAL_ROLES = {
+    CABINET_CHIEF: true, CABINET_MEMBER: true,
+    MINISTER: true, VICE_MINISTER: true,
+    CHIEF_CENSOR: true, VICE_CENSOR: true, CENSOR: true,
+  };
+  // 其他地方官员
+  var OTHER_LOCAL_ROLES = { PREFECT_PEER: true };
+
+  // 所有外部角色（用于可见性过滤）
+  var ALL_REMOTE_ROLES = Object.assign(
+    {}, { EMPEROR: true }, CHAIN_ROLES, CENTRAL_ROLES, OTHER_LOCAL_ROLES
+  );
 
   function _buildRelCard(a, negoByAgent, isLocal) {
     var aff = a.affinity;
@@ -421,8 +436,20 @@
       return;
     }
 
-    var localAgents  = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
-    var remoteAgents = agents.filter(function (a) { return !!REMOTE_ROLES[a.role]; });
+    var g = Game.state.currentGame;
+    var playerRole = (g || {}).player_role || "";
+
+    // 汇报链：知府玩家自己就是知府，不显示 PREFECT
+    var effectiveChainRoles = Object.assign({}, CHAIN_ROLES);
+    if (playerRole === "PREFECT") {
+      delete effectiveChainRoles.PREFECT;
+    }
+
+    var localAgents     = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
+    var emperorAgents   = agents.filter(function (a) { return a.role === "EMPEROR"; });
+    var chainAgents     = agents.filter(function (a) { return !!effectiveChainRoles[a.role]; });
+    var centralAgents   = agents.filter(function (a) { return !!CENTRAL_ROLES[a.role]; });
+    var otherLocalAgents = agents.filter(function (a) { return !!OTHER_LOCAL_ROLES[a.role]; });
 
     var negoByAgent = {};
     (Game.state.activeNegotiations || []).forEach(function (s) {
@@ -445,7 +472,10 @@
     }
 
     renderSection("本县人物", localAgents, true);
-    renderSection("往来官员", remoteAgents, false);
+    renderSection("皇帝", emperorAgents, false);
+    renderSection("汇报链", chainAgents, false);
+    renderSection("中央官员", centralAgents, false);
+    renderSection("其他地方官员", otherLocalAgents, false);
 
     // 绑定「书信」按钮
     container.querySelectorAll(".btn-agent-letter").forEach(function (btn) {
