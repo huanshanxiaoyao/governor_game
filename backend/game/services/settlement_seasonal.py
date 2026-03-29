@@ -139,6 +139,16 @@ class SeasonalMixin:
             report["events"].append(f"道路修缮完成，商业+{bonus}"
                                     f"{'（边际递减）' if bonus < 8 else ''}")
 
+        elif action == "open_river_transport":
+            old_commercial = county.get("commercial", 0)
+            county["commercial"] = min(100, old_commercial + 8)
+            county["river_transport_count"] = county.get("river_transport_count", 0) + 1
+            actual_gain = county["commercial"] - old_commercial
+            report["events"].append(
+                f"河运开通，商业+{actual_gain}（当前商业：{county['commercial']}），"
+                f"第{county['river_transport_count']}条航线投入运营"
+            )
+
         elif inv.get("custom_policy_id") is not None:
             # 自创/标准施政选项完工
             from .investment import InvestmentService

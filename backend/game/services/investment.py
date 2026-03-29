@@ -82,6 +82,18 @@ class InvestmentService:
             "requires_village": False,
             "description": "赈灾救济",
         },
+        "scholar_lecture": {
+            "cost": None,  # 动态：县学升级费用的一半
+            "delay_months": 0,  # 当月立即生效
+            "requires_village": False,
+            "description": "乡贤讲学",
+        },
+        "open_river_transport": {
+            "cost": None,  # 动态：1.5 × 道路修缮基础费用
+            "delay_months": 3,
+            "requires_village": False,
+            "description": "开通河运",
+        },
     }
 
     # 基建 action → county 中对应的 level 字段名
@@ -387,6 +399,17 @@ class InvestmentService:
             dynamic_multiplier = 0.8 + severity * 0.8
             return round(spec["cost"] * price_index * dynamic_multiplier)
 
+        if action == "scholar_lecture":
+            # 县学升级费用的一半（按下一等级计算；已满级时按最高等级费用）
+            school_level = county.get("school_level", 0)
+            next_level = min(school_level + 1, INFRA_MAX_LEVEL)
+            school_cost = calculate_infra_cost("school", next_level, county)
+            return max(1, school_cost // 2)
+
+        if action == "open_river_transport":
+            # 道路修缮基础费用 60 × price_index × 1.5
+            return round(90 * price_index)
+
         return round(spec["cost"] * price_index)
 
     @classmethod
@@ -459,6 +482,22 @@ class InvestmentService:
             return False, "衙役已达最高等级(3)"
         if action == "build_granary" and county.get("has_granary", False):
             return False, "义仓已建成"
+
+        if action == "scholar_lecture":
+            last = county.get("last_scholar_lecture_season", -99)
+            if season is not None and season - last < 3:
+                remaining = 3 - (season - last)
+                return False, f"乡贤讲学冷却中，还需{remaining}个月"
+
+        if action == "open_river_transport":
+            if county.get("road_repair_count", 0) < 2:
+                return False, "开通河运需先修缮道路至少两次"
+            if county.get("river_transport_count", 0) >= 2:
+                return False, "河运已全线开通（最多2次）"
+            active_actions = [inv["action"] for inv in county.get("active_investments", [])]
+            if "open_river_transport" in active_actions:
+                return False, "河运开凿中，请等待完工"
+
         if action == "relief":
             if county.get("disaster_this_year") is None:
                 return False, "当前无灾害，无需赈灾"
@@ -520,20 +559,16 @@ class InvestmentService:
         # Apply immediate or delayed effects
         if action == "hire_bailiffs":
             county["bailiff_level"] += 1
-            village_security_bonus = 5
             actual_security_gain = MetricsMixin.apply_county_stat_delta(
-                county,
-                "security",
-                8,
-                village_delta=village_security_bonus,
+                county, "security", 8,
             )
             admin_increase = round(40 * price_index)
             county["admin_cost"] += admin_increase
             if "admin_cost_detail" in county:
                 county["admin_cost_detail"]["bailiff_cost"] += admin_increase
             msg = (
-                f"衙役等级提升至{county['bailiff_level']}，县治安+{actual_security_gain:.1f}、"
-                f"各村治安+{village_security_bonus}，年行政开支+{admin_increase}两"
+                f"衙役等级提升至{county['bailiff_level']}，全县治安+{actual_security_gain:.1f}，"
+                f"年行政开支+{admin_increase}两"
             )
             return actual_cost, msg
 
@@ -555,6 +590,12 @@ class InvestmentService:
             county["disaster_this_year"]["relieved"] = True
             actual_morale_gain = MetricsMixin.apply_county_stat_delta(county, "morale", 8)
             msg = f"赈灾救济已实施，民心+{actual_morale_gain:.1f}，秋季灾害人口损失×0.65"
+            return actual_cost, msg
+
+        if action == "scholar_lecture":
+            county["education"] = min(100, county.get("education", 0) + 5)
+            county["last_scholar_lecture_season"] = season
+            msg = f"乡贤讲学举办，文教+5（当前文教：{county['education']}），3个月后方可再次举办"
             return actual_cost, msg
 
         # Delayed investments: compute completion month
@@ -651,6 +692,9 @@ class InvestmentService:
             elif action == "hire_bailiffs":
                 current_level = county.get("bailiff_level", 0)
                 max_level = 3
+            elif action == "open_river_transport":
+                current_level = county.get("river_transport_count", 0)
+                max_level = 2
 
             disabled_reason = None
             if spec["requires_village"]:
