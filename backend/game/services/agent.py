@@ -710,6 +710,8 @@ class AgentService:
                 'goals': attrs.get('goals', []),
                 'backstory': attrs.get('backstory', ''),
                 'all_memory': a.attributes.get('memory', []),
+                'province': attrs.get('province', ''),
+                'prefecture': attrs.get('prefecture', ''),
             })
         return result
 

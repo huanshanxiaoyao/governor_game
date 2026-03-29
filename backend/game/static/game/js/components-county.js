@@ -815,7 +815,6 @@
         '<div class="sidebar-archive-stats">' +
           stat("清名", p.integrity) +
           stat("能名", p.competence) +
-          stat("人缘", p.popularity) +
           stat("威名", p.authority || 0) +
         '</div>' +
         '<div style="margin-top:6px;font-size:0.8em;color:#8a7a5a;">' +
@@ -1871,7 +1870,6 @@
       '<div class="archive-stats">' +
         _archiveStat("清名", p.integrity) +
         _archiveStat("能名", p.competence) +
-        _archiveStat("人缘", p.popularity) +
         _archiveStat("威名", p.authority || 0) +
         _archiveStat("家产", escapeHtml(wealthDisplay)) +
       '</div>';

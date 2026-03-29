@@ -317,7 +317,6 @@
     select.innerHTML = agents.map(function (a) {
       return '<option value="' + a.id + '">' + a.role_title + " " + a.name + "</option>";
     }).join("");
-    el("letter-compose-subject").value = "";
     el("letter-compose-body").value = "";
     modal.classList.remove("hidden");
   }
@@ -329,14 +328,14 @@
   function submitCompose() {
     var agentId = parseInt(el("letter-compose-recipient").value);
     var typeVal = el("letter-compose-type").value;
-    var subject = el("letter-compose-subject").value.trim();
     var body    = el("letter-compose-body").value.trim();
     var btn     = el("btn-letter-compose-send");
 
-    if (!subject || !body) {
-      components.showToast("请填写主题和正文", "error");
+    if (!body) {
+      components.showToast("请填写正文", "error");
       return;
     }
+    var subject = "";
     btn.disabled = true;
     api.composeLetter(_currentGameId, {
       recipient_agent_id: agentId,

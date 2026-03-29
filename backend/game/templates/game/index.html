@@ -141,10 +141,10 @@
   <!-- Tab Navigation -->
   <nav class="tab-nav">
     <button class="tab-btn active" data-tab="tab-dashboard">县情总览</button>
-    <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button id="county-judicial-tab-btn" class="tab-btn hidden" data-tab="tab-judicial">司法</button>
     <button class="tab-btn" data-tab="tab-relationships">社交</button>
+    <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-officialdom">官场</button>
     <button class="tab-btn" data-tab="tab-events">县志</button>
@@ -836,7 +836,6 @@
 <!-- 写信 Modal -->
 <div id="letter-compose-modal" class="modal hidden">
   <div class="modal-content modal-sm">
-    <h4 style="margin-bottom:12px;">写信</h4>
     <div class="letter-compose-form">
       <label class="letter-form-label">收件人
         <select id="letter-compose-recipient" class="letter-form-select"></select>
@@ -847,9 +846,6 @@
           <option value="MEMORIAL">奏折</option>
           <option value="OFFICIAL">公文</option>
         </select>
-      </label>
-      <label class="letter-form-label">主题
-        <input id="letter-compose-subject" type="text" class="letter-form-input" placeholder="信件主题（不超过50字）" maxlength="50">
       </label>
       <label class="letter-form-label">正文
         <textarea id="letter-compose-body" rows="6" class="letter-form-textarea" placeholder="书写正文…"></textarea>
@@ -881,9 +877,6 @@
     <div class="counsel-header">
       <h4 class="counsel-header-title">幕僚室 · 师爷 &amp; 县丞</h4>
       <div class="counsel-header-actions">
-        <button id="counsel-sidebar-toggle" class="btn btn-small counsel-sidebar-btn" type="button">
-          自创施政<span id="counsel-sidebar-badge" class="counsel-badge hidden"></span>
-        </button>
         <button id="counsel-close" class="btn btn-small">关闭</button>
       </div>
     </div>

@@ -355,10 +355,9 @@
 
   // 汇报链（知县视角；知府玩家时 PREFECT 不在链内）
   var CHAIN_ROLES = {
-    PREFECT: true,
-    PROVINCIAL_GOVERNOR: true,
-    GOVERNOR_GENERAL: true,
-    PROVINCIAL_COMMISSIONER: true,   // 布政使 / 按察使
+    PREFECT: true,                    // 知府
+    PROVINCIAL_GOVERNOR: true,        // 巡抚
+    PROVINCIAL_COMMISSIONER: true,    // 布政使 / 按察使
   };
   // 中央官员
   var CENTRAL_ROLES = {
@@ -438,18 +437,24 @@
 
     var g = Game.state.currentGame;
     var playerRole = (g || {}).player_role || "";
+    var adminLoc   = ((g || {}).county_data || {}).admin_location || {};
+    var playerProvince   = adminLoc.province   || "";
+    var playerPrefecture = adminLoc.prefecture || "";
 
-    // 汇报链：知府玩家自己就是知府，不显示 PREFECT
-    var effectiveChainRoles = Object.assign({}, CHAIN_ROLES);
-    if (playerRole === "PREFECT") {
-      delete effectiveChainRoles.PREFECT;
-    }
-
-    var localAgents     = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
-    var emperorAgents   = agents.filter(function (a) { return a.role === "EMPEROR"; });
-    var chainAgents     = agents.filter(function (a) { return !!effectiveChainRoles[a.role]; });
-    var centralAgents   = agents.filter(function (a) { return !!CENTRAL_ROLES[a.role]; });
-    var otherLocalAgents = agents.filter(function (a) { return !!OTHER_LOCAL_ROLES[a.role]; });
+    // 汇报链：只保留玩家所在省/府的直接上级官员
+    // PREFECT → 所在府的知府；PROVINCIAL_GOVERNOR/COMMISSIONER → 所在省
+    var localAgents   = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
+    var emperorAgents = agents.filter(function (a) { return a.role === "EMPEROR"; });
+    var centralAgents = agents.filter(function (a) { return !!CENTRAL_ROLES[a.role]; });
+    var chainAgents   = agents.filter(function (a) {
+      if (!CHAIN_ROLES[a.role]) return false;
+      if (playerRole === "PREFECT" && a.role === "PREFECT") return false;
+      if (a.role === "PREFECT") {
+        return !playerPrefecture || a.prefecture === playerPrefecture;
+      }
+      // PROVINCIAL_GOVERNOR / PROVINCIAL_COMMISSIONER
+      return !playerProvince || a.province === playerProvince;
+    });
 
     var negoByAgent = {};
     (Game.state.activeNegotiations || []).forEach(function (s) {
@@ -475,7 +480,6 @@
     renderSection("皇帝", emperorAgents, false);
     renderSection("汇报链", chainAgents, false);
     renderSection("中央官员", centralAgents, false);
-    renderSection("其他地方官员", otherLocalAgents, false);
 
     // 绑定「书信」按钮
     container.querySelectorAll(".btn-agent-letter").forEach(function (btn) {
