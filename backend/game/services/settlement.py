@@ -94,6 +94,11 @@ class SettlementService(
         # 3b. Hidden land discovery check
         cls._check_hidden_land(county, report, game=game)
 
+        # 3c. [三月] 财赋核心县：皇帝巡游摊派检查（仅玩家路径）
+        if moy == 3 and game is not None:
+            from .imperial_tour import ImperialTourService
+            ImperialTourService.check_and_trigger(county, month, report, game=game)
+
         # 4. [六月] Disaster check (盛夏)
         if moy == 6:
             cls._disaster_check(county, report, game=game, prefecture_ctx=prefecture_ctx)

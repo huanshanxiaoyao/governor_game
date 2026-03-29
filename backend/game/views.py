@@ -55,6 +55,7 @@ from .services.new_term import NewTermService, TERMINAL_REASONS
 from .services.promotion_event import PromotionEventService
 from .services.state import load_county_state, save_player_state
 from .services.judicial_caseflow import JudicialCaseflowService
+from .services.imperial_tour import ImperialTourService
 from .services.npc_debug import NPCDebugService
 from .services.rumors import RumorsService
 from .services.prefecture import PrefectureService
@@ -832,6 +833,10 @@ class AdvanceSeasonView(APIView):
         judicial_blocker = JudicialCaseflowService.get_county_advance_blocker(game)
         if judicial_blocker:
             return Response({"error": judicial_blocker}, status=status.HTTP_400_BAD_REQUEST)
+
+        tour_blocker = ImperialTourService.get_advance_blocker(load_county_state(game))
+        if tour_blocker:
+            return Response({"error": tour_blocker}, status=status.HTTP_400_BAD_REQUEST)
 
         # 书信阻断检查
         letter_blockers = LetterService.blocking_check(game, game.current_season)
@@ -1794,6 +1799,43 @@ class AdjustRemitRatioView(APIView):
             **result,
             "autumn_tax_assessment": load_county_state(game).get("autumn_tax_assessment", {}),
         })
+
+
+class ImperialTourDecideView(APIView):
+    """POST /api/games/{id}/imperial-tour/decide/ — 处理皇帝巡游摊派决策"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        blocked = _check_game_playable(game)
+        if blocked is not None:
+            return blocked
+
+        payment_ratio = request.data.get("payment_ratio")
+        apportionment_method = request.data.get("apportionment_method")
+
+        if payment_ratio is None or apportionment_method is None:
+            return Response(
+                {"error": "缺少 payment_ratio 或 apportionment_method 参数"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payment_ratio = float(payment_ratio)
+        except (TypeError, ValueError):
+            return Response({"error": "payment_ratio 须为数字"}, status=status.HTTP_400_BAD_REQUEST)
+
+        county = load_county_state(game)
+        result = ImperialTourService.resolve(game, county, payment_ratio, apportionment_method)
+        if not result.get("success"):
+            return Response({"error": result.get("error")}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result)
 
 
 class EmergencyPrefectureReliefView(APIView):

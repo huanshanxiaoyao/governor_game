@@ -696,6 +696,19 @@ class AnnualReviewService:
             incident_flags.append("知府接管")
             incident_penalty += 15.0
 
+        # 皇帝巡游摊派处置记录（仅文字提示，由 LLM 自由评判，不参与分数扣罚）
+        tour_records = county.get("imperial_tour_record") or {}
+        review_year = year_of(season)
+        tour_record = tour_records.get(str(review_year))
+        if tour_record:
+            ratio = tour_record.get("payment_ratio", 1.0)
+            method = tour_record.get("apportionment_method", "per_capita")
+            method_label = "按土地分摊" if method == "per_land" else "按人头分摊"
+            ratio_label = {1.0: "全额（100%）", 0.9: "九成（90%）", 0.8: "八成（80%）"}.get(ratio, f"{ratio:.0%}")
+            incident_flags.append(
+                f"皇帝巡游摊派：缴纳{ratio_label}，{method_label}"
+            )
+
         judicial_summary = cls._build_judicial_summary(county, season)
         if judicial_summary["case_count"]:
             if judicial_summary["overturned_count"]:

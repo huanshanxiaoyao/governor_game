@@ -331,6 +331,13 @@
     counselProactive: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/counsel/proactive/");
     },
+    // Imperial tour levy
+    imperialTourDecide: function (gameId, paymentRatio, apportionmentMethod) {
+      return request("POST", "/api/games/" + gameId + "/imperial-tour/decide/", {
+        payment_ratio: paymentRatio,
+        apportionment_method: apportionmentMethod,
+      });
+    },
     // Event logs
     getEventLogs: function (gameId, category, season, limit) {
       var params = [];

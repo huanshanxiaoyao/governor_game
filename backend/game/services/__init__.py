@@ -51,6 +51,7 @@ from .state import load_player_state, load_county_state, save_player_state, muta
 from .counsel import CounselService
 from .policy_review import PolicyReviewService
 from .policy_sync import PolicySyncService
+from .imperial_tour import ImperialTourService
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -103,4 +104,5 @@ __all__ = [
     "load_county_state",
     "save_player_state",
     "mutate_player_state",
+    "ImperialTourService",
 ]

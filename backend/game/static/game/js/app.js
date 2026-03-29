@@ -1366,6 +1366,40 @@
     });
   }
 
+  // ==================== Imperial Tour Levy ====================
+  el("btn-imperial-tour-confirm").addEventListener("click", function () {
+    var g = Game.state.currentGame;
+    if (!g) return;
+
+    var paymentRadio = document.querySelector('input[name="imperial-payment"]:checked');
+    var methodRadio  = document.querySelector('input[name="imperial-method"]:checked');
+    if (!paymentRadio || !methodRadio) {
+      components.showToast("请完成全部选择", "error");
+      return;
+    }
+    var paymentRatio = parseFloat(paymentRadio.value);
+    var method = methodRadio.value;
+
+    var errEl = document.getElementById("imperial-tour-error");
+    if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+
+    api.imperialTourDecide(g.id, paymentRatio, method)
+      .then(function (data) {
+        var modal = document.getElementById("imperial-tour-modal");
+        if (modal) modal.classList.add("hidden");
+        components.showToast(data.message || "摊派处置完成", "success");
+        return refreshCurrentGame(g.id);
+      })
+      .catch(function (err) {
+        if (errEl) {
+          errEl.textContent = err.message || "操作失败";
+          errEl.style.display = "block";
+        } else {
+          components.showToast(err.message || "操作失败", "error");
+        }
+      });
+  });
+
   // ==================== Emergency Grain Actions ====================
   el("btn-emergency-prefecture").addEventListener("click", function () {
     var g = Game.state.currentGame;

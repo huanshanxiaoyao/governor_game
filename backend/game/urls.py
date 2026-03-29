@@ -55,6 +55,8 @@ urlpatterns = [
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
     # Disaster relief application
     path("games/<int:game_id>/disaster-relief/", views.DisasterReliefView.as_view(), name="game-disaster-relief"),
+    # Imperial tour levy
+    path("games/<int:game_id>/imperial-tour/decide/", views.ImperialTourDecideView.as_view(), name="imperial-tour-decide"),
     # Autumn remit ratio adjustment (九月专用)
     path("games/<int:game_id>/remit-ratio/", views.AdjustRemitRatioView.as_view(), name="game-remit-ratio"),
     # Emergency grain actions

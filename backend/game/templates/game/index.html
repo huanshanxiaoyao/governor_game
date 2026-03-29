@@ -162,6 +162,7 @@
         <div id="info-row" class="info-row"></div>
         <div id="quota-info"></div>
         <div id="prefect-directive-info"></div>
+        <div id="imperial-tour-section" class="action-section hidden"></div>
         <div id="relief-action-section" class="action-section hidden">
           <h3>灾害减免申请</h3>
           <div id="relief-status" class="hint">仅九月可提交，十月统一批示</div>
@@ -461,6 +462,51 @@
     <p id="riot-crisis-body" class="riot-crisis-body"></p>
     <p class="riot-crisis-note">知府已派兵接管，正在镇压，预计需 2～3 个月平息。</p>
     <button id="btn-riot-crisis-close" class="btn-riot-close">知晓，继续</button>
+  </div>
+</div>
+
+<!-- ==================== Imperial Tour Levy Modal ==================== -->
+<div id="imperial-tour-modal" class="modal hidden">
+  <div class="modal-content" style="max-width:480px">
+    <h3 class="modal-title">皇帝巡游摊派</h3>
+    <p id="imperial-tour-desc" class="hint" style="margin-bottom:12px"></p>
+
+    <div class="modal-section">
+      <h4 style="margin-bottom:6px">第一步：选择缴纳比例</h4>
+      <div id="imperial-tour-payment-options" class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="imperial-payment" value="1.0" checked>
+          全额缴纳（100%）— 圣心得宜
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="imperial-payment" value="0.9">
+          酌情缴纳（90%）— 略有拖欠
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="imperial-payment" value="0.8">
+          最低限度（80%）— 知府将知晓
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-section" style="margin-top:14px">
+      <h4 style="margin-bottom:6px">第二步：选择摊派方式</h4>
+      <div id="imperial-tour-method-options" class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="imperial-method" value="per_capita" checked>
+          按人头分摊（利地主）— 民心 −10
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="imperial-method" value="per_land">
+          按土地分摊（利农民）— 民心 −6，各村地主好感度 −5
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
+      <button id="btn-imperial-tour-confirm" class="btn btn-primary btn-small">确认决策</button>
+    </div>
+    <div id="imperial-tour-error" class="hint" style="color:#c0392b;margin-top:8px;display:none"></div>
   </div>
 </div>
 

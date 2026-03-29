@@ -1190,6 +1190,7 @@
       advBtn.textContent = "推进月份";
     }
 
+    renderImperialTourPending();
     renderReliefAction();
     renderEmergencyAction();
   }
@@ -1917,8 +1918,49 @@
     container.appendChild(board);
   }
 
+  // ── 皇帝巡游摊派挂起卡片 ──────────────────────────────────────────────
+  function renderImperialTourPending() {
+    var g = Game.state.currentGame;
+    var sectionEl = el("imperial-tour-section");
+    if (!sectionEl) return;
+
+    var pending = g ? ((g.county_data || {}).imperial_tour_pending) : null;
+    if (!pending) {
+      sectionEl.classList.add("hidden");
+      sectionEl.innerHTML = "";
+      return;
+    }
+
+    sectionEl.classList.remove("hidden");
+    var amount = pending.levy_amount || 0;
+    sectionEl.innerHTML =
+      '<h3>皇帝巡游摊派</h3>' +
+      '<div class="hint" style="margin-bottom:8px">' +
+        '朝廷令本县分摊圣驾巡游费用，应缴 <strong>' + amount + ' 两</strong>。' +
+        '请决定缴纳比例与摊派方式后方可推进月份。' +
+      '</div>' +
+      '<button id="btn-open-imperial-tour" class="btn btn-primary btn-small">处置摊派</button>';
+
+    var btn = document.getElementById("btn-open-imperial-tour");
+    if (btn) {
+      btn.onclick = function () {
+        // 填入摊派金额说明
+        var descEl = document.getElementById("imperial-tour-desc");
+        if (descEl) {
+          descEl.textContent = "应缴 " + amount + " 两（年度徭役折银的五成）。请选择缴纳比例和摊派方式。";
+        }
+        // 重置弹窗状态
+        var errEl = document.getElementById("imperial-tour-error");
+        if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+        var modal = document.getElementById("imperial-tour-modal");
+        if (modal) modal.classList.remove("hidden");
+      };
+    }
+  }
+
   // Export
   C.renderRiotBanner = renderRiotBanner;
+  C.renderImperialTourPending = renderImperialTourPending;
   C.renderHeader = renderHeader;
   C.renderPlayerArchive = renderPlayerArchive;
   C.renderRumorsBoard = renderRumorsBoard;
