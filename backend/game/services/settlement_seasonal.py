@@ -386,9 +386,19 @@ class SeasonalMixin:
         # agriculture_bonus 由农业类施政（如农技传习所）累积，单位：百分点
         agri_bonus_mult = 1 + county.get('agriculture_bonus', 0) / 100
         total_agri_output = 0
+        # 宗族治理：追踪无村塾村庄的产出，用于后续征收效率折减
+        clan_gov_no_manor_output = 0
+        _is_clan_gov = county.get("county_type") == "clan_governance"
+        _clan_infra_gap = _is_clan_gov and (
+            county.get("irrigation_level", 1) == 0
+            or county.get("medical_level", 1) == 0
+            or county.get("school_level", 1) == 0
+        )
         for v in county["villages"]:
             output = v["farmland"] * base_yield * suitability * (1 + irrigation_bonus) * agri_bonus_mult
             total_agri_output += output
+            if _clan_infra_gap and not v.get("has_school"):
+                clan_gov_no_manor_output += output
 
         # Disaster damage (non-plague disasters reduce output; all disasters cause pop loss)
         disaster = county.get("disaster_this_year")
@@ -400,6 +410,8 @@ class SeasonalMixin:
                 damage_factor *= (1 - IRRIGATION_DAMAGE_REDUCTION[min(irr_level, 3)])
             disaster_damage = total_agri_output * damage_factor
             total_agri_output *= (1 - damage_factor)
+            # 宗族治理无村塾产出按同等比例缩减
+            clan_gov_no_manor_output *= (1 - damage_factor)
             report["events"].append(
                 f"灾害影响秋收: 产出损失{round(disaster_damage)}两"
                 f"{'（水利减损）' if irr_level > 0 and disaster['type'] in ('flood', 'drought') else ''}")
@@ -453,6 +465,22 @@ class SeasonalMixin:
         morale_factor = county["morale"] / 100
         collection_efficiency = 0.7 + 0.3 * morale_factor  # ranges 0.7-1.0
         agri_tax = total_agri_output * county["tax_rate"] * collection_efficiency
+        # 宗族治理：无村塾村庄征收效率 ×0.7（县级任意基建等级为0时生效）
+        if _clan_infra_gap and clan_gov_no_manor_output > 0:
+            # 相当于将无村塾部分从效率1.0降至0.7，减少 0.3 × 其应征税额
+            agri_tax -= clan_gov_no_manor_output * county["tax_rate"] * collection_efficiency * 0.3
+            # 记录受影响村庄，供流言板读取
+            penalized_villages = [v["name"] for v in county["villages"] if not v.get("has_school")]
+            county["clan_gov_tax_penalty"] = {
+                "season": report.get("season"),
+                "villages": penalized_villages,
+            }
+            report["events"].append(
+                "【宗族治理】部分村庄尚无村塾且县级基建存在缺口，"
+                f"征收效率折减（受影响产出：{round(clan_gov_no_manor_output)}两）"
+            )
+        else:
+            county.pop("clan_gov_tax_penalty", None)
 
         # Remittance on agri tax only
         remit_ratio = county.get("remit_ratio", 0.65)

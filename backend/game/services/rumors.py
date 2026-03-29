@@ -39,6 +39,7 @@ class RumorsService:
         rumors += cls._get_peasant_surplus_rumors(game)   # ≤3 条
         rumors += cls._get_player_action_rumors(game)     # ≤3 条
         rumors += cls._get_annual_review_rumors(game)     # ≤1 条
+        rumors += cls._get_clan_gov_penalty_rumors(game)  # ≤1 条
         random.shuffle(rumors)
         return rumors[:8]
 
@@ -502,3 +503,43 @@ class RumorsService:
 
         return [{"category": "舆情", "text": t, "source": "衙门传出来的话",
                  "season": latest.get("published_season", game.current_season)}]
+
+    # ── 宗族治理：税款折损流言（最多 1 条） ──────────────────────────────────────
+
+    @classmethod
+    def _get_clan_gov_penalty_rumors(cls, game):
+        """宗族治理县：若上年秋收触发了征收效率折减，生成一条间接提示玩家的流言。"""
+        try:
+            county_data = load_county_state(game)
+        except Exception:
+            return []
+
+        penalty = county_data.get("clan_gov_tax_penalty")
+        if not penalty:
+            return []
+
+        # 只在秋收后的 1-3 个月内展示（之后自然消退）
+        penalty_season = penalty.get("season", 0)
+        if game.current_season - penalty_season > 3:
+            return []
+
+        villages = penalty.get("villages", [])
+        if not villages:
+            return []
+
+        if len(villages) == 1:
+            vname = villages[0]
+            t = random.choice([
+                f"书办悄悄说，{vname}今年秋粮收上来的比往年少了不少，说是村里没有读书人张罗，里正一个人收不过来。",
+                f"听说{vname}的粮税比账面上少了一截，书办抱怨说没有族塾撑着，地里的人根本不配合。",
+                f"{vname}那边今年征粮特别费劲，衙役们走了好几趟，里正也说不清楚少在哪儿。",
+            ])
+        else:
+            vlist = "、".join(villages[:2]) + ("等村" if len(villages) > 2 else "两村")
+            t = random.choice([
+                f"书办私下嘀咕，{vlist}的秋粮上缴比账上少了不少，说是那几个村子没族塾，宗族里没读书人押阵，收起来特别难。",
+                f"听说{vlist}今年交粮都打了折扣，胥吏说这些地方宗族管着，官府的人进村都难，何况收税。",
+                f"有人说{vlist}的征粮比别的村少了一截，背地里说是因为村里基础差，官民之间隔了一堵看不见的墙。",
+            ])
+
+        return [{"category": "民间", "text": t, "source": "衙门书办", "season": game.current_season}]
