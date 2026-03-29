@@ -9,13 +9,18 @@
 
 玩家决策：
   - 缴纳比例：80% / 90% / 100%
-  - 摊派方式：按人头（民心-10）/ 按土地（民心-6，各村地主好感度-5）
+  - 摊派方式：
+    · 按人头（民心-10）：按全县在册人口比例从各村农民/地主粮食账本扣粮
+    · 按土地（民心-6，各村地主好感度-5）：按全县在册土地比例从各村农民/地主粮食账本扣粮
+
+两种方式均不从县库扣银，负担直接落在黎庶与士绅；grain_surplus 允许为负。
+换算：1两 = GRAIN_PER_LIANG 斤。县级汇总字段 peasant_grain_reserve 同步扣减。
 """
 
 import logging
 
 from ..models import Agent
-from .constants import month_of_year, year_of
+from .constants import month_of_year, year_of, GRAIN_PER_LIANG
 
 logger = logging.getLogger('game')
 
@@ -128,14 +133,14 @@ class ImperialTourService:
 
         levy_amount = float(pending["levy_amount"])
         actual_payment = round(levy_amount * payment_ratio, 1)
-        treasury = float(county.get("treasury", 0))
-        if actual_payment > treasury:
-            return {"error": f"县库余银{treasury}两不足以缴纳{actual_payment}两"}
 
-        # 扣县库
-        county["treasury"] = round(treasury - actual_payment, 1)
+        # 按人头或按土地从粮食账本扣粮（不扣县库）
+        if apportionment_method == "per_capita":
+            grain_info = cls._deduct_grain_per_capita(county, actual_payment)
+        else:
+            grain_info = cls._deduct_grain_per_land(county, actual_payment)
 
-        # 民心变动（Model A：作用于各村 → 县级聚合）
+        # 民心变动（作用于各村 → 县级聚合）
         effects = _APPORTIONMENT_EFFECTS[apportionment_method]
         morale_delta = effects["morale_delta"]
         MetricsMixin.apply_county_stat_delta(county, "morale", morale_delta)
@@ -153,6 +158,8 @@ class ImperialTourService:
             "actual_payment": actual_payment,
             "payment_ratio": payment_ratio,
             "apportionment_method": apportionment_method,
+            "peasant_grain_total": grain_info["peasant_grain_total"],
+            "gentry_grain_total": grain_info["gentry_grain_total"],
         }
         if not county.get("imperial_tour_record"):
             county["imperial_tour_record"] = {}
@@ -169,20 +176,110 @@ class ImperialTourService:
 
         method_label = _METHOD_LABELS[apportionment_method]
         payment_label = _PAYMENT_LABELS[payment_ratio]
+        p_grain = grain_info["peasant_grain_total"]
+        g_grain = grain_info["gentry_grain_total"]
         return {
             "success": True,
             "actual_payment": actual_payment,
             "morale_delta": morale_delta,
             "gentry_affinity_delta": gentry_affinity_delta,
+            "peasant_grain_total": p_grain,
+            "gentry_grain_total": g_grain,
             "message": (
                 f"皇帝巡游摊派处理完成：缴纳{actual_payment}两（{payment_label}），"
-                f"{method_label}，民心{morale_delta:+d}"
+                f"{method_label}，农民扣粮{p_grain}斤、地主扣粮{g_grain}斤，"
+                f"民心{morale_delta:+d}"
             ),
         }
 
     # ------------------------------------------------------------------ #
     # 内部辅助                                                             #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _deduct_grain_per_capita(county: dict, actual_payment: float) -> dict:
+        """按在册人口比例从各村农民/地主粮食账本扣粮，同步更新 peasant_grain_reserve。
+
+        返回 {"peasant_grain_total": float, "gentry_grain_total": float}。
+        兜底（人口为零）：回退扣县库。
+        """
+        villages = county.get("villages", [])
+        total_pop = sum(
+            v.get("peasant_ledger", {}).get("registered_population", 0) +
+            v.get("gentry_ledger", {}).get("registered_population", 0)
+            for v in villages
+        )
+        if total_pop <= 0:
+            county["treasury"] = round(float(county.get("treasury", 0)) - actual_payment, 1)
+            return {"peasant_grain_total": 0.0, "gentry_grain_total": 0.0}
+
+        total_peasant_grain = 0.0
+        total_gentry_grain = 0.0
+        for v in villages:
+            p_pop = v.get("peasant_ledger", {}).get("registered_population", 0)
+            if p_pop > 0:
+                p_grain = round(actual_payment * p_pop / total_pop * GRAIN_PER_LIANG, 1)
+                pl = v["peasant_ledger"]
+                pl["grain_surplus"] = round(pl.get("grain_surplus", 0.0) - p_grain, 1)
+                total_peasant_grain += p_grain
+
+            g_pop = v.get("gentry_ledger", {}).get("registered_population", 0)
+            if g_pop > 0:
+                g_grain = round(actual_payment * g_pop / total_pop * GRAIN_PER_LIANG, 1)
+                gl = v["gentry_ledger"]
+                gl["grain_surplus"] = round(gl.get("grain_surplus", 0.0) - g_grain, 1)
+                total_gentry_grain += g_grain
+
+        county["peasant_grain_reserve"] = round(
+            float(county.get("peasant_grain_reserve", 0)) - total_peasant_grain, 1
+        )
+        return {
+            "peasant_grain_total": round(total_peasant_grain, 1),
+            "gentry_grain_total": round(total_gentry_grain, 1),
+        }
+
+    @staticmethod
+    def _deduct_grain_per_land(county: dict, actual_payment: float) -> dict:
+        """按在册土地比例从各村农民/地主粮食账本扣粮，同步更新 peasant_grain_reserve。
+
+        农民使用 peasant_ledger.farmland，地主使用 gentry_ledger.registered_farmland。
+        返回 {"peasant_grain_total": float, "gentry_grain_total": float}。
+        兜底（土地为零）：回退扣县库。
+        """
+        villages = county.get("villages", [])
+        total_land = sum(
+            v.get("peasant_ledger", {}).get("farmland", 0) +
+            v.get("gentry_ledger", {}).get("registered_farmland", 0)
+            for v in villages
+        )
+        if total_land <= 0:
+            county["treasury"] = round(float(county.get("treasury", 0)) - actual_payment, 1)
+            return {"peasant_grain_total": 0.0, "gentry_grain_total": 0.0}
+
+        total_peasant_grain = 0.0
+        total_gentry_grain = 0.0
+        for v in villages:
+            p_land = v.get("peasant_ledger", {}).get("farmland", 0)
+            if p_land > 0:
+                p_grain = round(actual_payment * p_land / total_land * GRAIN_PER_LIANG, 1)
+                pl = v["peasant_ledger"]
+                pl["grain_surplus"] = round(pl.get("grain_surplus", 0.0) - p_grain, 1)
+                total_peasant_grain += p_grain
+
+            g_land = v.get("gentry_ledger", {}).get("registered_farmland", 0)
+            if g_land > 0:
+                g_grain = round(actual_payment * g_land / total_land * GRAIN_PER_LIANG, 1)
+                gl = v["gentry_ledger"]
+                gl["grain_surplus"] = round(gl.get("grain_surplus", 0.0) - g_grain, 1)
+                total_gentry_grain += g_grain
+
+        county["peasant_grain_reserve"] = round(
+            float(county.get("peasant_grain_reserve", 0)) - total_peasant_grain, 1
+        )
+        return {
+            "peasant_grain_total": round(total_peasant_grain, 1),
+            "gentry_grain_total": round(total_gentry_grain, 1),
+        }
 
     @staticmethod
     def _apply_gentry_affinity(game, delta: int) -> None:
@@ -203,9 +300,12 @@ class ImperialTourService:
                 return
             method_label = _METHOD_LABELS[record["apportionment_method"]]
             ratio_label = _PAYMENT_LABELS[record["payment_ratio"]]
+            p_grain = record.get("peasant_grain_total", 0)
+            g_grain = record.get("gentry_grain_total", 0)
             memo = (
                 f"第{record['year']}年三月皇帝巡游摊派{record['levy_amount']}两，"
-                f"知县{ratio_label}缴纳{record['actual_payment']}两，{method_label}。"
+                f"知县{ratio_label}缴纳{record['actual_payment']}两，{method_label}，"
+                f"农民扣粮{p_grain}斤、地主扣粮{g_grain}斤。"
             )
             attrs = prefect.attributes
             memory = attrs.get("memory", [])
