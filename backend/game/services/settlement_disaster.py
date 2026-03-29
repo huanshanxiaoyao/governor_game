@@ -102,7 +102,7 @@ class DisasterMixin:
                 if dtype in ("flood", "drought"):
                     morale_hit = round(base_morale_hit * (1 - irr_level * 0.1))
                 elif dtype == "plague":
-                    morale_hit = round(base_morale_hit * 0.85 ** (1 + medical_level))
+                    morale_hit = round(base_morale_hit * 0.85 ** medical_level)
                 else:
                     morale_hit = base_morale_hit
                 cls.apply_county_stat_delta(county, "morale", morale_hit)

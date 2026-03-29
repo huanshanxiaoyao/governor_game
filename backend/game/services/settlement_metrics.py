@@ -22,6 +22,17 @@ class MetricsMixin:
         return max(0.0, min(100.0, float(value)))
 
     @staticmethod
+    def _zone_multiplier(value):
+        """分区衰减乘数：低分区减缓，高分区加速。
+        困境区(0-35): ×0.4 | 正常区(35-65): ×1.0 | 高分区(65-100): ×1.5
+        """
+        if value >= 65:
+            return 1.5
+        if value >= 35:
+            return 1.0
+        return 0.4
+
+    @staticmethod
     def _months_to_harvest(month, pre_harvest=False):
         """Distance to next autumn harvest from the current state."""
         moy = month_of_year(month)
@@ -151,19 +162,17 @@ class MetricsMixin:
 
     @classmethod
     def apply_county_stat_delta(cls, county, field, delta, *, village_delta=None):
-        """Apply a county public-stat delta and keep village values moving in the same direction."""
+        """Apply a stat delta to all villages, then aggregate to county (Model A).
+        village_delta: if provided, villages get this value; otherwise they get delta.
+        """
         old = float(county.get(field, 50.0))
-        county[field] = cls._clamp_public_stat(old + float(delta))
-        actual_county_delta = county[field] - old
+        effective_delta = float(village_delta) if village_delta is not None else float(delta)
 
-        if village_delta is None:
-            village_delta = actual_county_delta
-
-        if village_delta:
-            for village in county.get("villages", []):
-                village[field] = cls._clamp_public_stat(
-                    float(village.get(field, 50.0)) + float(village_delta)
-                )
+        for village in county.get("villages", []):
+            village[field] = cls._clamp_public_stat(
+                float(village.get(field, 50.0)) + effective_delta
+            )
+        cls._sync_county_from_villages(county, field)
 
         return round(float(county.get(field, 50.0)) - old, 1)
 
@@ -200,40 +209,33 @@ class MetricsMixin:
 
     @classmethod
     def _update_morale(cls, county, report):
-        """Calculate morale change per doc 06 §4.5, with county↔village sync.
-        Monthly tick — deltas scaled to ~1/3 of old seasonal values.
-        """
-        old = county["morale"]
-        report.setdefault("_metric_bases", {})["morale"] = float(old)
+        """月度民心结算（Model A：直接更新各村，县级为聚合值）。"""
+        old_county = float(county.get("morale", 50.0))
+        report.setdefault("_metric_bases", {})["morale"] = old_county
 
-        # Base decay: -0.33/month (was -1/season, same -4/year)
-        delta = -0.33
+        # 基础衰减：-1.0/月（分区乘数调整）
+        delta = -1.0 * cls._zone_multiplier(old_county)
 
-        # Education contribution: education/60 per month (was /20 per season)
-        delta += county["education"] / 60
+        # 文教贡献：文教>40时才有加成，(edu-40)/60
+        if county["education"] > 40:
+            delta += (county["education"] - 40) / 60
 
-        # Security linkage (monthly): high security boosts morale, low security erodes it
+        # 治安联动
         if county["security"] > 60:
             delta += 0.5
         elif county["security"] < 30:
             delta -= 0.5
 
-        # Heavy tax penalty: -1/month at maximum rate (was -3/season)
+        # 重税惩罚
         if county["tax_rate"] >= 0.15:
             delta -= 1
 
-        county["morale"] = max(0, min(100, county["morale"] + delta))
-        county_delta = county["morale"] - old
-
-        # County → Village propagation: 县级变化的50%传导到各村
-        if county_delta != 0:
-            for v in county["villages"]:
-                v["morale"] = max(0, min(100, v["morale"] + county_delta * 0.5))
-
-        # Village → County aggregation: 按人口权重加权平均，与当前县级民心混合
+        # 直接更新各村，县级聚合
+        for v in county["villages"]:
+            v["morale"] = max(0.0, min(100.0, float(v.get("morale", 50.0)) + delta))
         cls._sync_county_from_villages(county, "morale")
 
-        actual_change = county["morale"] - old
+        actual_change = county["morale"] - old_county
         if actual_change != 0:
             report["events"].append(
                 f"民心变化: {'+' if actual_change > 0 else ''}"
@@ -241,44 +243,56 @@ class MetricsMixin:
 
     @classmethod
     def _update_security(cls, county, report):
-        """Calculate security change per doc 06 §4.5, with county↔village sync.
-        Monthly tick — deltas scaled to ~1/3 of old seasonal values.
-        """
-        old = county["security"]
-        report.setdefault("_metric_bases", {})["security"] = float(old)
+        """月度治安结算（Model A：直接更新各村，县级为聚合值）。"""
+        old_county = float(county.get("security", 50.0))
+        report.setdefault("_metric_bases", {})["security"] = old_county
 
-        # Base decay: -0.33/month (was -1/season)
-        delta = -0.33
+        # 基础衰减：-1.2/月（分区乘数调整）
+        delta = -1.2 * cls._zone_multiplier(old_county)
 
-        # Bailiff bonus: level*0.67/month (was level*2/season)
+        # 衙役加成（不受分区乘数影响）
         delta += county["bailiff_level"] * 0.67
 
-        # Morale linkage: +0.33/-0.67 per month (was +1/-2 per season)
+        # 民心联动（使用本月民心结算后的县级聚合值）
         if county["morale"] > 60:
             delta += 0.33
         elif county["morale"] < 30:
             delta -= 0.67
 
-        county["security"] = max(0, min(100, county["security"] + delta))
-        county_delta = county["security"] - old
-
-        # County → Village propagation
-        if county_delta != 0:
-            for v in county["villages"]:
-                v["security"] = max(0, min(100, v["security"] + county_delta * 0.5))
-
-        # Village → County aggregation
+        # 直接更新各村，县级聚合
+        for v in county["villages"]:
+            v["security"] = max(0.0, min(100.0, float(v.get("security", 50.0)) + delta))
         cls._sync_county_from_villages(county, "security")
 
-        actual_change = county["security"] - old
+        actual_change = county["security"] - old_county
         if actual_change != 0:
             report["events"].append(
                 f"治安变化: {'+' if actual_change > 0 else ''}"
                 f"{actual_change:.1f} (当前: {county['security']:.1f})")
 
+    @classmethod
+    def _update_education(cls, county, report):
+        """月度文教结算：自然衰减 + 学校等级减免 + 分区乘数。
+        文教为县级独立指标（无村级分布），直接更新 county["education"]。
+        """
+        old_edu = float(county.get("education", 0.0))
+
+        # 基础衰减：-0.3/月；学校每级减免 0.15（最多3级 → 减免0.45，净衰减≈0.05）
+        school_level = county.get("school_level", 0)
+        school_reduction = school_level * 0.15
+        net_decay = max(0.0, 0.3 - school_reduction) * cls._zone_multiplier(old_edu)
+
+        county["education"] = round(max(0.0, min(100.0, old_edu - net_decay)), 1)
+
+        actual_change = round(county["education"] - old_edu, 1)
+        if actual_change != 0:
+            report["events"].append(
+                f"文教变化: {'+' if actual_change > 0 else ''}"
+                f"{actual_change:.1f} (当前: {county['education']:.1f})")
+
     @staticmethod
     def _sync_county_from_villages(county, field):
-        """按人口权重将各村指标汇聚到县级，与当前县值混合(70%村均/30%县值)"""
+        """县级指标 = 各村按人口加权平均（Model A：县为纯聚合，无独立轨道）"""
         ensure_county_ledgers(county)
         villages = county["villages"]
         total_pop = sum(
@@ -293,8 +307,7 @@ class MetricsMixin:
             for v in villages
         )
         weighted_avg = weighted_sum / total_pop
-        county[field] = max(0, min(100,
-            round(0.7 * weighted_avg + 0.3 * county[field], 1)))
+        county[field] = max(0, min(100, round(weighted_avg, 1)))
 
     @classmethod
     def _compute_peasant_production(cls, county, include_disaster=False):
@@ -422,6 +435,44 @@ class MetricsMixin:
                 f"月度商税: {monthly_commercial_tax:.1f}两 "
                 f"(税率{commercial_tax_rate:.1%}), "
                 f"留存{commercial_retained:.1f}两")
+
+        # 商业繁荣→集市自发扩张
+        commercial = county.get("commercial", 0)
+        existing_names = {m["name"] for m in county.get("markets", [])}
+
+        def _unique_market_name(candidates):
+            for n in candidates:
+                if n not in existing_names:
+                    return n
+            return f"集市{len(county['markets']) + 1}"
+
+        # 条件A：集市不足2个且商业>45，补足至2个（每月最多+1，自然触发）
+        if len(county["markets"]) < 2 and commercial > 45:
+            name = _unique_market_name(["草市", "墟市", "小集", "新市"])
+            new_market = {"name": name, "merchants": 8, "gmv": 0.0}
+            county["markets"].append(new_market)
+            existing_names.add(name)
+            report["events"].append(
+                f"商业回暖，草市自发形成：{name}（初始商贩{new_market['merchants']}人）"
+            )
+
+        # 条件B/C：商业≥60/80时各额外触发一次（独立于条件A的计数）
+        if commercial >= 80:
+            target_auto = 2
+        elif commercial >= 60:
+            target_auto = 1
+        else:
+            target_auto = 0
+        auto_market_count = county.get("auto_market_count", 0)
+        if target_auto > auto_market_count:
+            name = _unique_market_name(["新兴集", "通商集", "盛贸集"])
+            new_market = {"name": name, "merchants": 10, "gmv": 0.0}
+            county["markets"].append(new_market)
+            existing_names.add(name)
+            county["auto_market_count"] = auto_market_count + 1
+            report["events"].append(
+                f"商业繁荣，新集市自发形成：{name}（初始商贩{new_market['merchants']}人）"
+            )
 
     @staticmethod
     def _reset_fiscal_year(county, report):

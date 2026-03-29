@@ -104,6 +104,9 @@ class SettlementService(
         # 6. Security change (monthly)
         cls._update_security(county, report)
 
+        # 6c. Education decay (monthly)
+        cls._update_education(county, report)
+
         # 6b. Annexation check
         cls._check_annexation(county, month, report, game=game)
 
