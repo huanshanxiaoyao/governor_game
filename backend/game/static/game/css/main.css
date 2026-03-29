@@ -5189,7 +5189,19 @@ body {
   line-height: 1.5;
 }
 
-/* ── 建议施政卡片区 ───────────────────────────────────── */
+/* ── 内联施政卡片（嵌入消息流） ──────────────────────── */
+.counsel-inline-cards {
+  margin: 4px 0 8px 36px;  /* 与 NPC 气泡左对齐 */
+}
+.counsel-inline-cards-label {
+  font-size: 0.73em;
+  color: #9a7040;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
+}
+
+/* ── 建议施政卡片区（保留，已不再主动使用） ─────────── */
 .counsel-action-cards {
   padding: 10px 14px;
   border-top: 1px solid #e8d8b0;

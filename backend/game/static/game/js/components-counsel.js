@@ -183,46 +183,25 @@
       });
   }
 
-  // ── 建议施政卡片 ──────────────────────────────────────────
+  // ── 建议施政卡片（嵌入消息流） ────────────────────────────
 
   function _renderActionCards(cards, gameId) {
-    var area = el("counsel-action-cards");
-    if (!area) return;
-    if (!cards || !cards.length) {
-      area.classList.add("hidden");
-      area.innerHTML = "";
-      return;
-    }
-    area.classList.remove("hidden");
-    var head = document.createElement("div");
-    head.className = "counsel-cards-head";
+    var msgBox = el("counsel-messages");
+    if (!msgBox || !cards || !cards.length) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "counsel-inline-cards";
 
     var label = document.createElement("div");
-    label.className = "counsel-cards-label";
-
-    var toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "counsel-cards-toggle";
-
-    head.appendChild(label);
-    head.appendChild(toggle);
+    label.className = "counsel-inline-cards-label";
 
     var grid = document.createElement("div");
     grid.className = "counsel-cards-grid";
 
     function _syncCardsState() {
       var count = grid.querySelectorAll(".counsel-action-card").length;
-      label.textContent = "建议施政（" + count + "）";
-      if (!count) {
-        area.classList.add("hidden");
-        return;
-      }
-      area.classList.remove("hidden");
-    }
-
-    function _setCollapsed(collapsed) {
-      area.classList.toggle("collapsed", collapsed);
-      toggle.textContent = collapsed ? "展开" : "收起";
+      if (!count) { wrap.remove(); return; }
+      label.textContent = "▸ 可执行施政（" + count + "）";
     }
 
     cards.forEach(function (card) {
@@ -243,38 +222,32 @@
       cardEl.innerHTML = inner;
 
       if (!disabled) {
-        cardEl.dataset.action      = card.action;
-        cardEl.dataset.name        = card.name || card.action;
-        cardEl.dataset.gameId      = gameId;
+        cardEl.dataset.action       = card.action;
+        cardEl.dataset.name         = card.name || card.action;
+        cardEl.dataset.gameId       = gameId;
         cardEl.dataset.needsVillage = card.requires_village ? "1" : "0";
       }
 
-      // × → 静默忽略
       cardEl.querySelector(".counsel-card-dismiss").addEventListener("click", function (e) {
         e.stopPropagation();
         cardEl.remove();
         _syncCardsState();
       });
 
-      // 点击主体 → 就地执行
       if (!disabled) {
         cardEl.addEventListener("click", function (e) {
           if (e.target.classList.contains("counsel-card-dismiss")) return;
-          _executeCard(cardEl, grid, area, _syncCardsState);
+          _executeCard(cardEl, grid, wrap, _syncCardsState);
         });
       }
 
       grid.appendChild(cardEl);
     });
 
-    area.innerHTML = "";
-    area.appendChild(head);
-    area.appendChild(grid);
-    _syncCardsState();
-    _setCollapsed(true);
-    toggle.addEventListener("click", function () {
-      _setCollapsed(!area.classList.contains("collapsed"));
-    });
+    label.textContent = "▸ 可执行施政（" + cards.length + "）";
+    wrap.appendChild(label);
+    wrap.appendChild(grid);
+    msgBox.appendChild(wrap);
     _keepLatestMessageVisible();
   }
 
@@ -516,9 +489,7 @@
       _notificationsShown = false;
       _proactiveShown   = false;
       var box = el("counsel-messages");
-      if (box) box.innerHTML = "";
-      var cards = el("counsel-action-cards");
-      if (cards) { cards.innerHTML = ""; cards.classList.add("hidden"); }
+      if (box) box.innerHTML = "";  // 内联卡片随消息流一起清空
       var pCards = el("counsel-propose-cards");
       if (pCards) { pCards.innerHTML = ""; pCards.classList.add("hidden"); }
     }
