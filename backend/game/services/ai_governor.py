@@ -116,11 +116,18 @@ class AIGovernorService:
         buy_events = cls._ai_buy_grain(county, profile)
         events.extend(buy_events)
 
+        # 知府游戏路径：紧急缺粮时设置请求标志，由 advance_month 统一执行拨粮/借粮
+        cls._ai_set_emergency_grain_flags(county, profile)
+
         # 年度承诺系统：正月立誓，腊月核验
         from .constants import month_of_year as _moy
         moy = _moy(season)
         if moy == 1:
             cls._ai_make_annual_pledges(county, profile, season)
+        elif moy == 9:
+            # 九月：有灾害时自动提交减免申请
+            relief_events = cls._ai_submit_relief_application(county, profile, season)
+            events.extend(relief_events)
         elif moy == 12:
             pledge_events = cls._ai_check_pledges(county, season)
             events.extend(pledge_events)
@@ -192,7 +199,7 @@ class AIGovernorService:
         try:
             system_prompt, user_prompt = PromptRegistry.render(
                 'ai_governor_decision', **ctx)
-            client = LLMClient(timeout=20.0, max_retries=2)
+            client = LLMClient(timeout=10.0, max_retries=1)
             result = client.chat_json(
                 [{'role': 'system', 'content': system_prompt},
                  {'role': 'user', 'content': user_prompt}],
@@ -1329,3 +1336,98 @@ class AIGovernorService:
             return [f"【年终自省】本年所立{total}条承诺，已履行{fulfilled}条，百姓尚称满意"]
         else:
             return [f"【年终自省】本年所立{total}条承诺，仅履行{fulfilled}条，有负所托"]
+
+    @classmethod
+    def _ai_submit_relief_application(cls, county, profile, season):
+        """九月：有灾害时，AI知县自动向知府提交灾害减免申请。
+
+        申请数额：以估算损失为基准，CORRUPT知县倾向虚报（最多+30%），
+        VIRTUOUS知县如实申报，MIDDLING随机±10%。
+        已申请过或无灾害时直接跳过。
+        """
+        disaster = county.get('disaster_this_year')
+        if not disaster:
+            return []
+
+        if county.get('relief_application_submitted'):
+            return []
+
+        annual_quota = county.get('annual_quota') or {}
+        if not annual_quota:
+            return []
+
+        from .settlement import SettlementService
+        estimated_loss = float(SettlementService._estimate_disaster_loss(county))
+        if estimated_loss <= 0:
+            return []
+
+        archetype = profile.get('archetype', 'MIDDLING')
+        goals = profile.get('goals', {})
+        welfare_w = goals.get('welfare', 0.2)
+
+        if archetype == 'CORRUPT':
+            # 贪官虚报：损失 × (1.1 ~ 1.3)
+            multiplier = random.uniform(1.1, 1.3)
+        elif archetype == 'VIRTUOUS' or welfare_w >= 0.4:
+            # 清官如实申报，略打折以保可信度
+            multiplier = random.uniform(0.9, 1.0)
+        else:
+            multiplier = random.uniform(0.95, 1.1)
+
+        claimed_loss = round(estimated_loss * multiplier, 1)
+        from .constants import year_of
+        current_year = year_of(season)
+
+        county['relief_application_submitted'] = True
+        county['relief_application'] = {
+            'year': current_year,
+            'status': 'PENDING',
+            'claimed_loss': claimed_loss,
+            'submitted_season': season,
+        }
+
+        governor_name = county.get('governor_meta', {}).get('name', '知县')
+        return [f"【申请减免】{governor_name}上报灾情，请求核减秋税上缴{round(claimed_loss)}两"]
+
+    @classmethod
+    def _ai_set_emergency_grain_flags(cls, county, profile):
+        """知府游戏专用：紧急缺粮时设置请求标志，由 PrefectureService.advance_month 统一执行。
+
+        _ai_request_prefect_grain=True → advance_month 从府库划拨粮食
+        _ai_borrow_neighbor_grain=True → advance_month 从其他余粮充裕的下辖县借粮
+        （仅当粮荒严重且府库请求仍不足时触发借粮）
+        """
+        from .emergency import EmergencyService
+        EmergencyService.ensure_state(county)
+        emergency = county.get('emergency', {})
+        if not emergency.get('active'):
+            # 清理过期标志
+            county.pop('_ai_request_prefect_grain', None)
+            county.pop('_ai_borrow_neighbor_grain', None)
+            return
+
+        baseline = float(emergency.get('baseline_monthly_consumption', 0.0))
+        reserve = float(county.get('peasant_grain_reserve', 0.0))
+        if baseline <= 0:
+            return
+
+        shortage_ratio = max(0.0, baseline - reserve) / baseline  # 0~1，缺口占月消耗比例
+
+        goals = profile.get('goals', {})
+        welfare_w = goals.get('welfare', 0.2)
+        archetype = profile.get('archetype', 'MIDDLING')
+
+        # 向知府申请拨粮：只要有缺口且还没申请过本月
+        if shortage_ratio > 0.05 and not county.get('_ai_request_prefect_grain'):
+            # CORRUPT 知县对粮荒反应较冷漠（除非自身利益受损），VIRTUOUS / 高民本 积极争取
+            request_prob = 0.5 + welfare_w * 0.5 + {'VIRTUOUS': 0.2, 'MIDDLING': 0.0, 'CORRUPT': -0.15}.get(archetype, 0.0)
+            request_prob = max(0.2, min(0.95, request_prob))
+            if random.random() < request_prob:
+                county['_ai_request_prefect_grain'] = True
+
+        # 从邻县借粮：粮荒严重（缺口>50%月消耗）时额外尝试
+        if shortage_ratio > 0.5 and not county.get('_ai_borrow_neighbor_grain'):
+            borrow_prob = 0.4 + welfare_w * 0.4 + {'VIRTUOUS': 0.15, 'MIDDLING': 0.0, 'CORRUPT': -0.1}.get(archetype, 0.0)
+            borrow_prob = max(0.15, min(0.90, borrow_prob))
+            if random.random() < borrow_prob:
+                county['_ai_borrow_neighbor_grain'] = True

@@ -223,7 +223,9 @@ class JudicialCaseflowService:
                 if "error" in result:
                     return result
                 cls._apply_verdict_effects(game, result["selected_option"])
-                applied_effects = result["selected_option"].get("immediate_effects") or {}
+                applied_effects = cls._clamp_verdict_effects(
+                    result["selected_option"].get("immediate_effects") or {}
+                )
                 instance.status = "SUBMITTED_TO_PREFECT"
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
@@ -242,7 +244,9 @@ class JudicialCaseflowService:
                 if "error" in result:
                     return result
                 cls._apply_verdict_effects(game, result["selected_option"])
-                applied_effects = result["selected_option"].get("immediate_effects") or {}
+                applied_effects = cls._clamp_verdict_effects(
+                    result["selected_option"].get("immediate_effects") or {}
+                )
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
                 instance.status = "SUBMITTED_TO_PREFECT"
@@ -300,6 +304,22 @@ class JudicialCaseflowService:
             "immediate_effects": selected.get("immediate_effects", {}),
         })
         return {"selected_option": selected}
+
+    @staticmethod
+    def _clamp_verdict_effects(effects: dict) -> dict:
+        """返回实际落地的效果值（已按上限截断，与 _apply_verdict_effects_to_unit 保持一致）。"""
+        clamped = {}
+        for field in ("morale", "security"):
+            delta = effects.get(field, 0)
+            if delta:
+                clamped[field] = max(-2, min(2, delta))
+        for field in ("gentry_favor", "commercial", "education"):
+            delta = effects.get(field, 0)
+            if delta:
+                clamped[field] = max(-5, min(5, delta))
+        if effects.get("treasury"):
+            clamped["treasury"] = effects["treasury"]
+        return clamped
 
     @classmethod
     def _apply_verdict_effects_to_unit(cls, unit, verdict_option: dict) -> None:
@@ -425,7 +445,8 @@ class JudicialCaseflowService:
         if game.player_role != "PREFECT" or not game.player_unit_id:
             return {"processed": 0}
 
-        processed = 0
+        # 按县收集待处理案件（同一县的多个案件必须顺序处理，避免 unit_data 竞争写入）
+        county_work: dict = {}
         counties = AdminUnit.objects.filter(game=game, unit_type="COUNTY", parent=game.player_unit)
         for unit in counties:
             queryset = JudicialCaseInstance.objects.filter(
@@ -434,9 +455,40 @@ class JudicialCaseflowService:
                 county_review_season=season,
                 status__in=["PENDING_MAGISTRATE_ROUND_1", "PENDING_MAGISTRATE_ROUND_2"],
             ).order_by("id")
-            for instance in queryset:
-                processed += 1
-                cls._auto_decide_ai_case(unit, instance, season)
+            instances = list(queryset)
+            if instances:
+                county_work[unit.id] = (unit, instances)
+
+        if not county_work:
+            return {"processed": 0}
+
+        # 跨县并行，同县内顺序处理（避免同一 AdminUnit.unit_data 被多线程同时写入）
+        from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+        def _process_county(unit, instances):
+            from django.db import connection as _conn
+            count = 0
+            try:
+                for instance in instances:
+                    try:
+                        cls._auto_decide_ai_case(unit, instance, season)
+                        count += 1
+                    except Exception as exc:
+                        logger.warning("AI judicial auto-decide failed for case %s: %s", instance.id, exc)
+            finally:
+                _conn.close()
+            return count
+
+        processed = 0
+        max_workers = min(5, len(county_work))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(_process_county, unit, instances)
+                for unit, instances in county_work.values()
+            ]
+            for f in _as_completed(futures):
+                processed += f.result()
+
         return {"processed": processed}
 
     @classmethod

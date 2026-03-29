@@ -437,6 +437,9 @@ class PrefectureService:
         4. 汇报月生成汇报
         5. 更新 current_season
         """
+        import time as _time
+        _t0 = _time.monotonic()
+
         prefecture_unit = game.player_unit
         pdata = prefecture_unit.unit_data
         season = game.current_season
@@ -454,6 +457,7 @@ class PrefectureService:
         )
 
         # ── AI 决策：优先使用后台预推演缓存 ──
+        _t_ai_start = _time.monotonic()
         precompute = NeighborPrecompute.objects.filter(
             game=game, season=season, status='done',
         ).first()
@@ -465,6 +469,9 @@ class PrefectureService:
             logger.info("No prefecture precompute ready for game %s season %s, computing in parallel",
                         game.id, season)
             decision_results = cls._compute_ai_decisions(subordinates, season)
+        _t_ai_end = _time.monotonic()
+        logger.info("advance_month game=%s season=%s: AI决策阶段 %.2fs (cache=%s)",
+                    game.id, season, _t_ai_end - _t_ai_start, precompute is not None)
 
         # 清除已消费的预计算记录
         NeighborPrecompute.objects.filter(game=game).delete()
@@ -476,7 +483,11 @@ class PrefectureService:
             "granary":     bool(pdata.get("granary", False)),
         }
 
+        # ── AI 县应急拨粮/借粮（结算前执行，使本月结算能感知到粮食补充）──
+        cls._process_ai_emergency_relief(subordinates, pdata, season)
+
         # ── 物理结算 ──
+        _t_settle_start = _time.monotonic()
         remit_total = 0.0
         for unit in subordinates:
             EmergencyService.ensure_state(unit.unit_data)
@@ -529,6 +540,10 @@ class PrefectureService:
 
             unit.save(update_fields=['unit_data'])
 
+        _t_settle_end = _time.monotonic()
+        logger.info("advance_month game=%s season=%s: 物理结算 %.2fs (%d县, 合计上缴%.1f)",
+                    game.id, season, _t_settle_end - _t_settle_start, len(subordinates), remit_total)
+
         # ── 府库更新 ──
         pdata['treasury'] = round(pdata.get('treasury', 0) + remit_total, 1)
         # 累计年度已收（正月重置）
@@ -556,7 +571,10 @@ class PrefectureService:
 
         # ── 汇报月：生成模糊汇报 ──
         if moy in REPORT_MONTHS:
+            _t_report_start = _time.monotonic()
             cls._generate_reports(subordinates, season, pdata)
+            logger.info("advance_month game=%s season=%s: 生成汇报 %.2fs",
+                        game.id, season, _time.monotonic() - _t_report_start)
 
         # ── 重置核查次数（正月重置）──
         if moy == 1:
@@ -566,7 +584,10 @@ class PrefectureService:
         pending_cases = []
         judicial_processed = None
         if moy in {2, 5, 8, 11}:
+            _t_judicial_start = _time.monotonic()
             judicial_processed = JudicialCaseflowService.auto_process_ai_counties(game, season)
+            logger.info("advance_month game=%s season=%s: 司法自动处理 %.2fs",
+                        game.id, season, _time.monotonic() - _t_judicial_start)
 
         next_season = season + 1
         transition = AnnualReviewService.handle_prefecture_transition(
@@ -582,6 +603,9 @@ class PrefectureService:
 
         game.current_season = next_season
         game.save(update_fields=['current_season'])
+
+        logger.info("advance_month game=%s season=%s: 总耗时 %.2fs",
+                    game.id, season, _time.monotonic() - _t0)
 
         result = {
             "season": season,  # the month just processed
@@ -649,6 +673,106 @@ class PrefectureService:
                     results[uid] = []
 
         return results
+
+    @classmethod
+    def _process_ai_emergency_relief(cls, subordinates, pdata, season):
+        """结算前：为缺粮紧急的AI县执行知府拨粮和邻县借粮。
+
+        由 AIGovernorService._ai_set_emergency_grain_flags() 在 make_decisions 时写入请求标志，
+        此处统一执行实际粮食转移（操作真实 unit_data，在物理结算之前完成）。
+        """
+        from .constants import GRAIN_PER_LIANG
+        prefecture_treasury = pdata.get('treasury', 0.0)
+
+        for unit in subordinates:
+            county = unit.unit_data
+            EmergencyService.ensure_state(county)
+            emergency = county.get('emergency', {})
+
+            # ── 向知府申请拨粮 ──
+            if county.pop('_ai_request_prefect_grain', False) and prefecture_treasury > 50:
+                baseline = float(emergency.get('baseline_monthly_consumption', 0.0))
+                reserve = float(county.get('peasant_grain_reserve', 0.0))
+                shortage = max(0.0, baseline - reserve)
+
+                if shortage > 10 and baseline > 0:
+                    # 最多拨出府库10%且不超过300两等值粮
+                    max_cost = min(prefecture_treasury * 0.10, 300.0)
+                    max_grant = max_cost * GRAIN_PER_LIANG
+                    grant = round(min(shortage * 1.5, max_grant), 1)
+                    cost = round(grant / GRAIN_PER_LIANG, 1)
+
+                    if grant > 10 and cost <= prefecture_treasury - 50:
+                        county['peasant_grain_reserve'] = round(reserve + grant, 1)
+                        pdata['treasury'] = round(prefecture_treasury - cost, 1)
+                        prefecture_treasury = pdata['treasury']
+                        county_name = county.get('county_name', '本县')
+                        governor_name = county.get('governor_meta', {}).get('name', '知县')
+                        logger.info(
+                            "AI county %s received prefecture grain grant %.0f jin (cost %.1f liang)",
+                            county_name, grant, cost,
+                        )
+                        # 记入本月事件，供汇报月摘要使用
+                        county.setdefault('_emergency_events', []).append(
+                            f"【知府拨粮】{governor_name}上书告急，府库划拨{round(grant)}斤粮以解燃眉之急"
+                        )
+
+            # ── 从邻县借粮 ──
+            if county.pop('_ai_borrow_neighbor_grain', False):
+                EmergencyService.ensure_state(county)
+                emergency = county.get('emergency', {})
+                baseline = float(emergency.get('baseline_monthly_consumption', 0.0))
+                reserve = float(county.get('peasant_grain_reserve', 0.0))
+                shortage = max(0.0, baseline - reserve)
+
+                if shortage > 50:
+                    for donor_unit in subordinates:
+                        if donor_unit.id == unit.id:
+                            continue
+                        donor = donor_unit.unit_data
+                        EmergencyService.ensure_state(donor)
+                        d_baseline = float(donor.get('emergency', {}).get('baseline_monthly_consumption', 0.0))
+                        d_reserve = float(donor.get('peasant_grain_reserve', 0.0))
+                        # 贷方保留自身1.5个月消耗量后的余粮
+                        d_available = max(0.0, d_reserve - d_baseline * 1.5)
+                        if d_available < 100:
+                            continue
+
+                        borrow = round(min(shortage * 1.2, d_available * 0.6), 1)
+                        if borrow < 50:
+                            continue
+
+                        county['peasant_grain_reserve'] = round(reserve + borrow, 1)
+                        donor['peasant_grain_reserve'] = round(d_reserve - borrow, 1)
+                        shortage = max(0.0, baseline - county['peasant_grain_reserve'])
+                        reserve = county['peasant_grain_reserve']
+
+                        loan = {
+                            "lender_unit_id": donor_unit.id,
+                            "lender_name": donor.get('county_name', '邻县'),
+                            "principal_grain": borrow,
+                            "remaining_grain": borrow,
+                            "installment_grain": round(borrow / 24.0, 1),
+                            "term_months": 24,
+                            "months_paid": 0,
+                            "next_due_season": season + 1,
+                            "overdue_months": 0,
+                            "status": "ACTIVE",
+                        }
+                        county['emergency'].setdefault('neighbor_loans', []).append(loan)
+
+                        county_name = county.get('county_name', '本县')
+                        donor_name = donor.get('county_name', '邻县')
+                        logger.info(
+                            "AI county %s borrowed %.0f jin from %s",
+                            county_name, borrow, donor_name,
+                        )
+                        county.setdefault('_emergency_events', []).append(
+                            f"【邻县借粮】{county_name}向{donor_name}借得{round(borrow)}斤粮，约定24期归还"
+                        )
+
+                        if shortage <= 0:
+                            break
 
     @classmethod
     def invalidate_precompute(cls, game) -> None:
