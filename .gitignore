@@ -8,3 +8,6 @@ __pycache__/
 # 系统文件（跨平台避免冲突）
 .DS_Store
 Thumbs.db
+# 生产环境生成文件（不入库）
+backend/staticfiles/
+logs/

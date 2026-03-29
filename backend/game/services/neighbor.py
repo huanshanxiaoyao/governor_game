@@ -275,9 +275,15 @@ class NeighborService:
                 executor.submit(cls._compute_single_decision, n, season): n
                 for n in neighbors
             }
-            for future in as_completed(futures):
-                nid, events = future.result()
-                decision_results[nid] = events
+            try:
+                for future in as_completed(futures, timeout=90):
+                    nid, events = future.result()
+                    decision_results[nid] = events
+            except FuturesTimeoutError:
+                logger.warning("LLM决策超时，部分邻县将使用空决策")
+                for future, neighbor in futures.items():
+                    if neighbor.id not in decision_results:
+                        decision_results[neighbor.id] = []
         return decision_results
 
     @classmethod
@@ -370,8 +376,11 @@ class NeighborService:
                 ): n
                 for n in neighbors
             }
-            for future in as_completed(futures):
-                all_logs.extend(future.result())
+            try:
+                for future in as_completed(futures, timeout=60):
+                    all_logs.extend(future.result())
+            except FuturesTimeoutError:
+                logger.warning("邻县结算超时，部分邻县本月跳过结算")
 
         if all_logs:
             NeighborEventLog.objects.bulk_create(all_logs)

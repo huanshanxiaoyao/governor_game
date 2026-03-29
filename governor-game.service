@@ -1,0 +1,24 @@
+[Unit]
+Description=Governor Game (知县模拟器) Gunicorn
+After=network.target
+
+[Service]
+User=jack
+Group=jack
+WorkingDirectory=/home/jack/workspace/governor_game/governor_game/backend
+Environment="DJANGO_SETTINGS_MODULE=config.settings"
+Environment="POSTGRES_HOST=localhost"
+Environment="REDIS_URL=redis://localhost:6379/0"
+Environment="FORCE_SCRIPT_NAME=/g1"
+ExecStart=/home/jack/.local/bin/gunicorn \
+    --workers 3 \
+    --timeout 120 \
+    --bind 127.0.0.1:8001 \
+    --access-logfile /home/jack/workspace/governor_game/governor_game/logs/access.log \
+    --error-logfile /home/jack/workspace/governor_game/governor_game/logs/error.log \
+    config.wsgi:application
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

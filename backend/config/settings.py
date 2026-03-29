@@ -114,6 +114,13 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Reverse proxy: when deployed behind Nginx that strips a path prefix (e.g. /g1),
+# set FORCE_SCRIPT_NAME=/g1 via env so Django generates correct URLs (admin, static, etc.).
+# Leave unset for local Docker dev (app runs at /).
+_script_name = os.getenv('FORCE_SCRIPT_NAME', '')
+if _script_name:
+    FORCE_SCRIPT_NAME = _script_name
+
 # AI Negotiation — set True to enable LLM-driven negotiation for neighbor counties
 # (adds ~2 LLM calls per annexation/hidden-land event; keep False when many AI counties run)
 AI_NEGOTIATION_ENABLED = os.getenv('AI_NEGOTIATION_ENABLED', '').lower() in ('true', '1', 'yes')
