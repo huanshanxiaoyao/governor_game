@@ -14,6 +14,7 @@ from .ledger import (
     sync_county_gentry_land_ratio,
     sync_legacy_from_ledgers,
 )
+from .settlement_metrics import MetricsMixin
 from .state import load_county_state, save_player_state
 
 from llm.client import LLMClient
@@ -791,7 +792,7 @@ class NegotiationService:
 
                     peasant['farmland'] = max(0, peasant_land_before - annexed_land)
                     gentry['registered_farmland'] = gentry_land_before + annexed_land
-                    v['morale'] = max(0, v['morale'] - 8)
+                    v['morale'] = max(0.0, min(100.0, float(v.get('morale', 50.0)) - 8))
                     # 隐匿户口 (doc 06a §3.2): 按兼并自耕地比例从村民账本转入地主隐匿人口
                     peasant_pop_before = max(0, int(peasant.get('registered_population', v.get('population', 0))))
                     transfer_ratio = annexed_land / max(peasant_land_before, 1)
@@ -814,6 +815,8 @@ class NegotiationService:
                 break
 
         sync_county_gentry_land_ratio(county)
+        # Model A：村级民心已变更，立即同步县级聚合值
+        MetricsMixin._sync_county_from_villages(county, 'morale')
         save_player_state(game, county)
 
         # 威名效果：玩家赢（停止兼并）时，地主有概率向知府投诉
@@ -858,6 +861,8 @@ class NegotiationService:
 
                 if decision == 'declare_all':
                     discovered = hidden
+                    # 地主主动上报，百姓略感官府有所作为：目标村民心+1
+                    v['morale'] = max(0.0, min(100.0, float(v.get('morale', 50.0)) + 1))
                     # Gentry affinity -3 (reluctant compliance)
                     attrs = agent.attributes
                     attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - 3)
@@ -876,6 +881,8 @@ class NegotiationService:
                     ratio = 0.5 + quality * 0.4 + random.uniform(-0.03, 0.03)
                     ratio = max(0.5, min(0.9, ratio))
                     discovered = int(hidden * ratio)
+                    # 强制清丈，百姓见官府为民做主：目标村民心+3
+                    v['morale'] = max(0.0, min(100.0, float(v.get('morale', 50.0)) + 3))
                     # Gentry affinity drops sharply on forced measurement
                     attrs = agent.attributes
                     attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - 20)
@@ -889,6 +896,8 @@ class NegotiationService:
                 break
 
         sync_county_gentry_land_ratio(county)
+        # Model A：村级民心已变更，立即同步县级聚合值
+        MetricsMixin._sync_county_from_villages(county, 'morale')
         save_player_state(game, county)
 
         # 威名效果：强制清丈成功 → 威名+1；地主有概率向知府投诉
