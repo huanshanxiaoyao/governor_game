@@ -382,7 +382,7 @@ PromptRegistry.register(
         '\n'
         '【输出格式】必须以JSON回复：\n'
         '{{"analysis": "当前局势简析（1-2句，古风口吻）",'
-        ' "reasoning": "内部决策思考（不对外展示）",'
+        ' "reasoning": "决策逻辑（限150字，不对外展示）",'
         ' "decisions": {{'
         '"investments": [{{"action": "投资类型", "target_village": "村名或null"}}, ...],'
         '"tax_rate": 农业税率小数如0.12,'
