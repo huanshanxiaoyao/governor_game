@@ -117,7 +117,6 @@ def _judicial_error_response(exc):
     if isinstance(exc, (OperationalError, ProgrammingError)):
         message = "司法系统数据库未初始化，请先执行迁移。"
     return Response({"error": message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    return None
 
 
 def _ensure_staff(request):
@@ -591,7 +590,7 @@ class NPCDebugPageView(APIView):
             except (TypeError, ValueError):
                 selected_game = None
         if selected_game is None and games:
-            selected_game = next((game for game in games if game.id == 120), None) or games[0]
+            selected_game = games[0]
 
         game_options = [{"id": str(game.id), "label": _debug_game_label(game)} for game in games]
 

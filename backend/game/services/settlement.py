@@ -195,8 +195,7 @@ class SettlementService(
             promise_events = PromiseService.check_promises(game)
             report['events'].extend(promise_events)
         except Exception as e:
-            import logging
-            logging.getLogger('game').warning("Promise check failed (non-fatal): %s", e)
+            logger.warning("Promise check failed (non-fatal): %s", e)
 
         # Annual review month-boundary hooks
         next_season = month + 1

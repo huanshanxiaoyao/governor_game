@@ -2,6 +2,8 @@
 
 import copy
 
+from django.db import transaction
+
 
 def load_player_state(game, refresh=False):
     """Load current player state from the canonical source as a deep copy."""
@@ -26,22 +28,23 @@ def save_player_state(game, state, mirror_legacy=True):
     """Persist current player state using full-dict replacement."""
     payload = copy.deepcopy(state or {})
 
-    if game.player_unit_id:
-        player_unit = game.player_unit
-        player_unit.unit_data = payload
-        player_unit.save(update_fields=["unit_data"])
+    with transaction.atomic():
+        if game.player_unit_id:
+            player_unit = game.player_unit
+            player_unit.unit_data = payload
+            player_unit.save(update_fields=["unit_data"])
 
-        if mirror_legacy and player_unit.unit_type == "COUNTY":
-            game.county_data = payload
-            game.save(update_fields=["county_data", "updated_at"])
+            if mirror_legacy and player_unit.unit_type == "COUNTY":
+                game.county_data = payload
+                game.save(update_fields=["county_data", "updated_at"])
+                return payload
+
+            game.save(update_fields=["updated_at"])
             return payload
 
-        game.save(update_fields=["updated_at"])
+        game.county_data = payload
+        game.save(update_fields=["county_data", "updated_at"])
         return payload
-
-    game.county_data = payload
-    game.save(update_fields=["county_data", "updated_at"])
-    return payload
 
 
 def mutate_player_state(game, mutator, mirror_legacy=True):
