@@ -562,6 +562,8 @@ class JudicialCaseInstance(models.Model):
         ('PENDING_MAGISTRATE_ROUND_2', '待知县二审'),
         ('SUBMITTED_TO_PREFECT', '已上呈知府'),
         ('DEFERRED_TO_PREFECT', '委托知府裁定'),
+        ('PREFECT_REVIEWING', '知府复审中'),
+        ('PREFECT_REVIEWED', '知府已决待投递'),
         ('PREFECT_DECIDED', '知府已裁定'),
         ('WITHDRAWN_THIS_QUARTER', '本季度暂缓'),
     ]
@@ -588,6 +590,7 @@ class JudicialCaseInstance(models.Model):
     submitted_to_prefect = models.BooleanField(default=False)
     submitted_season = models.IntegerField(null=True, blank=True)
     prefect_decision = models.JSONField(default=dict, blank=True)
+    prefect_review_queued_at = models.DateTimeField(null=True, blank=True)
     debug_meta = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -649,7 +652,8 @@ class ProposedPolicy(models.Model):
         related_name='synced_copies',
         help_text='邻县同步时指向原始申请记录，本县原始申请此字段为 null',
     )
-    is_executed  = models.BooleanField(default=False, help_text='本县是否已执行过此选项')
+    is_executed         = models.BooleanField(default=False, help_text='本县是否已执行过此选项')
+    notification_pending = models.BooleanField(default=False, help_text='审批完成但通知尚未写入county_data')
 
     # ── 分级施政系统 (Phase 1) ──
     class CodeStatus(models.TextChoices):

@@ -9,6 +9,7 @@ import os
 import random
 import threading
 import time
+from datetime import timedelta
 from typing import Dict, List, Optional, Sequence
 
 from django.conf import settings
@@ -1052,7 +1053,9 @@ class JudicialCaseflowService:
 
     @classmethod
     def auto_review_county_by_prefect(cls, game, prefect_agent, season: int, county: dict, report: dict) -> None:
-        """AI知府复审玩家知县已上呈/委托的案件（知县游戏路径，每季末调用）。"""
+        """将待审案件标记为 PREFECT_REVIEWING，后台线程异步 LLM 决策。
+        结果由 deliver_pending_prefect_reviews() 在后续推进时投递。
+        """
         if not game.player_unit_id:
             return
         cases = JudicialCaseInstance.objects.filter(
@@ -1063,22 +1066,65 @@ class JudicialCaseflowService:
         ).order_by('id')
         if not cases.exists():
             return
-        prefect_attrs = prefect_agent.attributes
+
+        ids = []
+        now = timezone.now()
         for instance in cases:
-            cls._prefect_review_single_case(instance, prefect_agent, prefect_attrs, county, report, season)
+            dm = dict(instance.debug_meta or {})
+            dm['prefect_review_original_status'] = instance.status
+            instance.debug_meta = dm
+            instance.prefect_review_queued_at = now
+            instance.status = 'PREFECT_REVIEWING'
+            instance.save(update_fields=['status', 'debug_meta', 'prefect_review_queued_at', 'updated_at'])
+            ids.append(instance.id)
+
+        threading.Thread(
+            target=cls._background_review_cases,
+            args=(game.id, prefect_agent.id, ids),
+            daemon=True,
+        ).start()
+        logger.info("[知府司法] 已将 %d 件案件加入后台复审队列 season=%d", len(ids), season)
 
     @classmethod
-    def _prefect_review_single_case(
-        cls, instance: JudicialCaseInstance, prefect_agent, prefect_attrs: dict,
-        county: dict, report: dict, season: int
+    def _background_review_cases(cls, game_id: int, prefect_agent_id: int, case_ids: list) -> None:
+        """后台线程：逐案调用 LLM/规则引擎，存储结果，标记 PREFECT_REVIEWED。"""
+        try:
+            from ..models import Agent, GameState
+            game = GameState.objects.select_related('player_unit').get(id=game_id)
+            prefect_agent = Agent.objects.get(id=prefect_agent_id)
+        except Exception as exc:
+            logger.warning("[知府司法后台] 加载数据失败 game=%s: %s", game_id, exc)
+            return
+
+        for case_id in case_ids:
+            try:
+                instance = JudicialCaseInstance.objects.get(id=case_id, status='PREFECT_REVIEWING')
+            except JudicialCaseInstance.DoesNotExist:
+                continue
+            try:
+                cls._compute_prefect_decision(game, prefect_agent, instance)
+            except Exception as exc:
+                logger.warning("[知府司法后台] 案件 %s 处理失败，尝试规则兜底: %s", case_id, exc)
+                try:
+                    cls._compute_prefect_decision(game, prefect_agent, instance, force_fallback=True)
+                except Exception as exc2:
+                    logger.error("[知府司法后台] 案件 %s 兜底也失败: %s", case_id, exc2)
+
+    @classmethod
+    def _compute_prefect_decision(
+        cls, game, prefect_agent, instance: JudicialCaseInstance, force_fallback: bool = False
     ) -> None:
-        """知府复审单个案件：LLM优先，规则引擎兜底。写入 prefect_decision + 事件 + 好感变化。"""
+        """计算知府判决（LLM优先/规则兜底），存入 instance.prefect_decision，状态→PREFECT_REVIEWED。"""
+        from .state import load_county_state
+
+        prefect_attrs = prefect_agent.attributes
         payload = instance.local_payload or {}
         verdict_options = payload.get('verdict_options') or []
         case_name = payload.get('case_name', '未名案件')
-        is_deferred = instance.status == 'DEFERRED_TO_PREFECT'
+        is_deferred = instance.debug_meta.get('prefect_review_original_status') == 'DEFERRED_TO_PREFECT'
+        season = instance.prefect_review_season
 
-        # 取知县最终判决（最后一个 VERDICT 轮次）
+        # 取知县最终判决
         magistrate_verdict_code = None
         magistrate_verdict_label = ''
         for r in reversed(instance.magistrate_rounds or []):
@@ -1093,39 +1139,40 @@ class JudicialCaseflowService:
         if rule_verdict_code is None:
             return
 
-        # LLM决策（优先）
+        # LLM 或强制 fallback
         prefect_verdict_code = rule_verdict_code
         llm_letter = ''
-        try:
-            ctx = cls._build_prefect_review_context(
-                prefect_agent, prefect_attrs, county, season, payload,
-                verdict_options, factors, magistrate_verdict_code,
-                magistrate_verdict_label, is_deferred,
-            )
-            llm_result = cls._request_llm_prefect_decision(ctx, verdict_options)
-            if llm_result:
-                prefect_verdict_code = llm_result['verdict_code']
-                llm_letter = llm_result.get('letter', '')
-        except Exception as exc:
-            logger.warning("知府司法 LLM 失败，降级规则引擎（case %s）: %s", instance.id, exc)
+        if not force_fallback:
+            try:
+                county = load_county_state(game)
+                ctx = cls._build_prefect_review_context(
+                    prefect_agent, prefect_attrs, county, season, payload,
+                    verdict_options, factors, magistrate_verdict_code,
+                    magistrate_verdict_label, is_deferred,
+                )
+                llm_result = cls._request_llm_prefect_decision(ctx, verdict_options)
+                if llm_result:
+                    prefect_verdict_code = llm_result['verdict_code']
+                    llm_letter = llm_result.get('letter', '')
+            except Exception as exc:
+                logger.warning("[知府司法后台] 案件 %s LLM失败，降级规则引擎: %s", instance.id, exc)
 
-        selected_option = next((o for o in verdict_options if o.get('verdict_code') == prefect_verdict_code), {})
+        selected_option = next(
+            (o for o in verdict_options if o.get('verdict_code') == prefect_verdict_code), {}
+        )
         prefect_verdict_label = selected_option.get('verdict_label', prefect_verdict_code)
 
-        # 判断结果：维持/改判/上裁，计算好感变动
+        # 确定结果类型和好感变动
         if is_deferred:
             overturned = False
             affinity_delta = 0
             tag = '【知府裁定】'
             fallback_body = f'知县呈请上裁，依卷宗裁定：{prefect_verdict_label}'
-            note_text = f'《{case_name}》委托上裁，知府裁定：{prefect_verdict_label}'
-            cls._apply_verdict_effects_to_county_dict(county, selected_option)
         elif magistrate_verdict_code == prefect_verdict_code:
             overturned = False
             affinity_delta = 1
             tag = '【知府复审·维持原判】'
             fallback_body = f'{prefect_verdict_label}，判决合理，知府表示认可'
-            note_text = f'《{case_name}》维持原判（{prefect_verdict_label}），判决得当'
         else:
             overturned = True
             public_harm = factors.get('public_harm', 0.22)
@@ -1135,45 +1182,124 @@ class JudicialCaseflowService:
                 f'原判"{magistrate_verdict_label}"，改判为"{prefect_verdict_label}"，'
                 f'认为原判有失妥当'
             )
-            note_text = (
-                f'《{case_name}》改判：{magistrate_verdict_label}→{prefect_verdict_label}，'
-                f'好感{affinity_delta:+d}'
-            )
-            cls._apply_verdict_effects_to_county_dict(county, selected_option)
 
-        # 月报事件：优先使用 LLM 批文，否则用兜底文案
-        letter_body = llm_letter if llm_letter else fallback_body
-        event_text = f'{tag}《{case_name}》：{letter_body}'
-
-        # 更新知府好感
-        old_affinity = prefect_attrs.get('player_affinity', 50)
-        prefect_attrs['player_affinity'] = max(-99, min(99, old_affinity + affinity_delta))
-        county['prefect_affinity'] = prefect_attrs['player_affinity']
-
-        # 写入评价笔记
-        from .constants import month_name, month_of_year
-        notes = prefect_attrs.get('evaluation_notes', [])
-        notes.append(f'[{month_name(month_of_year(season))}] {note_text}')
-        if len(notes) > 12:
-            notes = notes[-12:]
-        prefect_attrs['evaluation_notes'] = notes
-
-        # 保存 Agent + 案件
-        prefect_agent.attributes = prefect_attrs
-        prefect_agent.save(update_fields=['attributes'])
         instance.prefect_decision = {
             'verdict_code': prefect_verdict_code,
             'verdict_label': prefect_verdict_label,
             'overturned': overturned,
             'affinity_delta': affinity_delta,
             'letter': llm_letter,
-            'season': season,
+            'queue_season': season,
             'is_deferred': is_deferred,
+            'case_name': case_name,
+            'magistrate_verdict_code': magistrate_verdict_code,
+            'magistrate_verdict_label': magistrate_verdict_label or '',
+            'tag': tag,
+            'fallback_body': fallback_body,
+            'selected_option': selected_option,
         }
-        instance.status = 'PREFECT_DECIDED'
+        instance.status = 'PREFECT_REVIEWED'
         instance.save(update_fields=['prefect_decision', 'status', 'updated_at'])
+        logger.info("[知府司法后台] 案件 %s 计算完成: %s (%s)", instance.id, prefect_verdict_code, tag)
 
-        # 写入月报事件
+    @classmethod
+    def deliver_pending_prefect_reviews(cls, game, county: dict, report: dict) -> None:
+        """在 advance_season 开头调用：投递已完成的知府复审结果，并处理超时兜底。"""
+        if not game.player_unit_id:
+            return
+
+        from ..models import Agent
+        prefect = Agent.objects.filter(game=game, role='PREFECT').first()
+        if prefect is None:
+            return
+
+        delivery_season = game.current_season
+
+        # 超时兜底：PREFECT_REVIEWING 超过5分钟 → 规则引擎强制完成
+        _TIMEOUT_MINUTES = 5
+        timeout_threshold = timezone.now() - timedelta(minutes=_TIMEOUT_MINUTES)
+        for instance in JudicialCaseInstance.objects.filter(
+            game=game,
+            county_unit=game.player_unit,
+            status='PREFECT_REVIEWING',
+            prefect_review_queued_at__lt=timeout_threshold,
+        ):
+            try:
+                cls._compute_prefect_decision(game, prefect, instance, force_fallback=True)
+                logger.warning("[知府司法] 案件 %s 超时，已使用规则引擎兜底完成", instance.id)
+            except Exception as exc:
+                logger.error("[知府司法] 案件 %s 超时兜底失败: %s", instance.id, exc)
+
+        # 投递已完成的复审
+        ready_cases = JudicialCaseInstance.objects.filter(
+            game=game,
+            county_unit=game.player_unit,
+            status='PREFECT_REVIEWED',
+        ).order_by('id')
+        for instance in ready_cases:
+            try:
+                cls._deliver_single_prefect_review(game, prefect, county, report, instance, delivery_season)
+            except Exception as exc:
+                logger.warning("[知府司法] 案件 %s 投递失败: %s", instance.id, exc)
+
+    @classmethod
+    def _deliver_single_prefect_review(
+        cls, game, prefect_agent, county: dict, report: dict,
+        instance: JudicialCaseInstance, delivery_season: int,
+    ) -> None:
+        """将已计算好的知府复审结果应用到游戏状态并写入事件。"""
+        from ..models import EventLog
+        from .constants import month_name, month_of_year
+
+        d = instance.prefect_decision or {}
+        prefect_verdict_code = d.get('verdict_code', '')
+        prefect_verdict_label = d.get('verdict_label', prefect_verdict_code)
+        overturned = d.get('overturned', False)
+        affinity_delta = int(d.get('affinity_delta', 0))
+        llm_letter = d.get('letter', '')
+        is_deferred = d.get('is_deferred', False)
+        case_name = d.get('case_name', '未名案件')
+        magistrate_verdict_code = d.get('magistrate_verdict_code')
+        magistrate_verdict_label = d.get('magistrate_verdict_label', '')
+        tag = d.get('tag', '【知府复审】')
+        fallback_body = d.get('fallback_body', prefect_verdict_label)
+        selected_option = d.get('selected_option') or {}
+
+        letter_body = llm_letter if llm_letter else fallback_body
+        event_text = f'{tag}《{case_name}》：{letter_body}'
+
+        # 判决效果（改判或上裁时需写入县数据）
+        if overturned or is_deferred:
+            cls._apply_verdict_effects_to_county_dict(county, selected_option)
+
+        # 知府好感度 + 评价笔记
+        prefect_attrs = prefect_agent.attributes
+        old_affinity = prefect_attrs.get('player_affinity', 50)
+        prefect_attrs['player_affinity'] = max(-99, min(99, old_affinity + affinity_delta))
+        county['prefect_affinity'] = prefect_attrs['player_affinity']
+
+        if is_deferred:
+            note_text = f'《{case_name}》委托上裁，知府裁定：{prefect_verdict_label}'
+        elif not overturned:
+            note_text = f'《{case_name}》维持原判（{prefect_verdict_label}），判决得当'
+        else:
+            note_text = (
+                f'《{case_name}》改判：{magistrate_verdict_label}→{prefect_verdict_label}，'
+                f'好感{affinity_delta:+d}'
+            )
+        notes = prefect_attrs.get('evaluation_notes', [])
+        notes.append(f'[{month_name(month_of_year(delivery_season))}] {note_text}')
+        if len(notes) > 12:
+            notes = notes[-12:]
+        prefect_attrs['evaluation_notes'] = notes
+        prefect_agent.attributes = prefect_attrs
+        prefect_agent.save(update_fields=['attributes'])
+
+        # 更新案件状态
+        instance.status = 'PREFECT_DECIDED'
+        instance.save(update_fields=['status', 'updated_at'])
+
+        # 月报事件
         report['events'].append(event_text)
         if overturned:
             report.setdefault('prefect_judicial_overturn', []).append({
@@ -1186,11 +1312,10 @@ class JudicialCaseflowService:
                 'letter': llm_letter,
             })
 
-        # 写入府志
-        from ..models import EventLog
+        # 府志
         EventLog.objects.create(
             game=instance.game,
-            season=season,
+            season=delivery_season,
             event_type='prefect_judicial_review',
             category='PREFECT',
             description=f'{tag}{case_name}：{letter_body[:60]}',
@@ -1201,11 +1326,12 @@ class JudicialCaseflowService:
                 'prefect_verdict': prefect_verdict_code,
             },
         )
+
         if not is_deferred:
             cls._settle_player_competence_after_prefect_review(
                 instance.game,
                 instance,
-                season=season,
+                season=delivery_season,
                 overturned=overturned,
                 prefect_verdict_code=prefect_verdict_code,
             )

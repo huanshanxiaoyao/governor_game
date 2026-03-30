@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,9 @@ class PolicyReviewService:
         return unsupported
 
     @classmethod
-    def review_pending_proposals(cls, game, county):
-        """审核并更新 PENDING 记录，将批复通知写入 county_data。
-        结算失败时静默返回，不阻断结算流程。
+    def review_pending_proposals_async(cls, game, county):
+        """将 PENDING 提案标记为审核中，后台线程异步 LLM 决策。
+        结果由 deliver_pending_notifications() 在下次推进时写入 county_data。
         """
         from ..models import ProposedPolicy
         pending = list(ProposedPolicy.objects.filter(
@@ -44,84 +45,118 @@ class PolicyReviewService:
         if not pending:
             return
 
-        # 历史拒绝记录（供 LLM 判断相似度）
-        rejected = list(ProposedPolicy.objects.filter(
-            game=game, status=ProposedPolicy.Status.REJECTED,
-        ).order_by('-reviewed_at')[:20])
+        threading.Thread(
+            target=cls._background_review,
+            args=(game.id, [p.id for p in pending]),
+            daemon=True,
+        ).start()
+        logger.info("[自创施政] 已将 %d 件提案加入后台审核队列 game=%s", len(pending), game.id)
 
+    @classmethod
+    def _background_review(cls, game_id: int, proposal_ids: list) -> None:
+        """后台线程：LLM 审批，保存结果，标记 notification_pending=True。"""
         try:
-            results = cls._call_llm(game, county, pending, rejected)
-        except Exception as e:
-            logger.warning('policy_review: LLM call failed, proposals kept PENDING: %s', e)
-            return
+            from ..models import GameState, ProposedPolicy
+            game = GameState.objects.select_related('player_unit').get(id=game_id)
+            pending = list(ProposedPolicy.objects.filter(id__in=proposal_ids))
+            if not pending:
+                return
 
-        notifications = []
-        from django.utils import timezone
-        now = timezone.now()
+            county = cls._load_county_snapshot(game)
+            rejected = list(ProposedPolicy.objects.filter(
+                game=game, status=ProposedPolicy.Status.REJECTED,
+            ).order_by('-reviewed_at')[:20])
 
-        for decision in results:
-            proposal_id = decision.get('proposal_id')
-            proposal = next((p for p in pending if p.id == proposal_id), None)
-            if proposal is None:
-                continue
+            try:
+                results = cls._call_llm(game, county, pending, rejected)
+            except Exception as e:
+                logger.warning('[自创施政后台] LLM 失败，提案保持 PENDING: %s', e)
+                return
 
-            if decision.get('approved'):
-                proposal.status       = ProposedPolicy.Status.APPROVED
-                proposal.policy_name  = decision.get('policy_name', proposal.policy_name)
-                proposal.action_key   = decision.get('action_key', f'custom_{proposal.id}')
-                proposal.cost         = decision.get('cost')
-                proposal.delay_months = decision.get('delay_months', 0)
-                proposal.effects_data = decision.get('effects_data', {})
-                proposal.rationale    = decision.get('rationale', '')
-                proposal.reviewed_at  = now
-                # 自动分级
-                unsupported = cls._analyze_effects(proposal.effects_data)
-                proposal.unsupported_effects = unsupported
-                if unsupported:
-                    proposal.tier        = 2
-                    proposal.code_status = ProposedPolicy.CodeStatus.PENDING_DEV
+            from django.utils import timezone
+            now = timezone.now()
+            for decision in results:
+                proposal = next((p for p in pending if p.id == decision.get('proposal_id')), None)
+                if proposal is None:
+                    continue
+                if decision.get('approved'):
+                    proposal.status       = ProposedPolicy.Status.APPROVED
+                    proposal.policy_name  = decision.get('policy_name', proposal.policy_name)
+                    proposal.action_key   = decision.get('action_key', f'custom_{proposal.id}')
+                    proposal.cost         = decision.get('cost')
+                    proposal.delay_months = decision.get('delay_months', 0)
+                    proposal.effects_data = decision.get('effects_data', {})
+                    proposal.rationale    = decision.get('rationale', '')
+                    proposal.reviewed_at  = now
+                    unsupported = cls._analyze_effects(proposal.effects_data)
+                    proposal.unsupported_effects = unsupported
+                    proposal.tier        = 2 if unsupported else 1
+                    proposal.code_status = ProposedPolicy.CodeStatus.PENDING_DEV if unsupported else None
                 else:
-                    proposal.tier        = 1
-                    proposal.code_status = None
-                notifications.append({
-                    'proposal_id':        proposal.id,
-                    'policy_name':        proposal.policy_name,
-                    'approved':           True,
-                    'rationale':          proposal.rationale,
-                    'cost':               proposal.cost,
-                    'delay_months':       proposal.delay_months,
-                    'effects_data':       proposal.effects_data,
-                    'action_key':         proposal.action_key,
-                    'tier':               proposal.tier,
-                    'code_status':        proposal.code_status,
-                    'unsupported_effects': proposal.unsupported_effects,
-                })
-            else:
-                proposal.status           = ProposedPolicy.Status.REJECTED
-                proposal.rejection_reason = decision.get('rationale', '')
-                proposal.rationale        = decision.get('rationale', '')
-                proposal.reviewed_at      = now
-                proposal.rejected_at      = now
-                notifications.append({
-                    'proposal_id':  proposal.id,
-                    'policy_name':  proposal.policy_name,
-                    'approved':     False,
-                    'rationale':    proposal.rejection_reason,
-                })
+                    proposal.status           = ProposedPolicy.Status.REJECTED
+                    proposal.rejection_reason = decision.get('rationale', '')
+                    proposal.rationale        = decision.get('rationale', '')
+                    proposal.reviewed_at      = now
+                    proposal.rejected_at      = now
+                proposal.notification_pending = True
 
-        # 批量保存
-        if pending:
             ProposedPolicy.objects.bulk_update(
                 pending,
                 ['status', 'policy_name', 'action_key', 'cost', 'delay_months',
                  'effects_data', 'rationale', 'rejection_reason', 'reviewed_at', 'rejected_at',
-                 'tier', 'code_status', 'unsupported_effects'],
+                 'tier', 'code_status', 'unsupported_effects', 'notification_pending'],
             )
+            logger.info('[自创施政后台] 审批完成 game=%s: %d件', game_id, len(pending))
 
-        # 写入 county_data，前端下次打开面板时读取
-        if notifications:
-            county.setdefault('pending_policy_notifications', [])
-            county['pending_policy_notifications'].extend(notifications)
+        except Exception as e:
+            logger.warning('[自创施政后台] 意外错误 game=%s: %s', game_id, e)
+
+    @classmethod
+    def deliver_pending_notifications(cls, game, county) -> None:
+        """在 advance_season 开头调用：将后台已审批的结果写入 county_data 通知队列。"""
+        from ..models import ProposedPolicy
+        ready = list(ProposedPolicy.objects.filter(
+            game=game, notification_pending=True,
+        ))
+        if not ready:
+            return
+
+        notifications = []
+        for proposal in ready:
+            if proposal.status == ProposedPolicy.Status.APPROVED:
+                notifications.append({
+                    'proposal_id':         proposal.id,
+                    'policy_name':         proposal.policy_name,
+                    'approved':            True,
+                    'rationale':           proposal.rationale,
+                    'cost':                proposal.cost,
+                    'delay_months':        proposal.delay_months,
+                    'effects_data':        proposal.effects_data,
+                    'action_key':          proposal.action_key,
+                    'tier':                proposal.tier,
+                    'code_status':         proposal.code_status,
+                    'unsupported_effects': proposal.unsupported_effects,
+                })
+            else:
+                notifications.append({
+                    'proposal_id': proposal.id,
+                    'policy_name': proposal.policy_name,
+                    'approved':    False,
+                    'rationale':   proposal.rejection_reason,
+                })
+            proposal.notification_pending = False
+
+        ProposedPolicy.objects.bulk_update(ready, ['notification_pending'])
+
+        county.setdefault('pending_policy_notifications', [])
+        county['pending_policy_notifications'].extend(notifications)
+        logger.info('[自创施政] 投递 %d 条审批通知 game=%s', len(notifications), game.id)
+
+    @staticmethod
+    def _load_county_snapshot(game) -> dict:
+        """后台线程中加载当前 county 状态（只需模糊字段）。"""
+        from .state import load_county_state
+        return load_county_state(game)
 
     @classmethod
     def _call_llm(cls, game, county, pending, rejected):
