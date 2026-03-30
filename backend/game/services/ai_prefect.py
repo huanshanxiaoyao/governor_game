@@ -6,6 +6,7 @@
 """
 
 import logging
+import time
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
@@ -48,6 +49,7 @@ class PrefectAIService:
     def run_monthly_turn(cls, game, county: dict, month: int, report: dict):
         """月度结算后由 settlement.advance_season 调用。"""
         from ..models import Agent
+        t_total = time.time()
         prefect = Agent.objects.filter(game=game, role='PREFECT').first()
         if prefect is None:
             return
@@ -57,28 +59,45 @@ class PrefectAIService:
         # 腊月：仅做司法复审，年度考核由 AnnualReviewService 处理
         if moy == 12:
             try:
+                t0 = time.time()
                 cls._run_judicial_review(game, prefect, county, month, report)
+                logger.info("[知府AI][腊月司法复审] %.2fs", time.time() - t0)
             except Exception as e:
                 logger.warning("知府司法复审失败（腊月）: %s", e)
+            logger.info("[知府AI][run_monthly_turn 总耗时] month=%d %.2fs", month, time.time() - t_total)
             return
 
+        t0 = time.time()
         context = cls._build_monthly_context(prefect, county, month)
+        logger.info("[知府AI][build_monthly_context] %.2fs", time.time() - t0)
+
+        t0 = time.time()
         decision = cls._try_llm_decision(context)
+        llm_used = decision is not None
         if decision is None:
             decision = cls._fallback_decision(prefect, county, moy)
+        logger.info("[知府AI][LLM决策%s] %.2fs", "成功" if llm_used else "降级fallback", time.time() - t0)
 
+        t0 = time.time()
         cls._apply_decision(prefect, county, month, decision, report, game)
+        logger.info("[知府AI][apply_decision] %.2fs", time.time() - t0)
 
         # 季末：季度记忆快照 + 司法复审
         if moy in {3, 6, 9}:
             try:
+                t0 = time.time()
                 cls._append_quarterly_memory(prefect, county, month)
+                logger.info("[知府AI][季度记忆快照] %.2fs", time.time() - t0)
             except Exception as e:
                 logger.warning("知府季度记忆快照失败: %s", e)
             try:
+                t0 = time.time()
                 cls._run_judicial_review(game, prefect, county, month, report)
+                logger.info("[知府AI][司法复审] %.2fs", time.time() - t0)
             except Exception as e:
                 logger.warning("知府司法复审失败: %s", e)
+
+        logger.info("[知府AI][run_monthly_turn 总耗时] month=%d %.2fs", month, time.time() - t_total)
 
     # ------------------------------------------------------------------
     # 2. 上下文构建
@@ -282,8 +301,8 @@ class PrefectAIService:
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt},
             ]
-            client = LLMClient()
-            result = client.chat_json(messages, temperature=0.7, max_tokens=512)
+            client = LLMClient(timeout=10, max_retries=1)
+            result = client.chat_json(messages, temperature=0.7, max_tokens=400)
 
             if not isinstance(result, dict):
                 return None
