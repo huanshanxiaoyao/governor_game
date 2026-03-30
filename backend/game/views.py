@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 from pathlib import Path
 
 logger = logging.getLogger('game')
@@ -846,19 +848,28 @@ class AdvanceSeasonView(APIView):
             )
 
         season = game.current_season
+        t_view = time.time()
         report = SettlementService.advance_season(game)
 
-        # 书信月度处理（投递 + 软deadline + NPC回复生成）
-        try:
-            LetterService.run_month_advance(game, season)
-        except Exception:
-            logger.warning("书信月度处理失败（非致命）", exc_info=True)
+        # 书信月度处理（投递 + 软deadline + NPC回复生成）—— fire-and-forget
+        _game_id = game.id
+        _season = season
+        def _letter_advance():
+            try:
+                LetterService.run_month_advance(game, _season)
+            except Exception:
+                logger.warning("书信月度处理失败（非致命）game=%s", _game_id, exc_info=True)
+        t = threading.Thread(target=_letter_advance, daemon=True)
+        t.start()
 
         # Advance neighbor counties (LLM decisions + settlement)
+        t0 = time.time()
         try:
             NeighborService.advance_all(game, season)
         except Exception:
             logger.warning("Neighbor advance failed (non-fatal)", exc_info=True)
+        logger.info("[推进 month=%d][邻县推进] %.2fs", season, time.time() - t0)
+        logger.info("[推进 month=%d][视图总耗时] %.2fs", season, time.time() - t_view)
 
         return Response(report)
 

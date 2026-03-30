@@ -211,18 +211,21 @@ class NeighborService:
             return
 
         # 检查DB预计算状态
-        precompute = NeighborPrecompute.objects.filter(
-            game=game, season=season, status='done',
-        ).first()
+        precompute = NeighborPrecompute.objects.filter(game=game, season=season).first()
 
-        if precompute:
-            logger.info("Using precomputed results for game %s season %s (%d neighbors)",
-                        game.id, season, len(precompute.results))
+        if precompute and precompute.status == 'done':
+            logger.info("[邻县预计算] 命中 game=%s season=%s (%d/%d 邻县)",
+                        game.id, season, len(precompute.results), len(neighbors))
             decision_results = cls._apply_cached_results(neighbors, precompute.results)
         else:
-            # 无预计算或仍在计算中 — 并行同步计算（~10s）
-            logger.info("No precompute ready for game %s season %s, computing in parallel",
-                        game.id, season)
+            # 诊断：区分"从未启动"和"仍在计算中"
+            if precompute is None:
+                reason = "从未启动预计算"
+            else:
+                partial = len(precompute.results or {})
+                reason = f"预计算仍在进行中(status={precompute.status}, 已完成{partial}/{len(neighbors)}邻县)"
+            logger.warning("[邻县预计算] 未命中 game=%s season=%s 原因：%s，转为实时计算",
+                           game.id, season, reason)
             decision_results = cls._compute_decisions_sync(neighbors, season)
 
         # 清除已消费的预计算记录

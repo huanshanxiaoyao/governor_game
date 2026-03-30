@@ -3,6 +3,7 @@
 import copy
 import logging
 import random
+import time
 
 logger = logging.getLogger('game')
 
@@ -151,6 +152,20 @@ class SettlementService(
         month = game.current_season
         report = {"season": month, "events": []}
         ensure_county_ledgers(county)
+        t_total = time.time()
+
+        # 投递已完成的异步结果（司法复审 + 自创施政审批）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .judicial_caseflow import JudicialCaseflowService
+                JudicialCaseflowService.deliver_pending_prefect_reviews(game, county, report)
+            except Exception as e:
+                logger.warning("知府司法投递失败（非致命）: %s", e)
+            try:
+                from .policy_review import PolicyReviewService
+                PolicyReviewService.deliver_pending_notifications(game, county)
+            except Exception as e:
+                logger.warning("自创施政通知投递失败（非致命）: %s", e)
 
         from .negotiation import NegotiationService
 
@@ -176,18 +191,22 @@ class SettlementService(
             neighbor_counties.append(peer)
 
         # Single physics engine
+        t0 = time.time()
         cls.settle_county(county, month, report, peer_counties=neighbor_counties, game=game)
+        logger.info("[推进 month=%d][settle_county] %.2fs", month, time.time() - t0)
 
         # Player-only post-settlement
         cls._process_land_surveys(county, report)
 
         # AI知府月度行动（知县游戏）
         if game.player_role == 'COUNTY_MAGISTRATE':
+            t0 = time.time()
             try:
                 from .ai_prefect import PrefectAIService
                 PrefectAIService.run_monthly_turn(game, county, month, report)
             except Exception as e:
                 logger.warning("知府月度行动失败（非致命）: %s", e)
+            logger.info("[推进 month=%d][知府行动] %.2fs", month, time.time() - t0)
 
         # Check promises
         from .promise import PromiseService
@@ -198,6 +217,7 @@ class SettlementService(
             logger.warning("Promise check failed (non-fatal): %s", e)
 
         # Annual review month-boundary hooks
+        t0 = time.time()
         next_season = month + 1
         transition = AnnualReviewService.handle_county_transition(
             game=game,
@@ -206,6 +226,7 @@ class SettlementService(
             next_season=next_season,
             report=report,
         )
+        logger.info("[推进 month=%d][年度过渡] %.2fs", month, time.time() - t0)
 
         # Advance month counter
         game.current_season = int(transition.get("next_season_override", next_season))
@@ -230,13 +251,15 @@ class SettlementService(
 
         cls.refresh_metric_report_lines(county, report)
 
-        # 审核待批自创施政申请（省布政使 LLM）
+        # 审核待批自创施政申请（省布政使 LLM，fire-and-forget）
         if game.player_role == 'COUNTY_MAGISTRATE':
+            t0 = time.time()
             try:
                 from .policy_review import PolicyReviewService
-                PolicyReviewService.review_pending_proposals(game, county)
+                PolicyReviewService.review_pending_proposals_async(game, county)
             except Exception as e:
                 logger.warning("自创施政审核失败（非致命）: %s", e)
+            logger.info("[推进 month=%d][自创施政审核(异步)] %.2fs", month, time.time() - t0)
 
             # 同步已批准选项至邻县
             try:
@@ -246,6 +269,7 @@ class SettlementService(
                 logger.warning("邻县施政同步失败（非致命）: %s", e)
 
         save_player_state(game, county)
+        logger.info("[推进 month=%d][总耗时 advance_season] %.2fs", month, time.time() - t_total)
         game.save(update_fields=["current_season", "updated_at"])
 
         # Log settlement summary
