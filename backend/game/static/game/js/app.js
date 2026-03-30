@@ -2457,6 +2457,8 @@
       .then(function (res) {
         // 弹出效果弹窗（附带判决名和落地效果）
         _showVerdictEffectsPopup(verdictLabel, res.applied_effects || {});
+        // 刷新游戏状态（县库、民心等即时效果需反映到头部显示）
+        api.getGame(g.id).then(function (data) { Game.setGame(data); });
         return loadCountyJudicial();
       })
       .catch(function (err) {
