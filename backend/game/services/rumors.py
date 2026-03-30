@@ -527,19 +527,30 @@ class RumorsService:
         if not villages:
             return []
 
+        infra_missing = penalty.get("infra_missing", [])
+        low_bailiff   = penalty.get("low_bailiff", False)
+
+        # 构造原因短语，用于嵌入流言正文
+        reason_parts = []
+        if infra_missing:
+            reason_parts.append(f"县内{'、'.join(infra_missing)}尚未建起")
+        if low_bailiff:
+            reason_parts.append("衙役人手不足")
+        reason_str = "，".join(reason_parts) if reason_parts else "县内基础薄弱"
+
         if len(villages) == 1:
             vname = villages[0]
             t = random.choice([
-                f"书办悄悄说，{vname}今年秋粮收上来的比往年少了不少，说是村里没有读书人张罗，里正一个人收不过来。",
-                f"听说{vname}的粮税比账面上少了一截，书办抱怨说没有族塾撑着，地里的人根本不配合。",
-                f"{vname}那边今年征粮特别费劲，衙役们走了好几趟，里正也说不清楚少在哪儿。",
+                f"书办悄悄说，{vname}今年秋粮收上来的比往年少了不少，{reason_str}，里正一个人根本收不过来。",
+                f"听说{vname}的粮税比账面上少了一截，书办抱怨说{reason_str}，那边宗族的人根本不配合。",
+                f"{vname}那边今年征粮特别费劲，走了好几趟都没收齐，背后说是{reason_str}，官府的手伸不进去。",
             ])
         else:
             vlist = "、".join(villages[:2]) + ("等村" if len(villages) > 2 else "两村")
             t = random.choice([
-                f"书办私下嘀咕，{vlist}的秋粮上缴比账上少了不少，说是那几个村子没族塾，宗族里没读书人押阵，收起来特别难。",
-                f"听说{vlist}今年交粮都打了折扣，胥吏说这些地方宗族管着，官府的人进村都难，何况收税。",
-                f"有人说{vlist}的征粮比别的村少了一截，背地里说是因为村里基础差，官民之间隔了一堵看不见的墙。",
+                f"书办私下嘀咕，{vlist}的秋粮上缴比账上少了不少，说是{reason_str}，宗族没有官府能借力的地方，收起来特别难。",
+                f"听说{vlist}今年交粮都打了折扣，胥吏说这些地方宗族管着，{reason_str}，官府的人进村本就难，何况收税。",
+                f"有人说{vlist}的征粮比别的村少了一截，背地里说是{reason_str}，官民之间隔了一堵看不见的墙。",
             ])
 
         return [{"category": "民间", "text": t, "source": "衙门书办", "season": game.current_season}]

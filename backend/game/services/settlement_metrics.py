@@ -513,6 +513,6 @@ class MetricsMixin:
         county["peasant_grain_reserve"] = county.get("peasant_grain_reserve", 0) - grain_deduction
 
         report["events"].append(
-            f"征收徭役折银: {corvee_total:.1f}两（年度，五月），"
+            f"征收徭役折银: {corvee_total:.1f}两（在册应役人口{liable_pop}人 × 人均{CORVEE_PER_CAPITA}两），"
             f"留存{retained:.1f}两，"
             f"村民售粮{round(grain_deduction)}斤折银缴纳")

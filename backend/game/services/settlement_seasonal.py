@@ -389,11 +389,11 @@ class SeasonalMixin:
         # 宗族治理：追踪无村塾村庄的产出，用于后续征收效率折减
         clan_gov_no_manor_output = 0
         _is_clan_gov = county.get("county_type") == "clan_governance"
-        _clan_infra_gap = _is_clan_gov and (
-            county.get("irrigation_level", 1) == 0
-            or county.get("medical_level", 1) == 0
-            or county.get("school_level", 1) == 0
-        )
+        _clan_infra_names = {'irrigation_level': '水利', 'medical_level': '医馆', 'school_level': '社学'}
+        _clan_infra_missing = [label for key, label in _clan_infra_names.items()
+                               if county.get(key, 1) == 0]
+        _clan_low_bailiff = county.get("bailiff_level", 0) < 2
+        _clan_infra_gap = _is_clan_gov and (_clan_infra_missing or _clan_low_bailiff)
         for v in county["villages"]:
             output = v["farmland"] * base_yield * suitability * (1 + irrigation_bonus) * agri_bonus_mult
             total_agri_output += output
@@ -474,9 +474,17 @@ class SeasonalMixin:
             county["clan_gov_tax_penalty"] = {
                 "season": report.get("season"),
                 "villages": penalized_villages,
+                "infra_missing": _clan_infra_missing,
+                "low_bailiff": _clan_low_bailiff,
             }
+            _gap_desc_parts = []
+            if _clan_infra_missing:
+                _gap_desc_parts.append(f"{'、'.join(_clan_infra_missing)}尚未建起")
+            if _clan_low_bailiff:
+                _gap_desc_parts.append("衙役等级不足2")
+            _gap_desc = "、".join(_gap_desc_parts) or "基建不足"
             report["events"].append(
-                "【宗族治理】部分村庄尚无村塾且县级基建存在缺口，"
+                f"【宗族治理】部分村庄尚无村塾（{_gap_desc}），"
                 f"征收效率折减（受影响产出：{round(clan_gov_no_manor_output)}两）"
             )
         else:
@@ -525,6 +533,12 @@ class SeasonalMixin:
         total_tax = agri_tax + ytd_corvee + ytd_commercial
         total_remit = (ytd_corvee - ytd_corvee_retained) + (ytd_commercial - ytd_commercial_retained)
 
+        # 征收效率信息（供前端月报展示）
+        collection_efficiency_pct = round(collection_efficiency * 100, 1)
+        autumn_extra = {"collection_efficiency_pct": collection_efficiency_pct}
+        if _clan_infra_gap and clan_gov_no_manor_output > 0:
+            autumn_extra["clan_penalty_pct"] = round(collection_efficiency * 0.7 * 100, 1)
+
         report["autumn"] = {
             "total_agri_output": round(total_agri_output, 1),
             "agri_tax": round(agri_tax, 1),
@@ -544,6 +558,7 @@ class SeasonalMixin:
             "treasury_after": round(county["treasury"], 1),
             "payment_pending": True,
             "payment_month_of_year": 10,
+            **autumn_extra,
         }
         report["events"].append(
             f"秋季结算: 农业产出{round(total_agri_output)}两, "

@@ -1343,8 +1343,17 @@
           '<span class="report-detail-item"><strong>秋税应上缴:</strong> ' + agriRemitDue + '两（十月执行）</span>'
         : '<span class="report-detail-item"><strong>农业税:</strong> ' + a.agri_tax + '两</span>' +
           '<span class="report-detail-item"><strong>农业税上缴:</strong> ' + (a.agri_remit || agriRemitDue || 0) + '两</span>';
+      var effHtml = '';
+      if (a.collection_efficiency_pct !== undefined) {
+        var effText = '征收效率 ' + a.collection_efficiency_pct + '%（民心因子）';
+        if (a.clan_penalty_pct !== undefined) {
+          effText += '，无村塾村庄实效 ' + a.clan_penalty_pct + '%（宗族治理折减 ×0.7）';
+        }
+        effHtml = '<span class="report-detail-item"><strong>农业税征收效率:</strong> ' + effText + '</span>';
+      }
       var detail = h("div", "report-detail",
         '<span class="report-detail-item"><strong>农业产出:</strong> ' + a.total_agri_output + '两</span>' +
+        effHtml +
         agriSettlementHtml +
         corveeHtml +
         commercialHtml +
