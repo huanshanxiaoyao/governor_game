@@ -151,6 +151,7 @@ class MetricsMixin:
             "reserve": round(reserve),
             "months_to_harvest": months_to_harvest,
             "per_capita_surplus": round(per_capita_surplus, 1),
+            "monthly_per_capita_surplus": round(per_capita_surplus / max(months_to_harvest, 1), 1),
             "consumer_confidence": round(consumer_confidence, 1),
             "confidence_index": round(confidence_index, 2),
             "monthly_consumption": round(monthly_consumption),
