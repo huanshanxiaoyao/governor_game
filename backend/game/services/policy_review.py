@@ -100,12 +100,14 @@ class PolicyReviewService:
                     proposal.rejected_at      = now
                 proposal.notification_pending = True
 
-            ProposedPolicy.objects.bulk_update(
-                pending,
-                ['status', 'policy_name', 'action_key', 'cost', 'delay_months',
-                 'effects_data', 'rationale', 'rejection_reason', 'reviewed_at', 'rejected_at',
-                 'tier', 'code_status', 'unsupported_effects', 'notification_pending'],
-            )
+            from django.db import transaction
+            with transaction.atomic():
+                ProposedPolicy.objects.bulk_update(
+                    pending,
+                    ['status', 'policy_name', 'action_key', 'cost', 'delay_months',
+                     'effects_data', 'rationale', 'rejection_reason', 'reviewed_at', 'rejected_at',
+                     'tier', 'code_status', 'unsupported_effects', 'notification_pending'],
+                )
             logger.info('[自创施政后台] 审批完成 game=%s: %d件', game_id, len(pending))
 
         except Exception as e:

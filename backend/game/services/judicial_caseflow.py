@@ -1183,7 +1183,7 @@ class JudicialCaseflowService:
                 f'认为原判有失妥当'
             )
 
-        instance.prefect_decision = {
+        decision_data = {
             'verdict_code': prefect_verdict_code,
             'verdict_label': prefect_verdict_label,
             'overturned': overturned,
@@ -1198,8 +1198,13 @@ class JudicialCaseflowService:
             'fallback_body': fallback_body,
             'selected_option': selected_option,
         }
-        instance.status = 'PREFECT_REVIEWED'
-        instance.save(update_fields=['prefect_decision', 'status', 'updated_at'])
+        # 原子写入：仅当 status 仍为 PREFECT_REVIEWING 时才提交，防止后台线程与超时兜底并发双写
+        rows = JudicialCaseInstance.objects.filter(
+            id=instance.id, status='PREFECT_REVIEWING',
+        ).update(prefect_decision=decision_data, status='PREFECT_REVIEWED', updated_at=timezone.now())
+        if not rows:
+            logger.info("[知府司法] 案件 %s 已由其他路径处理，跳过写入", instance.id)
+            return
         logger.info("[知府司法后台] 案件 %s 计算完成: %s (%s)", instance.id, prefect_verdict_code, tag)
 
     @classmethod
