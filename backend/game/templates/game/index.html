@@ -153,15 +153,16 @@
 
   <!-- Tab: Dashboard -->
   <div id="tab-dashboard" class="tab-content active">
+    <div id="disaster-alert" class="disaster-alert hidden"></div>
     <div id="negotiation-banner" class="negotiation-banner hidden"></div>
     <div id="negotiation-count-info"></div>
     <div class="dashboard-layout">
       <!-- 主列 -->
       <div class="dashboard-main">
         <div id="stats-grid" class="stats-grid"></div>
-        <div id="info-row" class="info-row"></div>
-        <div id="quota-info"></div>
-        <div id="prefect-directive-info"></div>
+        <div id="hero-row" class="hero-row"></div>
+        <div id="info-row" class="info-row-compact"></div>
+        <div id="quota-info" style="display:none"></div>
         <div id="imperial-tour-section" class="action-section hidden"></div>
         <div id="relief-action-section" class="action-section hidden">
           <h3>灾害减免申请</h3>
@@ -201,25 +202,26 @@
             <span class="hint" id="emergency-buy-grain-hint">灾时溢价：每两银买70斤</span>
           </div>
         </div>
-        <div id="disaster-alert" class="disaster-alert hidden"></div>
+        <div id="rumors-board"></div>
         <div id="investments-list"></div>
         <div id="irrigation-negotiate-section" class="hidden"></div>
-        <div id="markets-info"></div>
-        <div id="rumors-board"></div>
         <div id="annual-review-section"></div>
         <div id="promises-info"></div>
       </div>
       <!-- 侧栏 -->
       <div class="dashboard-sidebar">
         <div id="player-archive-sidebar"></div>
+        <div id="prefect-directive-info"></div>
         <div id="environment-info"></div>
-        <div id="surplus-info"></div>
+        <div id="markets-info"></div>
+        <div id="surplus-info" style="display:none"></div>
       </div>
     </div>
   </div>
 
   <!-- Tab: Villages -->
   <div id="tab-villages" class="tab-content hidden">
+    <div id="village-grid" class="village-grid" style="display:none"></div>
     <table id="village-table" class="data-table">
       <thead>
         <tr>
@@ -252,8 +254,8 @@
 
   <!-- Tab: Actions -->
   <div id="tab-actions" class="tab-content hidden">
-    <div class="action-section">
-      <h3>税率调整</h3>
+    <div class="tax-section-card">
+      <div class="tax-section-title">税率调整</div>
       <div class="tax-two-col">
         <div class="tax-col">
           <div class="tax-col-label">田赋税率 <span class="tax-season-hint">（仅八、九月可调）</span></div>
@@ -327,32 +329,39 @@
     <div id="neighbors-list">
       <p class="hint">加载中...</p>
     </div>
-    <!-- 本府概览卡片（邻县列表下方） -->
-    <div id="prefecture-overview-card"></div>
-  </div>
-
-  <!-- 府志详情 Modal -->
-  <div id="prefecture-gazette-modal" class="modal hidden">
-    <div class="modal-content prefecture-gazette-content">
-      <div class="neighbor-detail-header">
-        <h4 id="prefecture-gazette-title">本府府志</h4>
-        <button id="prefecture-gazette-close" class="btn btn-small">关闭</button>
-      </div>
-      <div id="prefecture-gazette-body" class="neighbor-detail-body"></div>
-    </div>
   </div>
 
   <!-- Tab: Officialdom (官场) -->
   <div id="tab-officialdom" class="tab-content hidden">
     <div class="offdom-subtab-bar">
-      <button class="offdom-subtab-btn active" data-subtab="offdom-staff">幕僚</button>
+      <button class="offdom-subtab-btn active" data-subtab="offdom-superior">上级管理</button>
       <button class="offdom-subtab-btn" data-subtab="offdom-national">全国行政体系</button>
       <button class="offdom-subtab-btn" data-subtab="offdom-career">仕途轨迹</button>
     </div>
-    <div id="offdom-staff">
-      <div id="staff-content">
-        <p class="hint">加载中...</p>
+    <div id="offdom-superior">
+      <!-- 知府信息 -->
+      <div id="superior-prefect-info"><p class="hint">加载中...</p></div>
+      <!-- 配额进度 -->
+      <div id="superior-quota-section"></div>
+      <!-- 知府指令 -->
+      <div id="superior-directives-section"></div>
+      <!-- 司法复审汇总 -->
+      <div id="superior-judicial-section"></div>
+      <!-- 府级状态（府库/义仓/基础建设） -->
+      <div id="superior-prefecture-state-section"></div>
+      <!-- 各县税收明细 -->
+      <div id="superior-tax-breakdown-section"></div>
+      <!-- 完整府志 -->
+      <div class="superior-gazette-header">
+        <span class="superior-gazette-title">府志</span>
+        <select id="superior-gazette-filter" class="event-log-filter-select">
+          <option value="">全部</option>
+          <option value="PREFECT">知府对本县</option>
+          <option value="PREFECTURE">府内各县动态</option>
+        </select>
+        <button id="btn-superior-gazette-refresh" class="btn btn-small">刷新</button>
       </div>
+      <div id="superior-gazette-content"><p class="hint">暂无府志记录</p></div>
     </div>
     <div id="offdom-national" class="hidden">
       <div id="officialdom-content">
@@ -743,6 +752,16 @@
 
   <!-- Tab: Log (府志) -->
   <div id="pref-tab-log" class="tab-content hidden">
+    <div class="event-log-toolbar">
+      <select id="pref-log-category-filter" class="event-log-filter-select">
+        <option value="">全部</option>
+        <option value="PREFECTURE">府政</option>
+        <option value="PERSONNEL">人事</option>
+        <option value="SETTLEMENT">结算</option>
+        <option value="INVESTMENT">投资</option>
+      </select>
+      <button id="btn-pref-log-refresh" class="btn btn-small">刷新</button>
+    </div>
     <div id="pref-log-content"><p class="hint">尚无府志记录</p></div>
   </div>
 
