@@ -10,7 +10,8 @@ from .providers import ProviderConfig, get_provider
 logger = logging.getLogger('llm')
 
 DEFAULT_MAX_RETRIES = 3
-DEFAULT_TIMEOUT = 60.0
+DEFAULT_TIMEOUT = 12.0    # 单次 LLM 调用超时（秒）；所有调用方应使用此常量
+LLM_DEFAULT_TIMEOUT = DEFAULT_TIMEOUT   # 公开别名，供其他模块 import 使用
 BACKOFF_BASE = 1  # seconds
 BACKOFF_CAP = 30  # seconds
 

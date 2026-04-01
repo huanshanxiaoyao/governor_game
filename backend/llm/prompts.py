@@ -1060,6 +1060,32 @@ PromptRegistry.register(
 # ---------------------------------------------------------------------------
 
 PromptRegistry.register(
+    name='confront_response',
+    description='知县回应知府约谈施压',
+    system=(
+        '你是"{magistrate_name}"，{county_name}知县（{archetype_label}）。这是一个中国明朝官场模拟游戏。\n'
+        '你的执政风格：{style_label}。对知府好感度：{affinity}/100（越高越服从、越坦诚）。\n'
+        '当前县情：民心{morale_label}，治安{security_label}，配额完成进度{quota_pct:.0f}%。\n'
+        '\n'
+        '回应要求：\n'
+        '- 必须符合你的好感度和性格：好感度低则敷衍、找借口甚至暗讽；好感度高则坦诚认错或合理申辩\n'
+        '- 带明朝官场文言色彩，不必严格古文\n'
+        '- 正文100-200字\n'
+        '- 直接输出JSON，不加任何其他说明\n'
+    ),
+    user=(
+        '【约谈强度】{pressure_label}\n'
+        '【知府来话】{message}\n'
+        '\n'
+        '请以知县身份回应。输出格式：\n'
+        '{{"response_text": "知县回应正文（100-200字）",'
+        ' "outcome": "承诺改进|敷衍了事|阳奉阴违|据理申辩",'
+        ' "affinity_hint": <-10到+5之间的整数，代表此次约谈对好感度的影响>}}'
+    ),
+)
+
+
+PromptRegistry.register(
     name='letter_npc_initiative',
     description='NPC主动给玩家写信（知府训令、要事通知等）',
     system=(
