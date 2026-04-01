@@ -113,4 +113,7 @@ urlpatterns = [
     path("prefecture/<int:game_id>/judicial/debug/", views_prefecture.PrefectureJudicialDebugView.as_view(), name="prefecture-judicial-debug"),
     path("prefecture/<int:game_id>/judicial/debug/page/", views_prefecture.PrefectureJudicialDebugPageView.as_view(), name="prefecture-judicial-debug-page"),
     path("prefecture/<int:game_id>/judicial/decide/", views_prefecture.PrefectureJudicialDecideView.as_view(), name="prefecture-judicial-decide"),
+    path("prefecture/<int:game_id>/relief/", views_prefecture.PrefectureReliefView.as_view(), name="prefecture-relief"),
+    path("prefecture/<int:game_id>/confront/", views_prefecture.PrefectureConfrontView.as_view(), name="prefecture-confront"),
+    path("prefecture/<int:game_id>/impeach/", views_prefecture.PrefectureImpeachView.as_view(), name="prefecture-impeach"),
 ]

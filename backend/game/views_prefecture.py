@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import AdminUnit, GameState
+from .models import AdminUnit, EventLog, GameState
 from .services import PrefectureService
 from .services.annual_review import AnnualReviewService
 from .services.constants import month_of_year
@@ -256,6 +256,17 @@ class PrefectureQuotaView(APIView):
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         PrefectureService.invalidate_precompute(game)
+        details = '｜'.join(
+            f'{item.get("county_name","")}{item.get("amount",0):.0f}两'
+            for item in result.get('assignments', [])
+        )
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_quota_set',
+            category='PREFECTURE',
+            description=f'【配额下达】{details}',
+            data={'assignments': result.get('assignments', [])},
+        )
         return Response(result)
 
 
@@ -307,10 +318,29 @@ class PrefectureDirectiveView(APIView):
             import logging
             logging.getLogger('game').warning("指令书信创建失败（非致命）: %s", e)
 
+        # 强硬指令使好感度略微下降（催科/整顿措辞触发）
+        harsh_keywords = ('催科', '催纳', '限期', '严查', '追究', '问责', '不得有误')
+        is_harsh = any(kw in directive for kw in harsh_keywords)
+        if is_harsh:
+            cd = unit.unit_data
+            old_affinity = cd.get('prefect_affinity', 50)
+            cd['prefect_affinity'] = max(0, min(100, old_affinity - 3))
+            unit.unit_data = cd
+            unit.save(update_fields=['unit_data'])
+
         gp = unit.unit_data.get('governor_profile', {})
+        county_name = unit.unit_data.get('county_name', '')
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_directive_sent',
+            category='PREFECTURE',
+            description=f'【发出指令】→ {county_name}：{directive[:60]}{"…" if len(directive) > 60 else ""}',
+            data={'unit_id': unit_id, 'county_name': county_name,
+                  'directive': directive, 'is_harsh': is_harsh},
+        )
         return Response({
             "unit_id": unit_id,
-            "county_name": unit.unit_data.get('county_name', ''),
+            "county_name": county_name,
             "governor_name": gp.get('name', ''),
             "directive": directive,
             "response": f"{gp.get('name', '该知县')}接到指令，将于下月施政中予以考量。",
@@ -349,6 +379,20 @@ class PrefectureInvestView(APIView):
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         PrefectureService.invalidate_precompute(game)
+        if result.get('status') == 'completed':
+            desc = f'【府级建设完工】{result["label"]} 升至 {result["level"]} 级（即时完工），耗资 {result["cost"]} 两，府库余 {result["treasury_after"]:.1f} 两'
+            etype = 'prefecture_invest_complete'
+        else:
+            desc = f'【府级建设启动】{result["label"]} 升至 {result["level"]} 级，耗资 {result["cost"]} 两，预计 {result["duration"]} 月后完工'
+            etype = 'prefecture_invest_start'
+        EventLog.objects.create(
+            game=game,
+            season=game.current_season,
+            event_type=etype,
+            category='INVESTMENT',
+            description=desc,
+            data=result,
+        )
         return Response(result)
 
 
@@ -441,6 +485,19 @@ class PrefectureJudicialDecideView(APIView):
         result = PrefectureService.decide_judicial_case(game, case_id, action)
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        action_label = {'核准原判': '核准', '驳回重审': '驳回重审', '提审改判': '提审改判'}.get(action, action)
+        county = result.get('county_review', {}).get('county_name', '') or ''
+        EventLog.objects.create(
+            game=game,
+            season=game.current_season,
+            event_type='prefecture_judicial_decide',
+            category='JUDICIAL',
+            description=(
+                f'【司法复核】{result["case_name"]}（{county}）— {action_label}'
+                + (f'  司法声望→{result["applied_state"].get("judicial_prestige", "")}' if result.get('applied_state') else '')
+            ),
+            data=result,
+        )
         return Response(result)
 
 
@@ -466,4 +523,139 @@ class PrefectureInspectView(APIView):
         result = PrefectureService.inspect_county(game, unit_id, inspect_type)
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        type_label = '通判核账' if inspect_type == 'tongpan' else '推官巡查'
+        county_name = result.get('county_name', '')
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_inspect_result',
+            category='PREFECTURE',
+            description=f'【{type_label}】{county_name}：{result.get("summary", "")[:60]}',
+            data={'unit_id': unit_id, 'inspect_type': inspect_type,
+                  'county_name': county_name, 'metrics': result.get('metrics', {})},
+        )
+        return Response(result)
+
+
+class PrefectureReliefView(APIView):
+    """
+    POST /api/prefecture/<game_id>/relief/
+    从府库拨款至指定下辖县（资源调拨）
+    Body: { "unit_id": <int>, "amount": <float> }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+
+        unit_id = request.data.get('unit_id')
+        amount = request.data.get('amount')
+        if not unit_id or amount is None:
+            return Response({"error": "unit_id 和 amount 不能为空"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            amount = float(amount)
+        except (ValueError, TypeError):
+            return Response({"error": "amount 必须为数字"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        result = PrefectureService.relief_county(game, int(unit_id), amount)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        PrefectureService.invalidate_precompute(game)
+        county_name = result.get('county_name', '')
+        grain_note = ''
+        if result.get('grain_from_granary', 0) > 0:
+            grain_note = f'义仓拨粮 {result["grain_from_granary"]:.0f} 斤'
+        if result.get('silver_spent', 0) > 0:
+            grain_note += ('、' if grain_note else '') + f'府库折银 {result["silver_spent"]:.1f} 两'
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_relief_dispatched',
+            category='PREFECTURE',
+            description=f'【赈灾拨付】→ {county_name}：{grain_note or f"拨付{amount:.0f}两"}',
+            data={'unit_id': unit_id, 'county_name': county_name, **{
+                k: result[k] for k in
+                ('grain_from_granary', 'grain_from_treasury', 'silver_spent',
+                 'granary_stock_after', 'county_grain_reserve_after')
+                if k in result
+            }},
+        )
+        return Response(result)
+
+
+class PrefectureConfrontView(APIView):
+    """
+    POST /api/prefecture/<game_id>/confront/
+    约谈施压下属知县
+    Body: { "unit_id": <int>, "pressure": "light"|"moderate"|"heavy", "message": <str> }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+
+        unit_id = request.data.get('unit_id')
+        pressure = request.data.get('pressure', 'moderate')
+        message = request.data.get('message', '').strip()
+
+        if not unit_id:
+            return Response({"error": "unit_id 不能为空"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if pressure not in ('light', 'moderate', 'heavy'):
+            return Response({"error": "pressure 必须为 light/moderate/heavy"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        result = PrefectureService.confront_county(game, int(unit_id), pressure, message)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        PrefectureService.invalidate_precompute(game)
+        pressure_label = {'light': '温和劝勉', 'moderate': '正式约谈', 'heavy': '严厉施压'}.get(pressure, pressure)
+        county_name = result.get('county_name', '')
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_confront',
+            category='PERSONNEL',
+            description=f'【{pressure_label}】{county_name}：{message[:50] if message else result.get("effect", "")[:50]}',
+            data={'unit_id': unit_id, 'county_name': county_name,
+                  'pressure': pressure, 'message': message, 'effect': result.get('effect', '')},
+        )
+        return Response(result)
+
+
+class PrefectureImpeachView(APIView):
+    """
+    POST /api/prefecture/<game_id>/impeach/
+    弹劾免职下属知县（需省级审批）
+    Body: { "unit_id": <int>, "reason": <str> }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, game_id):
+        game, err = _get_prefect_game(request, game_id)
+        if err:
+            return err
+
+        unit_id = request.data.get('unit_id')
+        reason = request.data.get('reason', '').strip()
+        if not unit_id or not reason:
+            return Response({"error": "unit_id 和 reason 不能为空"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        result = PrefectureService.impeach_county(game, int(unit_id), reason)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        PrefectureService.invalidate_precompute(game)
+        county_name = result.get('county_name', '')
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='prefecture_impeach',
+            category='PERSONNEL',
+            description=f'【弹劾奏报】{county_name}：{reason[:60]}{"…" if len(reason) > 60 else ""}',
+            data={'unit_id': unit_id, 'county_name': county_name,
+                  'reason': reason, 'status': result.get('status', '')},
+        )
         return Response(result)

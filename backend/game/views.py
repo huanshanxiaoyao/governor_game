@@ -1517,8 +1517,9 @@ class PrefectureOverviewForCountyView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
-        from .models import Agent, EventLog as EL
+        from .models import Agent, EventLog as EL, JudicialCaseInstance
         from .services.constants import month_of_year, year_of
+        from .services.ai_prefect import PrefectAIService
 
         prefect = Agent.objects.filter(game=game, role='PREFECT').first()
         county = game.get_unit_data()
@@ -1530,12 +1531,14 @@ class PrefectureOverviewForCountyView(APIView):
             prefect_name = prefect.name
             prefect_title = prefect.role_title or f'{prefecture_name}知府'
             affinity = attrs.get('player_affinity', county.get('prefect_affinity', 50))
+            personality_desc, ideology_desc, _ = PrefectAIService._describe_attrs(attrs)
         else:
             prefecture_name = county.get('prefecture_name', '本府')
             prefect_name = county.get('prefect_name', '知府')
             prefect_title = f'{prefecture_name}知府'
             attrs = {}
             affinity = county.get('prefect_affinity', 50)
+            personality_desc, ideology_desc = '', ''
 
         affinity_label, affinity_color = "尚可", "#6b5d45"
         for threshold, label, color in self._AFFINITY_LABELS:
@@ -1545,11 +1548,20 @@ class PrefectureOverviewForCountyView(APIView):
 
         quota = county.get('annual_quota', {})
         fy = county.get('fiscal_year', {})
-        agri_quota = quota.get('agri', quota.get('total', 0) * 0.7) if quota.get('total') else 0
+        total_quota = quota.get('total', 0)
+        # 总上缴 = 农业税 + 徭役折银净额 + 商税净额
         agri_remitted = fy.get('agri_remitted', 0)
-        completion_pct = round(agri_remitted / agri_quota * 100) if agri_quota > 0 else 0
+        net_corvee = max(0, fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0))
+        net_commercial = max(0, fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+        total_remitted = agri_remitted + net_corvee + net_commercial
+        completion_pct = round(total_remitted / total_quota * 100) if total_quota > 0 else 0
+        # 保持对外字段兼容名称
+        agri_quota = total_quota
         moy = month_of_year(game.current_season)
-        expected_pct = round(moy / 12 * 100)
+        # 明代税历：夏税五~六月，秋税九~十月；正月~三月基本无收
+        _TAX_CAL = {1: 0, 2: 0, 3: 0, 4: 5, 5: 15, 6: 32, 7: 38, 8: 42,
+                    9: 62, 10: 88, 11: 93, 12: 100}
+        expected_pct = _TAX_CAL.get(moy, round(moy / 12 * 100))
         if completion_pct >= expected_pct - 5:
             quota_status = '进度正常'
         elif completion_pct < expected_pct - 20:
@@ -1561,9 +1573,47 @@ class PrefectureOverviewForCountyView(APIView):
         all_dirs = county.get('prefect_directives', [])
         pending_dirs = [d for d in all_dirs if not d.get('responded', False)]
 
-        # 府志：只取知府相关事件（PREFECT 类别），最近 60 条，按时间倒序
-        CATEGORY_DISPLAY = {'PREFECT': '知府'}
-        logs = EL.objects.filter(game=game, category='PREFECT').order_by('-season', '-created_at')[:60]
+        # 司法复审汇总（本局所有已复审案件）
+        reviewed_qs = JudicialCaseInstance.objects.filter(
+            game=game, status__in=['PREFECT_REVIEWED', 'CLOSED', 'APPEALED']
+        ).exclude(prefect_decision={})
+        total_reviewed = reviewed_qs.count()
+        overturned_count = sum(
+            1 for c in reviewed_qs.only('prefect_decision')
+            if (c.prefect_decision or {}).get('overturned', False)
+        )
+        overturn_rate = round(overturned_count / total_reviewed * 100) if total_reviewed > 0 else 0
+
+        # 府级状态（AI知府模拟的府库/义仓/基础建设）
+        prefecture_state = county.get('prefecture_state', {})
+
+        # 各县税收明细（本县 + 邻县）
+        from .models import NeighborCounty
+        def _build_county_tax(name, fy_data, quota_data):
+            corvee_net     = max(0, fy_data.get('corvee_tax', 0)     - fy_data.get('corvee_retained', 0))
+            commercial_net = max(0, fy_data.get('commercial_tax', 0) - fy_data.get('commercial_retained', 0))
+            return {
+                'name':              name,
+                'agri_remitted':     round(fy_data.get('agri_remitted', 0), 1),
+                'corvee_remitted':   round(corvee_net, 1),
+                'corvee_retained':   round(fy_data.get('corvee_retained', 0), 1),
+                'commercial_remitted': round(commercial_net, 1),
+                'commercial_retained': round(fy_data.get('commercial_retained', 0), 1),
+                'total_remitted':    round(fy_data.get('agri_remitted', 0) + corvee_net + commercial_net, 1),
+                'quota_total':       round((quota_data or {}).get('total', 0), 1),
+            }
+        tax_breakdown = [
+            _build_county_tax(county.get('county_name', '本县'), county.get('fiscal_year', {}), county.get('annual_quota', {}))
+        ]
+        for nb in NeighborCounty.objects.filter(game=game).only('county_name', 'county_data'):
+            nd = nb.county_data or {}
+            tax_breakdown.append(_build_county_tax(nb.county_name, nd.get('fiscal_year', {}), nd.get('annual_quota', {})))
+
+        # 府志：PREFECT 类别（知府↔玩家互动）+ PREFECTURE 类别（邻县府政动态）
+        CATEGORY_DISPLAY = {'PREFECT': '知府', 'PREFECTURE': '府政'}
+        logs = EL.objects.filter(
+            game=game, category__in=('PREFECT', 'PREFECTURE')
+        ).order_by('-season', '-created_at')[:100]
         gazette_entries = [
             {
                 'season': e.season,
@@ -1585,16 +1635,25 @@ class PrefectureOverviewForCountyView(APIView):
             'affinity_label': affinity_label,
             'affinity_color': affinity_color,
             'bio': attrs.get('bio', ''),
+            'personality_desc': personality_desc,
+            'ideology_desc': ideology_desc,
             'inspection_pending': county.get('prefect_inspection_pending', False),
             'quota_progress': {
-                'agri_quota': round(agri_quota),
-                'agri_remitted': round(agri_remitted),
+                'agri_quota': round(total_quota),
+                'agri_remitted': round(total_remitted),
                 'completion_pct': completion_pct,
                 'expected_pct': expected_pct,
                 'status': quota_status,
             },
             'pending_directives': pending_dirs,
+            'judicial_review_summary': {
+                'total': total_reviewed,
+                'overturned': overturned_count,
+                'overturn_rate': overturn_rate,
+            },
             'gazette_entries': gazette_entries,
+            'prefecture_state': prefecture_state,
+            'tax_breakdown': tax_breakdown,
         })
 
 
