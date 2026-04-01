@@ -792,6 +792,9 @@
       var pgL = Game.state.prefectureGame;
       if (pgL) Game.letter.loadForScreen("pref", pgL.game_id);
     }
+    if (tabId === "pref-tab-log") {
+      loadPrefGazette();
+    }
   }
 
   function refreshPrefectureTabVisibility(data) {
@@ -968,15 +971,26 @@
     showPrefTab("pref-tab-log");
   });
 
-  // 归档府志条目
-  function prependPrefLogEntry(result) {
-    var logContent = el("pref-log-content");
-    if (!logContent) return;
-    // 移除占位提示
-    var placeholder = logContent.querySelector(".hint");
-    if (placeholder) placeholder.remove();
-    var entry = Game.prefecture.buildPrefLogEntry(result);
-    logContent.insertBefore(entry, logContent.firstChild);
+  // 府志分类筛选 + 刷新
+  var prefLogFilter = el("pref-log-category-filter");
+  if (prefLogFilter) prefLogFilter.addEventListener("change", loadPrefGazette);
+  var prefLogRefresh = el("btn-pref-log-refresh");
+  if (prefLogRefresh) prefLogRefresh.addEventListener("click", loadPrefGazette);
+
+  // 加载府志（从 EventLog API 读取持久化记录）
+  function loadPrefGazette() {
+    var pg = Game.state.prefectureGame;
+    if (!pg) return;
+    var category = (el("pref-log-category-filter") || {}).value || "";
+    var container = el("pref-log-content");
+    if (container) container.innerHTML = '<p class="hint">加载中...</p>';
+    api.getEventLogs(pg.game_id, category || null, null, 150)
+      .then(function (logs) {
+        Game.prefecture.renderPrefectureGazette(logs);
+      })
+      .catch(function () {
+        if (container) container.innerHTML = '<p class="hint">加载失败</p>';
+      });
   }
 
   // Quota button (open modal)
@@ -2500,8 +2514,8 @@
         });
       });
     }
-    // 默认显示幕僚子 tab
-    showOffdomSubtab("offdom-staff");
+    // 默认显示上级管理子 tab
+    showOffdomSubtab("offdom-superior");
   }
 
   // ── 升迁事件交互 ────────────────────────────────────────────────────────
@@ -2699,7 +2713,7 @@
   });
 
   function showOffdomSubtab(subtabId) {
-    var panels = ["offdom-staff", "offdom-national", "offdom-career"];
+    var panels = ["offdom-superior", "offdom-national", "offdom-career"];
     panels.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.classList.toggle("hidden", id !== subtabId);
@@ -2707,8 +2721,8 @@
     document.querySelectorAll(".offdom-subtab-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.subtab === subtabId);
     });
-    if (subtabId === "offdom-staff") {
-      loadStaffInfo();
+    if (subtabId === "offdom-superior") {
+      loadSuperiorManagement();
     } else if (subtabId === "offdom-national") {
       var g = Game.state.currentGame;
       if (g && Game.officialdom && !Game.officialdom.loaded) {
@@ -2725,6 +2739,71 @@
         Game.officialdom.loadCareer(g.id);
       }
     }
+  }
+
+  // ── 上级管理 Tab ──────────────────────────────────────────────────────────
+  function loadSuperiorManagement() {
+    var g = Game.state.currentGame;
+    if (!g) return;
+    var infoEl = document.getElementById("superior-prefect-info");
+    if (infoEl) infoEl.innerHTML = '<p class="hint">加载中...</p>';
+
+    api.getPrefectureOverviewForCounty(g.id)
+      .then(function (data) {
+        Game.state.prefectureOverview = data;
+        Game.components.renderSuperiorManagement(data);
+        renderSuperiorGazette(data.gazette_entries || [], "");
+      })
+      .catch(function () {
+        if (infoEl) infoEl.innerHTML = '<p class="hint">加载失败</p>';
+      });
+
+    // 绑定府志筛选/刷新（只绑定一次）
+    var filterEl = document.getElementById("superior-gazette-filter");
+    if (filterEl && !filterEl._bound) {
+      filterEl._bound = true;
+      filterEl.addEventListener("change", function () {
+        var entries = (Game.state.prefectureOverview || {}).gazette_entries || [];
+        renderSuperiorGazette(entries, this.value);
+      });
+    }
+    var refreshBtn = document.getElementById("btn-superior-gazette-refresh");
+    if (refreshBtn && !refreshBtn._bound) {
+      refreshBtn._bound = true;
+      refreshBtn.addEventListener("click", function () {
+        filterEl._bound = false;
+        refreshBtn._bound = false;
+        loadSuperiorManagement();
+      });
+    }
+  }
+
+  function renderSuperiorGazette(entries, filterCategory) {
+    var container = document.getElementById("superior-gazette-content");
+    if (!container) return;
+    var filtered = filterCategory
+      ? entries.filter(function (e) { return e.category === filterCategory; })
+      : entries;
+    if (!filtered.length) {
+      container.innerHTML = '<p class="hint">暂无府志记录</p>';
+      return;
+    }
+    var CAT_COLORS = {
+      PREFECT: '#2e86c1', PREFECTURE: '#6b8a3a',
+    };
+    var html = filtered.map(function (e) {
+      var color = CAT_COLORS[e.category] || '#6b5d45';
+      var catLabel = e.category_display || e.category;
+      var timeLabel = '第' + (e.year || '-') + '年·' + (e.month || e.season || '-') + '月';
+      return '<div class="event-log-item">' +
+        '<div class="event-log-header">' +
+          '<span class="event-log-category" style="background:' + color + ';">' + components.escapeHtml(catLabel) + '</span>' +
+          '<span class="event-log-season">' + components.escapeHtml(timeLabel) + '</span>' +
+        '</div>' +
+        '<div class="event-log-desc">' + components.escapeHtml(e.description || '') + '</div>' +
+        '</div>';
+    }).join('');
+    container.innerHTML = html;
   }
 
   function loadRumorsBoard() {
@@ -2761,6 +2840,7 @@
     if (!g) return;
 
     var container = document.getElementById("staff-content");
+    if (!container) return;
     container.innerHTML = '<p class="hint">加载中...</p>';
 
     api.getStaff(g.id)
@@ -2784,8 +2864,6 @@
   // Staff chat close
   el("staff-chat-close").addEventListener("click", function () {
     el("staff-chat-modal").classList.add("hidden");
-    // Refresh staff info (question count may have changed)
-    loadStaffInfo();
   });
 
   // Staff chat send
@@ -2837,33 +2915,15 @@
     var container = document.getElementById("neighbors-list");
     container.innerHTML = '<p class="hint">加载中...</p>';
 
-    // 并行加载邻县列表 + 本府概览
-    Promise.all([
-      api.getNeighbors(g.id),
-      api.getPrefectureOverviewForCounty(g.id).catch(function () { return null; }),
-    ]).then(function (results) {
-      var neighbors = results[0];
-      var prefData = results[1];
-      Game.state.neighbors = neighbors;
-      Game.state.prefectureOverview = prefData;
-      components.renderPrefectureCard(prefData);
-      components.renderNeighborsList(neighbors);
-    }).catch(function () {
-      container.innerHTML = '<p class="hint">加载失败</p>';
-    });
+    api.getNeighbors(g.id)
+      .then(function (neighbors) {
+        Game.state.neighbors = neighbors;
+        components.renderNeighborsList(neighbors);
+      })
+      .catch(function () {
+        container.innerHTML = '<p class="hint">加载失败</p>';
+      });
   }
-
-  // 查看府志按钮 / 关闭府志弹窗
-  document.addEventListener("click", function (e) {
-    if (e.target && e.target.id === "open-prefecture-gazette-btn") {
-      var data = Game.state.prefectureOverview;
-      if (data) components.openPrefectureGazette(data);
-    }
-    if (e.target && e.target.id === "prefecture-gazette-close") {
-      var modal = document.getElementById("prefecture-gazette-modal");
-      if (modal) modal.classList.add("hidden");
-    }
-  });
 
   // Neighbor card click → open detail modal
   document.addEventListener("click", function (e) {

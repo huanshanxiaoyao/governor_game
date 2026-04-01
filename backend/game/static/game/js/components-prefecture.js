@@ -637,6 +637,53 @@
     return entry;
   }
 
+  // ── 府志 EventLog 渲染 ──
+  var PREF_CAT_LABELS = {
+    PREFECTURE: '府政', PERSONNEL: '人事', SETTLEMENT: '结算',
+    INVESTMENT: '投资', PREFECT: '知府', DISASTER: '灾害',
+  };
+  var PREF_CAT_COLORS = {
+    PREFECTURE: '#5b7fa6', PERSONNEL: '#8a5ba6', SETTLEMENT: '#6b8a3a',
+    INVESTMENT: '#a67c3a', PREFECT: '#a65b3a', DISASTER: '#c04040',
+  };
+
+  function renderPrefectureGazette(logs) {
+    var container = el('pref-log-content');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!logs || logs.length === 0) {
+      container.innerHTML = '<p class="hint">暂无府志记录</p>';
+      return;
+    }
+
+    logs.forEach(function (log) {
+      var catLabel = PREF_CAT_LABELS[log.category] || log.category;
+      var catColor = PREF_CAT_COLORS[log.category] || '#8a7a5a';
+      var seasonText = Game.seasonName(log.season);
+      var item = document.createElement('div');
+      item.className = 'event-log-item';
+      item.innerHTML =
+        '<div class="event-log-header">' +
+          '<span class="event-log-category" style="background:' + catColor + ';">' + esc(catLabel) + '</span>' +
+          '<span class="event-log-season">' + esc(seasonText) + '</span>' +
+        '</div>' +
+        '<div class="event-log-desc">' + esc(log.description || log.event_type) + '</div>';
+
+      // 月结快照：可展开明细
+      if (log.event_type === 'prefecture_month_settled' && log.data && log.data.county_remit) {
+        var detail = '<details class="event-log-settlement-details"><summary>各县上缴明细</summary><ul>';
+        log.data.county_remit.forEach(function (c) {
+          detail += '<li>' + esc(c.county_name) + '：' + c.remit + ' 两</li>';
+        });
+        detail += '</ul></details>';
+        item.innerHTML += detail;
+      }
+
+      container.appendChild(item);
+    });
+  }
+
   // ── Expose ──
   // ==================== 司法卷宗渲染 ====================
 
@@ -806,6 +853,7 @@
     renderReport:            renderPrefectureReport,
     renderInfraPanel:        renderInfraPanel,
     buildPrefLogEntry:       buildPrefLogEntry,
+    renderPrefectureGazette: renderPrefectureGazette,
     renderJudicialCase:      renderJudicialCase,
     renderJudicialResult:    renderJudicialResult,
     renderJudicialTab:       renderJudicialTab,

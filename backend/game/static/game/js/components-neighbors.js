@@ -442,6 +442,191 @@
     }
   });
 
+  // ── 上级管理 Tab 渲染 ──────────────────────────────────────────────────────
+  function renderSuperiorManagement(data) {
+    if (!data) return;
+
+    // 知府信息卡
+    var infoEl = el('superior-prefect-info');
+    if (infoEl) {
+      var affinityStyle = 'color:' + escapeHtml(data.affinity_color || '#6b5d45') + ';font-weight:bold;';
+      var personalityHtml = data.personality_desc
+        ? '<div class="superior-attr-row"><span class="superior-attr-label">性格：</span>' + escapeHtml(data.personality_desc) + '</div>'
+        : '';
+      var ideologyHtml = data.ideology_desc
+        ? '<div class="superior-attr-row"><span class="superior-attr-label">施政：</span>' + escapeHtml(data.ideology_desc.split('\n')[0]) + '</div>'
+        : '';
+      var bioHtml = data.bio
+        ? '<div class="superior-bio">' + escapeHtml(data.bio) + '</div>'
+        : '';
+      var inspectBadge = data.inspection_pending
+        ? '<span class="pref-inspect-badge">巡查待进行</span>'
+        : '';
+      infoEl.innerHTML =
+        '<div class="superior-section">' +
+          '<div class="superior-prefect-header">' +
+            '<span class="superior-pref-name">' + escapeHtml(data.prefecture_name || '本府') + '</span>' +
+            '<span class="superior-prefect-name">' + escapeHtml(data.prefect_name || '') + ' · ' + escapeHtml(data.prefect_title || '知府') + '</span>' +
+            inspectBadge +
+          '</div>' +
+          '<div class="superior-affinity-row">' +
+            '<span class="superior-attr-label">上司态度：</span>' +
+            '<span style="' + affinityStyle + '">' + escapeHtml(data.affinity_label || '尚可') + '</span>' +
+            '<span class="superior-affinity-num">（好感度 ' + (data.affinity || 0) + '/100）</span>' +
+          '</div>' +
+          personalityHtml + ideologyHtml + bioHtml +
+        '</div>';
+    }
+
+    // 配额进度
+    var quotaEl = el('superior-quota-section');
+    if (quotaEl) {
+      var qp = data.quota_progress || {};
+      var pct = qp.completion_pct || 0;
+      var epct = qp.expected_pct || 0;
+      var statusColor = pct >= epct - 5 ? '#27ae60' : (pct < epct - 20 ? '#c0392b' : '#c0702a');
+      quotaEl.innerHTML =
+        '<div class="superior-section">' +
+          '<div class="superior-section-title">配额完成情况</div>' +
+          '<div class="pref-quota-bar-wrap">' +
+            '<div class="pref-quota-bar" style="width:' + Math.min(100, pct) + '%;background:' + statusColor + ';"></div>' +
+          '</div>' +
+          '<div class="pref-quota-text">' +
+            '年度农赋：' + escapeHtml(String(qp.agri_remitted || 0)) + ' / ' + escapeHtml(String(qp.agri_quota || 0)) + ' 两' +
+            '&ensp;完成 ' + pct + '%，时令预期 ' + epct + '%' +
+            '&ensp;<span style="color:' + statusColor + ';">' + escapeHtml(qp.status || '') + '</span>' +
+          '</div>' +
+        '</div>';
+    }
+
+    // 知府指令
+    var dirsEl = el('superior-directives-section');
+    if (dirsEl) {
+      var dirs = data.pending_directives || [];
+      var allDirs = dirs; // pending_directives 已是未回复的
+      if (allDirs.length === 0) {
+        dirsEl.innerHTML = '<div class="superior-section"><div class="superior-section-title">知府指令</div><p class="hint">暂无待处理指令</p></div>';
+      } else {
+        var dirItems = allDirs.map(function (d) {
+          return '<div class="superior-directive-item">' +
+            '<span class="superior-directive-type">【' + escapeHtml(d.directive_type || '来文') + '】</span>' +
+            '<span class="superior-directive-month">第 ' + escapeHtml(String(d.month || '-')) + ' 月</span>' +
+            '<div class="superior-directive-text">' + escapeHtml(d.text || '') + '</div>' +
+            '</div>';
+        }).join('');
+        dirsEl.innerHTML = '<div class="superior-section"><div class="superior-section-title">知府指令（' + allDirs.length + ' 条待处理）</div>' + dirItems + '</div>';
+      }
+    }
+
+    // 司法复审汇总
+    var judicialEl = el('superior-judicial-section');
+    if (judicialEl) {
+      var jr = data.judicial_review_summary || {};
+      var total = jr.total || 0;
+      var overturned = jr.overturned || 0;
+      var rate = jr.overturn_rate || 0;
+      var rateColor = rate > 50 ? '#c0392b' : (rate > 25 ? '#c0702a' : '#27ae60');
+      if (total === 0) {
+        judicialEl.innerHTML = '<div class="superior-section"><div class="superior-section-title">司法复审</div><p class="hint">本局暂无复审记录</p></div>';
+      } else {
+        judicialEl.innerHTML =
+          '<div class="superior-section">' +
+            '<div class="superior-section-title">司法复审汇总</div>' +
+            '<div class="superior-judicial-stats">' +
+              '<span>复审总数：<strong>' + total + '</strong> 件</span>' +
+              '<span>维持原判：<strong>' + (total - overturned) + '</strong> 件</span>' +
+              '<span>改判：<strong>' + overturned + '</strong> 件</span>' +
+              '<span>改判率：<strong style="color:' + rateColor + ';">' + rate + '%</strong></span>' +
+            '</div>' +
+          '</div>';
+      }
+    }
+
+    // 府级状态（府库/义仓/基础建设）
+    var prefStateEl = el('superior-prefecture-state-section');
+    if (prefStateEl) {
+      var ps = data.prefecture_state || {};
+      if (Object.keys(ps).length === 0) {
+        prefStateEl.innerHTML = '';
+      } else {
+        var treasury    = ps.treasury != null ? ps.treasury : '—';
+        var granary     = ps.granary ? '已建' : '未建';
+        var granaryStock = ps.granary ? Math.round(ps.granary_stock || 0) + ' 斤' : '—';
+        var roadLv      = ps.road_level || 0;
+        var riverLv     = ps.river_work_level || 0;
+        var schoolLv    = ps.school_level || 0;
+        function _infraPips(level, max) {
+          var s = '';
+          for (var i = 0; i < max; i++) s += '<span class="infra-pip' + (i < level ? ' infra-pip-on' : '') + '"></span>';
+          return s;
+        }
+        prefStateEl.innerHTML =
+          '<div class="superior-section">' +
+            '<div class="superior-section-title">府级概况（模拟）</div>' +
+            '<div class="pref-state-grid">' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">府库余额</span>' +
+                '<span class="pref-state-value">' + treasury + ' 两</span>' +
+              '</div>' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">义仓</span>' +
+                '<span class="pref-state-value">' + granary + '</span>' +
+              '</div>' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">义仓余粮</span>' +
+                '<span class="pref-state-value">' + granaryStock + '</span>' +
+              '</div>' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">官道</span>' +
+                '<span class="pref-state-value">' + _infraPips(roadLv, 2) + '</span>' +
+              '</div>' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">水利</span>' +
+                '<span class="pref-state-value">' + _infraPips(riverLv, 2) + '</span>' +
+              '</div>' +
+              '<div class="pref-state-item">' +
+                '<span class="pref-state-label">府学</span>' +
+                '<span class="pref-state-value">' + _infraPips(schoolLv, 3) + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+      }
+    }
+
+    // 各县税收明细
+    var taxEl = el('superior-tax-breakdown-section');
+    if (taxEl) {
+      var tb = data.tax_breakdown || [];
+      if (tb.length === 0) {
+        taxEl.innerHTML = '';
+      } else {
+        var rows = tb.map(function (c) {
+          var quotaCls = c.total_remitted >= c.quota_total ? 'tax-ok' : (c.total_remitted >= c.quota_total * 0.6 ? 'tax-warn' : 'tax-bad');
+          return '<tr>' +
+            '<td>' + escapeHtml(c.name) + '</td>' +
+            '<td>' + c.agri_remitted + '</td>' +
+            '<td>' + c.corvee_remitted + '<small class="tax-retained">（留' + c.corvee_retained + '）</small></td>' +
+            '<td>' + c.commercial_remitted + '<small class="tax-retained">（留' + c.commercial_retained + '）</small></td>' +
+            '<td class="' + quotaCls + '"><strong>' + c.total_remitted + '</strong></td>' +
+            '<td>' + c.quota_total + '</td>' +
+            '</tr>';
+        }).join('');
+        taxEl.innerHTML =
+          '<div class="superior-section">' +
+            '<div class="superior-section-title">各县年度税收明细（本年累计）</div>' +
+            '<div class="superior-tax-scroll">' +
+              '<table class="superior-tax-table">' +
+                '<thead><tr>' +
+                  '<th>县名</th><th>农业税</th><th>徭役折银</th><th>商税</th><th>合计上缴</th><th>配额</th>' +
+                '</tr></thead>' +
+                '<tbody>' + rows + '</tbody>' +
+              '</table>' +
+            '</div>' +
+          '</div>';
+      }
+    }
+  }
+
   // Export
   C.renderNeighborsList = renderNeighborsList;
   C.openNeighborDetail = openNeighborDetail;
@@ -449,4 +634,5 @@
   C.renderPrefectureCard = renderPrefectureCard;
   C.openPrefectureGazette = openPrefectureGazette;
   C.showNeighborEvents = showNeighborEvents;
+  C.renderSuperiorManagement = renderSuperiorManagement;
 })();

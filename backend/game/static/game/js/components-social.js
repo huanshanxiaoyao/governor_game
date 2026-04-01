@@ -351,7 +351,11 @@
 
   // ==================== Relationships / 社交 ====================
 
-  var LOCAL_ROLES = { ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true };
+  var LOCAL_ROLES = {
+    ADVISOR: true, DEPUTY: true,
+    LIUFANG: true, CONSTABLE: true, BAILIFF_CEREMONY: true, BAILIFF_LABOR: true,
+    GENTRY: true, VILLAGER: true,
+  };
 
   // 汇报链（知县视角；知府玩家时 PREFECT 不在链内）
   var CHAIN_ROLES = {
@@ -423,6 +427,13 @@
     card.className = "relationship-card";
     card.id = "agent-card-" + a.id;
     card.innerHTML = html;
+
+    // 点击卡片主体打开人物档案（不触发按钮点击）
+    card.addEventListener("click", function (e) {
+      if (e.target.tagName === "BUTTON" || e.target.closest("button")) return;
+      openAgentProfile(a);
+    });
+
     return card;
   }
 
@@ -476,7 +487,35 @@
       container.appendChild(grid);
     }
 
-    renderSection("本县人物", localAgents, true);
+    function renderLocalPersonnel(list) {
+      if (!list.length) return;
+      var sectionHd = document.createElement("div");
+      sectionHd.className = "social-section-hd";
+      sectionHd.textContent = "本县人物";
+      container.appendChild(sectionHd);
+
+      var subgroups = [
+        { title: "幕僚", roles: ["ADVISOR", "DEPUTY"] },
+        { title: "六房", roles: ["LIUFANG"] },
+        { title: "衙役三班", roles: ["CONSTABLE", "BAILIFF_CEREMONY", "BAILIFF_LABOR"] },
+        { title: "乡绅", roles: ["GENTRY"] },
+        { title: "村民代表", roles: ["VILLAGER"] },
+      ];
+      subgroups.forEach(function (sg) {
+        var sub = list.filter(function (a) { return sg.roles.indexOf(a.role) !== -1; });
+        if (!sub.length) return;
+        var subHd = document.createElement("div");
+        subHd.className = "social-sub-hd";
+        subHd.textContent = sg.title;
+        container.appendChild(subHd);
+        var grid = document.createElement("div");
+        grid.className = "social-section-grid";
+        sub.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, true)); });
+        container.appendChild(grid);
+      });
+    }
+
+    renderLocalPersonnel(localAgents);
     renderSection("皇帝", emperorAgents, false);
     renderSection("汇报链", chainAgents, false);
     renderSection("中央官员", centralAgents, false);
@@ -591,6 +630,39 @@
       mem.forEach(function (m) { mHtml += '<div class="profile-memory-item">' + escapeHtml(m) + '</div>'; });
       mHtml += '</div></div>';
       body.innerHTML += mHtml;
+    }
+
+    // Relationships
+    var rels = agent.relationships || [];
+    if (rels.length > 0) {
+      var relsHtml = '<div class="profile-section"><h4>社交关系</h4><div class="profile-rels">';
+      rels.forEach(function (r) {
+        relsHtml +=
+          '<div class="profile-rel-item">' +
+            '<span class="profile-rel-name">' + escapeHtml(r.name) + '</span>' +
+            '<span class="profile-rel-role">（' + escapeHtml(r.role_title) + '）</span>' +
+            '<span class="profile-rel-desc">' + escapeHtml(r.desc) + '</span>' +
+          '</div>';
+      });
+      relsHtml += '</div></div>';
+      body.innerHTML += relsHtml;
+    }
+
+    // 交谈按钮（本地可对话角色）
+    var localChatRoles = { ADVISOR: true, DEPUTY: true, GENTRY: true, VILLAGER: true,
+                           LIUFANG: true, CONSTABLE: true, BAILIFF_CEREMONY: true, BAILIFF_LABOR: true };
+    if (localChatRoles[agent.role]) {
+      var chatDiv = document.createElement("div");
+      chatDiv.className = "profile-section profile-chat-footer";
+      var chatBtn = document.createElement("button");
+      chatBtn.className = "btn btn-primary";
+      chatBtn.textContent = "与" + agent.name + "交谈";
+      chatBtn.addEventListener("click", function () {
+        modal.classList.add("hidden");
+        openStaffChat(agent.id, agent.name);
+      });
+      chatDiv.appendChild(chatBtn);
+      body.appendChild(chatDiv);
     }
 
     modal.classList.remove("hidden");

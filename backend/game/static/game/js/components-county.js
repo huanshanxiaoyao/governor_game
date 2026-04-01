@@ -363,311 +363,243 @@
     }
   }
 
+  // ── Tier helper (shared) ─────────────────────────────────────────────────
+  function _statTier(v) {
+    if (v < 25) return { cls: "tier-red",   label: "差" };
+    if (v < 50) return { cls: "tier-amber", label: "勉强" };
+    if (v < 75) return { cls: "tier-olive", label: "稍好" };
+    return            { cls: "tier-jade",  label: "良好" };
+  }
+
+  // ── Build expandable hero card ────────────────────────────────────────────
+  function _buildHeroCard(cardHtml, detailHtml, gradientCls) {
+    var wrap = h("div", "hero-card-wrap");
+    var card = h("div", "hero-card-inner " + gradientCls);
+    card.innerHTML = cardHtml + '<span class="hero-chevron">▼</span>';
+    var detail = h("div", "hero-detail");
+    detail.innerHTML = detailHtml;
+    detail.style.display = "none";
+    card.addEventListener("click", function () {
+      var open = detail.style.display !== "none";
+      detail.style.display = open ? "none" : "block";
+      card.classList.toggle("hero-expanded", !open);
+      if (!open) {
+        // animate bars on open
+        detail.querySelectorAll("[data-fw]").forEach(function (bar) {
+          var target = bar.getAttribute("data-fw");
+          bar.style.width = "0";
+          bar.style.transition = "none";
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              bar.style.transition = "width 0.7s cubic-bezier(0.22,1,0.36,1)";
+              bar.style.width = target;
+            });
+          });
+        });
+      }
+    });
+    wrap.appendChild(card);
+    wrap.appendChild(detail);
+    return wrap;
+  }
+
   function renderDashboard() {
     var g = Game.state.currentGame;
     if (!g) return;
     var c = g.county_data;
 
-    // Stats grid
+    // ── 1. Stats grid ──────────────────────────────────────────────────────
     var grid = el("stats-grid");
     grid.innerHTML = "";
-    var stats = [
+    [
       { label: "民心", value: Math.round(c.morale) },
       { label: "治安", value: Math.round(c.security) },
       { label: "商业", value: Math.round(c.commercial) },
       { label: "文教", value: Math.round(c.education) },
-    ];
-    stats.forEach(function (s) {
-      var card = h("div", "stat-card",
+    ].forEach(function (s) {
+      var t = _statTier(s.value);
+      var card = h("div", "stat-card " + t.cls);
+      card.innerHTML =
         '<div class="stat-label">' + s.label + '</div>' +
-        '<div class="stat-value">' + s.value + '</div>');
+        '<div class="stat-value">' + s.value + '</div>' +
+        '<div class="stat-tier-row"><span class="stat-tier-label">' + t.label + '</span></div>' +
+        '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:' + s.value + '%"></div></div>';
       grid.appendChild(card);
     });
 
-    // Info row
-    var info = el("info-row");
-    info.innerHTML = "";
-    var pi = c.price_index || 1.0;
-    var ctr = c.commercial_tax_rate !== undefined ? c.commercial_tax_rate : 0.03;
-    var granaryStatus = "未建";
-    if (c.has_granary) granaryStatus = "可用";
-    else if (c.granary_needs_rebuild) granaryStatus = "耗尽待重建";
-    var items = [
-      { label: "税率", value: Math.round(c.tax_rate * 100) + "%" },
-      { label: "商税税率", value: (ctr * 100).toFixed(1).replace(/\.0$/, "") + "%" },
-      { label: "物价指数", value: pi.toFixed(1) },
-      { label: "县学", value: (c.school_level || 0) + "/" + INFRA_MAX_LEVEL },
-      { label: "水利", value: (c.irrigation_level || 0) + "/" + INFRA_MAX_LEVEL },
-      { label: "医疗", value: (c.medical_level || 0) + "/" + INFRA_MAX_LEVEL },
-      { label: "衙役", value: (c.bailiff_level || 0) + "/3" },
-      { label: "义仓", value: granaryStatus },
-    ];
-    items.forEach(function (it) {
-      var span = h("span", "info-item", "<strong>" + it.label + ":</strong> " + it.value);
-      info.appendChild(span);
-    });
+    // ── 2. Hero row ────────────────────────────────────────────────────────
+    var heroRow = el("hero-row");
+    heroRow.innerHTML = "";
 
-    // 行政开支（可展开明细）
-    var adminSpan = h("span", "info-item info-item-expandable");
-    adminSpan.innerHTML = "<strong>行政开支:</strong> " + c.admin_cost + "两/年 ▾";
-    adminSpan.style.cursor = "pointer";
-    var detailDiv = h("div", "admin-cost-detail");
-    detailDiv.style.display = "none";
-    if (c.admin_cost_detail) {
-      var LABELS = Game.components.ADMIN_COST_LABELS;
-      var keys = ["official_salary", "deputy_salary", "advisor_fee", "clerks_cost",
-                  "bailiff_cost", "school_cost", "office_cost",
-                  "irrigation_maint", "medical_maint"];
-      keys.forEach(function (k) {
-        var val = c.admin_cost_detail[k];
-        if (val !== undefined) {
-          var row = h("div", "admin-detail-row",
-            "<span class='admin-detail-label'>" + (LABELS[k] || k) + "</span>" +
-            "<span class='admin-detail-value'>" + val + "两</span>");
-          detailDiv.appendChild(row);
-        }
-      });
-      var totalRow = h("div", "admin-detail-row admin-detail-total",
-        "<span class='admin-detail-label'><strong>合计</strong></span>" +
-        "<span class='admin-detail-value'><strong>" + c.admin_cost + "两</strong></span>");
-      detailDiv.appendChild(totalRow);
-    }
-    adminSpan.addEventListener("click", function () {
-      var showing = detailDiv.style.display !== "none";
-      detailDiv.style.display = showing ? "none" : "block";
-      adminSpan.innerHTML = "<strong>行政开支:</strong> " + c.admin_cost + "两/年 " + (showing ? "▾" : "▴");
-    });
-    info.appendChild(adminSpan);
-    info.appendChild(detailDiv);
+    // Grain hero card
+    var ps = c.peasant_surplus || {};
+    var grainReserve = Number(c.peasant_grain_reserve || ps.reserve || 0);
+    var monthlyCons  = Math.max(1, ps.monthly_consumption || 1);
+    var monthsNum    = grainReserve / monthlyCons;
+    var monthsFmt    = monthsNum.toFixed(1);
+    var perPerson    = ps.consumer_confidence !== undefined ? ps.consumer_confidence : 0;
+    var confIndex    = ps.confidence_index !== undefined ? ps.confidence_index : 0;
+    var curMoyHero   = monthOfYear(g.current_season || 1);
+    var harvestIn    = (9 - curMoyHero + 12) % 12;
+    var harvestLabel = harvestIn === 0 ? "本月秋收！" : harvestIn + " 月";
+    var totalPeasantPop = (c.villages || []).reduce(function (s, v) { return s + (v.population || 0); }, 0);
+    var grainFillPct = Math.min(100, (monthsNum / 6) * 100).toFixed(0);
+    var confFillPct  = Math.min(100, Math.max(0, ((confIndex + 50) / 100) * 100)).toFixed(0);
+    var perPersonTag = perPerson > 0
+      ? '<span class="hero-sub-tag">月均余粮 +' + perPerson + ' 斤/人</span>'
+      : perPerson < 0
+      ? '<span class="hero-sub-tag hero-sub-danger">月均亏 ' + Math.abs(perPerson) + ' 斤/人</span>'
+      : '';
 
-    // Environment
-    var envDiv = el("environment-info");
-    envDiv.innerHTML = "";
-    if (c.environment) {
-      var title = h("h4", "section-title", "环境");
-      envDiv.appendChild(title);
-      var row = h("div", "env-row");
-      var envItems = [
-        { label: "农业适宜度", value: (c.environment.agriculture_suitability * 100).toFixed(0) + "%" },
-        { label: "水患风险", value: (c.environment.flood_risk * 100).toFixed(0) + "%" },
-        { label: "边患风险", value: (c.environment.border_threat * 100).toFixed(0) + "%" },
-      ];
-      envItems.forEach(function (it) {
-        var span = h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value);
-        row.appendChild(span);
-      });
-      envDiv.appendChild(row);
+    var grainCardHtml =
+      '<div class="hero-label">粮食储备可支撑</div>' +
+      '<div class="hero-num">' + monthsFmt + '<span class="hero-unit">个月</span></div>' +
+      '<div class="hero-sub"><span>距秋收 ' + harvestLabel + '</span>' + perPersonTag + '</div>' +
+      '<div class="hero-bar-wrap"><div class="hero-bar-fill" style="width:' + grainFillPct + '%"></div></div>';
+
+    var grainDetailHtml =
+      '<div class="hd-row"><span class="hd-label">当前储备</span><span class="hd-value">' + grainReserve.toLocaleString() + ' 斤</span></div>' +
+      '<div class="hd-row"><span class="hd-label">农民总人口</span><span class="hd-value">' + totalPeasantPop.toLocaleString() + ' 人</span></div>' +
+      '<div class="hd-row"><span class="hd-label">月均消耗</span><span class="hd-value">' + Math.round(monthlyCons).toLocaleString() + ' 斤</span></div>' +
+      '<div class="hd-row"><span class="hd-label">人均月余粮</span><span class="hd-value">' + (perPerson >= 0 ? '+' : '') + perPerson + ' 斤</span></div>' +
+      '<div class="hd-divider"></div>' +
+      '<div class="hd-row"><span class="hd-label">消费信心指数</span><span class="hd-value">' +
+        '<span class="hd-mini-bar-wrap"><span class="hd-mini-bar-fill" data-fw="' + confFillPct + '%" style="width:' + confFillPct + '%"></span></span> ' + confIndex +
+      '</span></div>' +
+      '<div class="hd-row"><span class="hd-label">距秋收</span><span class="hd-value">' + harvestLabel + '</span></div>';
+
+    var activeLoans = ((c.emergency || {}).neighbor_loans || []).filter(function (l) { return l.status === "ACTIVE"; });
+    if (activeLoans.length > 0) {
+      var totalMonthly = activeLoans.reduce(function (s, l) { return s + (l.installment_grain || 0); }, 0);
+      grainDetailHtml += '<div class="hd-divider"></div>' +
+        '<div class="hd-row hd-row-warn"><span class="hd-label">月还邻县借粮</span><span class="hd-value">-' + Math.round(totalMonthly) + ' 斤/月</span></div>';
     }
 
-    // Peasant surplus info
-    var surplusDiv = el("surplus-info");
-    if (surplusDiv) {
-      surplusDiv.innerHTML = "";
-      if (c.peasant_surplus) {
-        var ps = c.peasant_surplus;
-        var surplusTitle = h("h4", "section-title", "农民粮食盈余");
-        surplusDiv.appendChild(surplusTitle);
+    var grainGradCls = perPerson < 0 ? "hero-grain-danger" : "hero-grain";
+    heroRow.appendChild(_buildHeroCard(grainCardHtml, grainDetailHtml, grainGradCls));
 
-        // 农民总人口
-        var totalPeasantPop = (c.villages || []).reduce(function (sum, v) {
-          return sum + (v.population || 0);
-        }, 0);
+    // Quota hero card
+    var quota = c.annual_quota;
+    var fy = c.fiscal_year || {};
+    var remitRatio = c.remit_ratio || 0.65;
 
-        var cc = ps.consumer_confidence !== undefined ? ps.consumer_confidence : 0;
-        var trendIcon = cc >= 10 ? "↑" : (cc <= 0 ? "↓" : "→");
-        var trendClass = cc >= 10 ? "delta-positive" : (cc <= 0 ? "delta-negative" : "");
+    if (quota && quota.total > 0) {
+      // Corvee
+      var corveeRemitted   = Math.round((fy.corvee_tax || 0) - (fy.corvee_retained || 0));
+      var corveeQuota      = quota.corvee || 0;
+      var corveeCollected  = (fy.corvee_tax || 0) > 0;
+      var corveeGap        = Math.round(corveeQuota - corveeRemitted);
+      // Agri
+      var totalLand        = (c.villages || []).reduce(function (s, v) { return s + (v.farmland || 0); }, 0);
+      var irrBonus         = (c.irrigation_level || 0) * 0.15;
+      var agriSuit         = (c.environment || {}).agriculture_suitability || 0.7;
+      var expectedAgriOutput = totalLand * 0.5 * agriSuit * (1 + irrBonus);
+      var expectedAgriTax    = Math.round(expectedAgriOutput * c.tax_rate);
+      var expectedAgriRemit  = Math.round(expectedAgriTax * remitRatio);
+      var agriQuota          = quota.agricultural || 0;
+      var agriRemittedActual = Math.round(fy.agri_remitted || 0);
+      var autumnAssessment   = c.autumn_tax_assessment || {};
+      var paymentPending     = autumnAssessment.status === "PENDING_PAYMENT";
+      var pendingRemit       = Math.round(autumnAssessment.agri_remit_due || expectedAgriRemit);
+      var autumnDone         = (fy.agri_remitted || 0) > 0 || autumnAssessment.status === "PAID";
+      var agriProjected      = autumnDone ? agriRemittedActual : (paymentPending ? pendingRemit : expectedAgriRemit);
+      var agriGap            = Math.round(agriQuota - agriProjected);
+      var projectedTotal     = agriProjected + corveeRemitted;
+      var totalGap           = Math.round(quota.total - projectedTotal);
+      var compPct            = Math.round(Math.min(100, (projectedTotal / quota.total) * 100));
+      var quotaGradCls = totalGap <= 0 ? "hero-quota-ok"
+        : totalGap < quota.total * 0.2 ? "hero-quota-warn"
+        : totalGap < quota.total * 0.5 ? "hero-quota-danger"
+        : "hero-quota-critical";
 
-        // 距秋收：从 current_season 实时计算，避免快照滞后一个月的偏差
-        var curMoy = monthOfYear(g.current_season || 1);
-        var rawDist = (9 - curMoy + 12) % 12;
-        var harvestLabel = rawDist === 0 ? "今月秋收！" : rawDist + "月";
+      var quotaCardHtml =
+        '<div class="hero-label">当前赋税缺口</div>' +
+        '<div class="hero-num">' + Math.max(0, totalGap) + '<span class="hero-unit">两</span></div>' +
+        '<div class="hero-sub"><span>总配额 ' + quota.total + ' 两</span><span class="hero-sub-tag">完成率 ' + compPct + '%</span></div>' +
+        '<div class="hero-bar-wrap"><div class="hero-bar-fill" style="width:' + compPct + '%"></div></div>';
 
-        // 第一行：基础数据
-        var row1 = h("div", "env-row");
-        var row1Items = [
-          { label: "当前储备", value: ps.reserve.toLocaleString() + "斤" },
-          { label: "农民人口", value: totalPeasantPop.toLocaleString() + "人" },
-          { label: "月消耗", value: ps.monthly_consumption.toLocaleString() + "斤" },
-          { label: "距秋收", value: harvestLabel },
-        ];
-        row1Items.forEach(function (it) {
-          row1.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
-        });
-        surplusDiv.appendChild(row1);
-
-        // 第二行：衍生指标
-        var row2 = h("div", "env-row");
-        var row2Items = [
-          { label: "月均余粮", value: '<span class="' + trendClass + '">' + cc + "斤/人 " + trendIcon + "</span>" },
-          { label: "消费信心指数", value: ps.confidence_index !== undefined ? ps.confidence_index : "—" },
-        ];
-        row2Items.forEach(function (it) {
-          row2.appendChild(h("span", "env-item", "<strong>" + it.label + ":</strong> " + it.value));
-        });
-        surplusDiv.appendChild(row2);
-
-        // 第三行：邻县借粮还款（有活跃贷款时才显示）
-        var activeLoans = ((c.emergency || {}).neighbor_loans || []).filter(function (l) {
-          return l.status === "ACTIVE";
-        });
-        if (activeLoans.length > 0) {
-          var totalMonthly = activeLoans.reduce(function (s, l) {
-            return s + (l.installment_grain || 0);
-          }, 0);
-          var loanLines = activeLoans.map(function (l) {
-            var remaining = Math.max(0, l.term_months - (l.months_paid || 0));
-            return escapeHtml(l.lender_name || "邻县") + " " + Math.round(l.installment_grain) + "斤×" + remaining + "期";
-          }).join("　");
-          var row3 = h("div", "env-row");
-          row3.innerHTML =
-            '<span class="env-item"><strong>月还邻县借粮:</strong> ' +
-            '<span class="delta-negative">' + Math.round(totalMonthly) + '斤/月</span>' +
-            ' <span class="hint-text">（' + loanLines + '）</span></span>';
-          surplusDiv.appendChild(row3);
-        }
+      function _quotaDetailSection(label, val, qota, done) {
+        var pct  = Math.min(100, Math.round(val / qota * 100));
+        var gap  = qota - val;
+        var bCls = done ? (gap <= 0 ? "hd-bar-ok" : gap < qota * 0.3 ? "hd-bar-warn" : "hd-bar-danger") : "hd-bar-proj";
+        var gStr = gap <= 0 ? "✓ 已满足" : "缺 " + gap + " 两";
+        return '<div class="hd-quota-row">' +
+          '<div class="hd-quota-header">' +
+            '<span class="hd-label">' + label + (done ? "" : "（预计）") + '</span>' +
+            '<span class="hd-value">' + val + ' / ' + qota + ' 两 · ' + gStr + '</span>' +
+          '</div>' +
+          '<div class="hd-bar-track"><div class="hd-bar-fill ' + bCls + '" data-fw="' + pct + '%" style="width:' + pct + '%"></div></div>' +
+        '</div>';
       }
-    }
 
-    // Quota info
-    var quotaDiv = el("quota-info");
-    if (quotaDiv) {
-      quotaDiv.innerHTML = "";
-      var quota = c.annual_quota;
-      if (quota && quota.total > 0) {
-        var quotaTitle = h("h4", "section-title", "知府配额（第" + (quota.year || 1) + "年）");
-        quotaDiv.appendChild(quotaTitle);
+      var quotaDetailHtml =
+        _quotaDetailSection("农业税", agriProjected, agriQuota, autumnDone) +
+        '<div class="hd-divider"></div>' +
+        _quotaDetailSection("徭役折银", corveeRemitted, corveeQuota, corveeCollected) +
+        '<div class="hd-divider"></div>' +
+        '<div class="hd-row"><span class="hd-label">合计完成率</span><span class="hd-value">' + compPct + '%</span></div>';
 
-        var fy = c.fiscal_year || {};
-        var remitRatio = c.remit_ratio || 0.65;
-
-        // Corvee: fully collected in 五月, so actual YTD is authoritative
-        var corveeRemitted = Math.round((fy.corvee_tax || 0) - (fy.corvee_retained || 0));
-        var corveeQuota = quota.corvee || 0;
-        var corveeCollected = (fy.corvee_tax || 0) > 0;
-        var corveeGap = Math.round(corveeQuota - corveeRemitted);
-
-        // Agri tax: collected at autumn; project from current tax rate + land conditions
-        var totalLand = (c.villages || []).reduce(function(sum, v) { return sum + (v.farmland || 0); }, 0);
-        var irrBonus = (c.irrigation_level || 0) * 0.15;
-        var agriSuit = (c.environment || {}).agriculture_suitability || 0.7;
-        var expectedAgriOutput = totalLand * 0.5 * agriSuit * (1 + irrBonus);
-        var expectedAgriTax = Math.round(expectedAgriOutput * c.tax_rate);
-        var expectedAgriRemit = Math.round(expectedAgriTax * remitRatio);
-        var agriQuota = quota.agricultural || 0;
-        var agriRemittedActual = Math.round(fy.agri_remitted || 0);
-        var autumnAssessment = c.autumn_tax_assessment || {};
-        var paymentPending = autumnAssessment.status === "PENDING_PAYMENT";
-        var pendingRemit = Math.round(autumnAssessment.agri_remit_due || expectedAgriRemit);
-        var autumnDone = (fy.agri_remitted || 0) > 0 || autumnAssessment.status === "PAID";
-        // Gap: use actual if autumn done, projected otherwise
-        var agriProjected = autumnDone
-          ? agriRemittedActual
-          : (paymentPending ? pendingRemit : expectedAgriRemit);
-        var agriGap = Math.round(agriQuota - agriProjected);
-
-        // Combined projected gap
-        var projectedTotal = agriProjected + corveeRemitted;
-        var totalGap = Math.round(quota.total - projectedTotal);
-
-        function gapSpan(gap, pending) {
-          if (pending) return '<span class="delta-neutral">待五月征收</span>';
-          if (gap <= 0) return '<span class="delta-positive">已满足</span>';
-          return '<span class="delta-negative">缺口 ' + gap + ' 两</span>';
+      // Quota completion result
+      var qc = c.quota_completion;
+      if (qc && qc.year === quota.year) {
+        var qcValue = "实缴 " + qc.actual_remitted + " 两，完成率 " + qc.completion_rate + "%";
+        if (qc.relief_deduction > 0) {
+          qcValue += "（减免核扣 " + qc.relief_deduction + " 两，有效配额 " + qc.quota_total + " 两）";
         }
+        quotaDetailHtml += '<div class="hd-divider"></div>' +
+          '<div class="hd-row"><span class="hd-label">秋后结算</span><span class="hd-value">' + qcValue + '</span></div>';
+      }
 
-        var quotaRow = h("div", "env-row");
-        var quotaItems = [
-          {
-            label: "农业税",
-            value: "配额 " + agriQuota + " 两 | " +
-              (autumnDone ? "实缴 " + agriRemittedActual
-                : paymentPending ? "九月已核定，十月待缴 " + pendingRemit
-                : "预计上缴 " + expectedAgriRemit +
-                "（产出 " + Math.round(expectedAgriOutput) + " × 税率 " + Math.round(c.tax_rate * 100) + "%）") +
-              " | " + gapSpan(agriGap, false),
-          },
-          {
-            label: "徭役折银",
-            value: "配额 " + corveeQuota + " 两 | " +
-              (corveeCollected ? "实缴 " + corveeRemitted : "待五月征收") +
-              " | " + gapSpan(corveeGap, !corveeCollected),
-          },
-          {
-            label: "合计",
-            value: "总配额 " + quota.total + " 两 | 预计满足 " + projectedTotal + " 两 | " + gapSpan(totalGap, false),
-          },
-        ];
-
-        // If autumn settlement completed, append final result row
-        var qc = c.quota_completion;
-        if (qc && qc.year === quota.year) {
-          var qcValue = "实缴 " + qc.actual_remitted + " 两，完成率 " + qc.completion_rate + "%";
-          if (qc.relief_deduction > 0) {
-            qcValue += "（原配额 " + (qc.original_quota || qc.quota_total + qc.relief_deduction) +
-              " 两，减免核扣 " + qc.relief_deduction + " 两，有效配额 " + qc.quota_total + " 两）";
-          }
-          quotaItems.push({ label: "秋后结算", value: qcValue });
-        }
-
-        quotaItems.forEach(function (it) {
-          var span = h("span", "env-item quota-item", "<strong>" + it.label + ":</strong> " + it.value);
-          quotaRow.appendChild(span);
-        });
-        quotaDiv.appendChild(quotaRow);
-
-        // 上缴比例调整控件：仅在九月秋税已核定且有配额缺口时显示
-        if (paymentPending && agriGap > 0) {
-          var agriTax = autumnAssessment.agri_tax || 0;
-          var currentPct = Math.round(remitRatio * 100);
-          var retainPct = 100 - currentPct;
-
-          var remitWidget = document.createElement("div");
-          remitWidget.className = "remit-ratio-widget";
-          remitWidget.innerHTML =
+      // Remit ratio widget (only when autumn pending + gap)
+      if (paymentPending && agriGap > 0) {
+        var agriTax     = autumnAssessment.agri_tax || 0;
+        var currentPct  = Math.round(remitRatio * 100);
+        var retainPct   = 100 - currentPct;
+        quotaDetailHtml +=
+          '<div class="hd-divider"></div>' +
+          '<div class="remit-ratio-widget">' +
             '<div class="remit-ratio-header">' +
               '<strong>调整上缴比例</strong>' +
-              '<span class="remit-ratio-note">当前上缴 ' + currentPct + '% · 留存 ' + retainPct + '%' +
-              '（上缴 ' + Math.round(autumnAssessment.agri_remit_due || 0) + ' 两 / 留存 ' + Math.round(autumnAssessment.agri_retained_due || 0) + ' 两）' +
-              '</span>' +
+              '<span class="remit-ratio-note">当前上缴 ' + currentPct + '% · 留存 ' + retainPct + '%</span>' +
             '</div>' +
             '<div class="remit-ratio-controls">' +
               '<label>上缴比例：<input id="remit-ratio-slider" type="range" min="40" max="90" step="1" value="' + currentPct + '">' +
               ' <span id="remit-ratio-pct">' + currentPct + '%</span></label>' +
               '<div id="remit-ratio-preview" class="remit-ratio-preview"></div>' +
               '<button id="btn-adjust-remit-ratio" class="btn btn-sm btn-warning">确认调整</button>' +
-            '</div>';
+            '</div>' +
+          '</div>';
+      }
 
-          quotaDiv.appendChild(remitWidget);
+      heroRow.appendChild(_buildHeroCard(quotaCardHtml, quotaDetailHtml, quotaGradCls));
 
-          var slider = document.getElementById("remit-ratio-slider");
-          var pctDisplay = document.getElementById("remit-ratio-pct");
-          var preview = document.getElementById("remit-ratio-preview");
-          var adjustBtn = document.getElementById("btn-adjust-remit-ratio");
-
+      // Wire remit ratio widget (elements are in DOM even while hidden)
+      if (paymentPending && agriGap > 0) {
+        var slider     = document.getElementById("remit-ratio-slider");
+        var pctDisplay = document.getElementById("remit-ratio-pct");
+        var preview    = document.getElementById("remit-ratio-preview");
+        var adjustBtn  = document.getElementById("btn-adjust-remit-ratio");
+        if (slider && pctDisplay && preview && adjustBtn) {
           function updateRemitPreview() {
             var nr = parseInt(slider.value) / 100;
-            var newRemit = Math.round(agriTax * nr);
-            var newRetain = agriTax > 0 ? Math.round(agriTax - agriTax * nr) : 0;
-            var newGap = Math.round(agriQuota - (newRemit + corveeRemitted));
+            var newRemit  = Math.round(agriTax * nr);
+            var newRetain = agriTax - newRemit;
+            var newGap    = Math.round(agriQuota - (newRemit + corveeRemitted));
             pctDisplay.textContent = slider.value + "%";
-            preview.innerHTML =
-              "调整后：上缴 " + newRemit + " 两 / 留存 " + newRetain + " 两 | " +
+            preview.innerHTML = "上缴 " + newRemit + " 两 / 留存 " + newRetain + " 两 | " +
               (newGap <= 0
                 ? '<span class="delta-positive">配额满足</span>'
-                : '<span class="delta-negative">配额缺口 ' + newGap + ' 两</span>');
+                : '<span class="delta-negative">缺口 ' + newGap + ' 两</span>');
           }
           updateRemitPreview();
           slider.addEventListener("input", updateRemitPreview);
-
           adjustBtn.addEventListener("click", function () {
             var gameObj = Game.state.currentGame;
             if (!gameObj) return;
             var newRatio = parseInt(slider.value) / 100;
             adjustBtn.disabled = true;
             Game.api.adjustRemitRatio(gameObj.id, newRatio)
-              .then(function () {
-                return Game.api.getGame(gameObj.id);
-              })
+              .then(function () { return Game.api.getGame(gameObj.id); })
               .then(function (data) {
                 Game.setGame(data);
                 Game.components.renderDashboard();
@@ -680,31 +612,144 @@
           });
         }
       }
+    } else {
+      // No quota yet
+      heroRow.appendChild(_buildHeroCard(
+        '<div class="hero-label">当前赋税缺口</div>' +
+        '<div class="hero-num" style="font-size:1.4em;opacity:0.8">暂无配额</div>' +
+        '<div class="hero-sub"><span>本年度知府尚未下达指标</span></div>' +
+        '<div class="hero-bar-wrap"><div class="hero-bar-fill" style="width:0%"></div></div>',
+        '<div class="hd-row"><span class="hd-label" style="opacity:0.7">知府尚未下达本年配额</span></div>',
+        "hero-quota-ok"
+      ));
     }
 
-    // 知府近期来文（最近两个月）
+    // ── 3. Infra pips + compact fiscal (replaces info-row) ────────────────
+    var infoDiv = el("info-row");
+    infoDiv.innerHTML = "";
+    var infraDefs = [
+      { label: "县学", value: c.school_level || 0,   max: INFRA_MAX_LEVEL },
+      { label: "水利", value: c.irrigation_level || 0, max: INFRA_MAX_LEVEL },
+      { label: "医疗", value: c.medical_level || 0,   max: INFRA_MAX_LEVEL },
+      { label: "衙役", value: Math.min(c.bailiff_level || 0, 3), max: 3 },
+    ];
+    var infraHtml = '<div class="infra-pips-row">';
+    infraDefs.forEach(function (it) {
+      var pipsHtml = "";
+      for (var i = 0; i < it.max; i++) {
+        pipsHtml += '<span class="pip' + (i < it.value ? ' pip-filled' : '') + '"></span>';
+      }
+      infraHtml += '<div class="infra-item">' +
+        '<span class="infra-item-label">' + it.label + '</span>' +
+        '<div class="infra-pips-wrap">' + pipsHtml +
+        '<span class="infra-item-text">' + it.value + '/' + it.max + '</span></div></div>';
+    });
+    infraHtml += '</div>';
+
+    var granaryStatus = "未建";
+    var granaryValCls = "cf-muted";
+    if (c.has_granary) { granaryStatus = "可用"; granaryValCls = "cf-good"; }
+    else if (c.granary_needs_rebuild) { granaryStatus = "耗尽待重建"; granaryValCls = "cf-warn"; }
+
+    infraHtml += '<div class="compact-fiscal">' +
+      '<span class="cf-item">义仓：<span class="' + granaryValCls + '">' + granaryStatus + '</span></span>' +
+      '<span class="cf-item cf-expandable" id="admin-cost-toggle">行政开支：<span class="cf-val">' + c.admin_cost + ' 两/年</span> <span class="cf-chevron">▾</span></span>' +
+      '</div>';
+
+    var adminDetailHtml = '<div id="admin-cost-detail" class="admin-cost-detail" style="display:none">';
+    if (c.admin_cost_detail) {
+      var LABELS = Game.components.ADMIN_COST_LABELS;
+      var keys = ["official_salary", "deputy_salary", "advisor_fee", "clerks_cost",
+                  "bailiff_cost", "school_cost", "office_cost", "irrigation_maint", "medical_maint"];
+      keys.forEach(function (k) {
+        var val = c.admin_cost_detail[k];
+        if (val !== undefined) {
+          adminDetailHtml += '<div class="admin-detail-row">' +
+            '<span class="admin-detail-label">' + (LABELS[k] || k) + '</span>' +
+            '<span class="admin-detail-value">' + val + '两</span></div>';
+        }
+      });
+      adminDetailHtml += '<div class="admin-detail-row admin-detail-total">' +
+        '<span class="admin-detail-label"><strong>合计</strong></span>' +
+        '<span class="admin-detail-value"><strong>' + c.admin_cost + '两</strong></span></div>';
+    }
+    adminDetailHtml += '</div>';
+    infoDiv.innerHTML = infraHtml + adminDetailHtml;
+
+    var adminToggle = document.getElementById("admin-cost-toggle");
+    var adminDetail = document.getElementById("admin-cost-detail");
+    if (adminToggle && adminDetail) {
+      adminToggle.style.cursor = "pointer";
+      adminToggle.addEventListener("click", function () {
+        var open = adminDetail.style.display !== "none";
+        adminDetail.style.display = open ? "none" : "block";
+        var chev = adminToggle.querySelector(".cf-chevron");
+        if (chev) chev.textContent = open ? "▾" : "▴";
+      });
+    }
+
+    // ── 4. Environment sidebar ──────────────────────────────────────────────
+    var envDiv = el("environment-info");
+    envDiv.innerHTML = "";
+    if (c.environment) {
+      var envTitle = h("h4", "section-title", "自然环境");
+      envDiv.appendChild(envTitle);
+      [
+        { label: "农业适宜度", value: c.environment.agriculture_suitability, fillCls: "env-fill-good" },
+        { label: "水患风险",   value: c.environment.flood_risk,               fillCls: "env-fill-warn" },
+        { label: "边患风险",   value: c.environment.border_threat,            fillCls: "env-fill-risk" },
+      ].forEach(function (it) {
+        var pct = Math.round(it.value * 100);
+        var row = h("div", "env-sidebar-row");
+        row.innerHTML =
+          '<span class="env-sidebar-label">' + it.label + '</span>' +
+          '<div class="env-sidebar-right">' +
+            '<div class="env-sidebar-bar"><div class="env-sidebar-fill ' + it.fillCls + '" style="width:' + pct + '%"></div></div>' +
+            '<span class="env-sidebar-val">' + pct + '%</span>' +
+          '</div>';
+        envDiv.appendChild(row);
+      });
+    }
+
+    // ── 5. Prefect directive → sidebar ──────────────────────────────────────
     var directiveDiv = el("prefect-directive-info");
     if (directiveDiv) {
       directiveDiv.innerHTML = "";
-      var allDirs = c.prefect_directives || [];
+      var allDirs   = c.prefect_directives || [];
       var curSeason = g.current_season || 1;
       var recentDirs = allDirs.filter(function (d) { return d.month >= curSeason - 1; });
       if (recentDirs.length) {
-        var dirTitle = h("h4", "section-title", "知府来文");
-        directiveDiv.appendChild(dirTitle);
+        var dHtml = '<div class="sidebar-directive"><div class="sidebar-directive-label">知府来文</div>';
         recentDirs.forEach(function (d) {
-          var age = curSeason - d.month;
-          var ageLabel = age === 0 ? "本月" : "上月";
-          var shortText = (d.text || "").length > 60 ? d.text.slice(0, 60) + "…" : (d.text || "");
-          var row = document.createElement("div");
-          row.className = "prefect-directive-row";
-          row.innerHTML =
-            '<span class="prefect-directive-tag">' + (d.directive_type || "来文") + '</span>' +
-            '<span class="prefect-directive-age hint">（' + ageLabel + '）</span>' +
-            '<span class="prefect-directive-text">' + shortText + '</span>';
-          directiveDiv.appendChild(row);
+          var ageLabel = (curSeason - d.month) === 0 ? "本月" : "上月";
+          var shortText = (d.text || "").length > 80 ? d.text.slice(0, 80) + "…" : (d.text || "");
+          dHtml += '<div class="sidebar-directive-row">' +
+            '<div class="sidebar-directive-meta">' +
+              '<span class="sidebar-directive-tag">' + escapeHtml(d.directive_type || "来文") + '</span>' +
+              '<span class="sidebar-directive-age">（' + ageLabel + '）</span>' +
+            '</div>' +
+            '<div class="sidebar-directive-text">' + escapeHtml(shortText) + '</div>' +
+            '</div>';
         });
+        dHtml += '</div>';
+        directiveDiv.innerHTML = dHtml;
       }
+    }
+
+    // ── 6. Markets → sidebar ────────────────────────────────────────────────
+    var mkDiv = el("markets-info");
+    mkDiv.innerHTML = "";
+    if (c.markets && c.markets.length > 0) {
+      var mkTitle = h("h4", "section-title", "集市概况");
+      mkDiv.appendChild(mkTitle);
+      c.markets.forEach(function (m) {
+        var gmvVal = m.gmv !== undefined ? m.gmv : (m.trade_index || 0);
+        var row = h("div", "mkt-sidebar-row");
+        row.innerHTML =
+          '<span class="mkt-sidebar-name">' + escapeHtml(m.name) + '</span>' +
+          '<span class="mkt-sidebar-gmv"><span>' + gmvVal + '</span> 两/月</span>';
+        mkDiv.appendChild(row);
+      });
     }
 
     // Disaster alert
@@ -738,7 +783,7 @@
       alertDiv.classList.add("hidden");
     }
 
-    // Active investments
+    // ── 7. Active investments ───────────────────────────────────────────────
     var invDiv = el("investments-list");
     invDiv.innerHTML = "";
     if (c.active_investments && c.active_investments.length > 0) {
@@ -747,26 +792,13 @@
       c.active_investments.forEach(function (inv) {
         var label = inv.description;
         if (inv.target_village) label += "（" + inv.target_village + "）";
-        var item = h("div", "invest-item",
+        var etaText = inv.completion_season <= Game.MAX_MONTH
+          ? Game.seasonName(inv.completion_season).split("（")[0]
+          : "任期后";
+        var item = h("div", "invest-compact-row",
           "<span>" + label + "</span>" +
-          "<span>预计" + (inv.completion_season <= Game.MAX_MONTH ? Game.seasonName(inv.completion_season).split("（")[0] : "任期后") + "完成</span>");
+          '<span class="invest-eta">预计' + etaText + "完成</span>");
         invDiv.appendChild(item);
-      });
-    }
-
-    // Markets
-    var mkDiv = el("markets-info");
-    mkDiv.innerHTML = "";
-    if (c.markets && c.markets.length > 0) {
-      var mkTitle = h("h4", "section-title", "集市");
-      mkDiv.appendChild(mkTitle);
-      c.markets.forEach(function (m) {
-        var gmvVal = m.gmv !== undefined ? m.gmv : (m.trade_index || 0);
-        var row = h("div", "market-row",
-          "<span><strong>" + m.name + "</strong></span>" +
-          "<span>商户: " + m.merchants + "</span>" +
-          "<span>月贸易额: " + gmvVal + "两</span>");
-        mkDiv.appendChild(row);
       });
     }
 
@@ -922,57 +954,80 @@
     return null;
   }
 
+  function _villageTierCls(v) {
+    if (v < 25) return "vstat-red";
+    if (v < 50) return "vstat-amber";
+    if (v < 75) return "vstat-olive";
+    return "vstat-jade";
+  }
+
   function renderVillages() {
     var g = Game.state.currentGame;
     if (!g) return;
+
+    // Use table layout; keep grid hidden
+    var vtbl = el("village-table");
+    var grid = el("village-grid");
+    if (vtbl) vtbl.style.display = "";
+    if (grid) grid.style.display = "none";
+
     var tbody = el("village-tbody");
+    if (!tbody) return;
     tbody.innerHTML = "";
 
     var initials = g.county_data.initial_villages || DEFAULT_INITIAL_VILLAGES;
+    var agents = Game.state.agents || [];
 
     g.county_data.villages.forEach(function (v) {
       var iv = findInitialVillage(v.name, initials);
-
-      var popDelta = iv ? deltaSpan(v.population, iv.population, false) : "";
-      var farmDelta = iv ? deltaSpan(v.farmland, iv.farmland, false) : "";
-      var gentryDelta = iv ? deltaSpan(
-        Math.round(v.gentry_land_pct * 100),
-        Math.round(iv.gentry_land_pct * 100),
-        true  // higher gentry % is bad
-      ) : "";
-      var moraleDelta = iv ? deltaSpan(Math.round(v.morale), Math.round(iv.morale), false) : "";
-      var securityDelta = iv ? deltaSpan(Math.round(v.security), Math.round(iv.security), false) : "";
-
-      var ceiling = v.ceiling || 0;
+      var ceiling   = v.ceiling || 0;
       var occupancy = ceiling > 0 ? Math.round(v.population / ceiling * 100) : 0;
-      var occClass = occupancy > 90 ? "delta-negative" : (occupancy > 70 ? "" : "delta-positive");
 
-      // Find gentry and village rep agents for this village
-      var gentryHtml = "";
-      var repHtml = "";
-      var agents = Game.state.agents || [];
+      var morale   = Math.round(v.morale);
+      var security = Math.round(v.security);
+      var moraleDelta   = iv ? deltaSpan(morale,   Math.round(iv.morale),   false) : "";
+      var securityDelta = iv ? deltaSpan(security, Math.round(iv.security), false) : "";
+      var farmDelta     = iv ? deltaSpan(v.farmland, iv.farmland, false) : "";
+      var gentryDelta   = iv ? deltaSpan(
+        Math.round(v.gentry_land_pct * 100), Math.round(iv.gentry_land_pct * 100), true) : "";
+
+      // Agents
+      var gentryName = "-", repName = "-";
       for (var ai = 0; ai < agents.length; ai++) {
         var ag = agents[ai];
-        if (ag.village_name === v.name) {
-          if (ag.role === "GENTRY" && ag.role_title === "地主") {
-            gentryHtml = '<span class="agent-link" data-agent-id="' + ag.id + '">' + ag.name + '</span>';
-          } else if (ag.role === "VILLAGER" && ag.role_title === "村民代表") {
-            repHtml = '<span class="agent-link" data-agent-id="' + ag.id + '">' + ag.name + '</span>';
-          }
-        }
+        if (ag.village_name !== v.name) continue;
+        if (ag.role === "GENTRY"   && ag.role_title === "地主")    gentryName = ag.name || "-";
+        if (ag.role === "VILLAGER" && ag.role_title === "村民代表") repName    = ag.name || "-";
       }
 
-      var tr = h("tr", "",
-        '<td><button class="village-name-link" data-village-name="' + escapeHtml(v.name) + '">' + escapeHtml(v.name) + "</button></td>" +
-        "<td>" + v.population + popDelta + "</td>" +
-        "<td>" + ceiling + ' <span class="' + occClass + '">(' + occupancy + '%)</span></td>' +
-        "<td>" + v.farmland + farmDelta + "</td>" +
-        "<td>" + (v.gentry_land_pct * 100).toFixed(0) + "%" + gentryDelta + "</td>" +
-        "<td>" + Math.round(v.morale) + moraleDelta + "</td>" +
-        "<td>" + Math.round(v.security) + securityDelta + "</td>" +
-        "<td>" + (v.has_school ? "有" : "无") + "</td>" +
-        "<td>" + (gentryHtml || "-") + "</td>" +
-        "<td>" + (repHtml || "-") + "</td>");
+      var occCls = occupancy > 90 ? "occ-danger" : occupancy > 75 ? "occ-warn" : "occ-ok";
+      var gentryPct = Math.round(v.gentry_land_pct * 100);
+      var gentryTierCls = gentryPct > 60 ? "td-tier-red"
+                        : gentryPct > 40 ? "td-tier-amber"
+                        : gentryPct > 20 ? "td-tier-olive"
+                        : "td-tier-jade";
+
+      var tr = document.createElement("tr");
+      tr.className = "village-tr";
+      tr.innerHTML =
+        '<td class="vt-name"><strong>' + escapeHtml(v.name) + '</strong>' +
+          (v.has_school ? ' <span class="village-has-school">塾</span>' : '') +
+        '</td>' +
+        '<td>' + v.population.toLocaleString() +
+          ' <span class="' + occCls + '">(' + occupancy + '%)</span>' +
+        '</td>' +
+        '<td>' + ceiling.toLocaleString() + '</td>' +
+        '<td>' + v.farmland + farmDelta + '</td>' +
+        '<td class="' + gentryTierCls + '">' + gentryPct + '%' + gentryDelta + '</td>' +
+        '<td class="' + _villageTierCls(morale) + '">' + morale + moraleDelta + '</td>' +
+        '<td class="' + _villageTierCls(security) + '">' + security + securityDelta + '</td>' +
+        '<td class="vt-center">' + (v.has_school ? '✓' : '') + '</td>' +
+        '<td>' + escapeHtml(gentryName) + '</td>' +
+        '<td>' + escapeHtml(repName) + '</td>';
+
+      tr.addEventListener("click", function () {
+        openVillageDetail(v.name);
+      });
       tbody.appendChild(tr);
     });
   }
@@ -1103,39 +1158,46 @@
     var container = el("invest-cards");
     container.innerHTML = "";
 
-    // Use backend-provided available_investments (pre-calculated costs and disable reasons)
     var actions = g.available_investments || [];
-    // Build a lookup from INVEST_DEFS for display descriptions
     var defMap = {};
     INVEST_DEFS.forEach(function (def) { defMap[def.action] = def; });
 
     var standardActions = actions.filter(function (a) { return !a.is_custom; });
     var customActions   = actions.filter(function (a) { return  a.is_custom; });
 
-    standardActions.forEach(function (item) {
-      var def = defMap[item.action] || {};
-      var reason = item.disabled_reason || null;
-      var isGameOver = g.current_season > Game.MAX_MONTH;
-      var disabled = reason !== null || isGameOver;
+    var isGameOver = g.current_season > Game.MAX_MONTH;
 
-      var levelInfo = "";
-      if (item.current_level !== null && item.max_level !== null) {
-        levelInfo = " (当前" + item.current_level + "/" + item.max_level + "级)";
+    function buildInvestCard(item, def) {
+      var reason = item.disabled_reason || null;
+      var disabled = reason !== null || isGameOver;
+      var card = h("div", "invest-card" + (disabled ? " disabled" : ""));
+
+      // Level pips
+      var pipsHtml = "";
+      if (item.current_level !== null && item.max_level !== null && item.max_level > 0) {
+        pipsHtml = '<span class="card-level-pips">';
+        for (var i = 0; i < item.max_level; i++) {
+          pipsHtml += '<span class="cpip' + (i < item.current_level ? ' on' : '') + '"></span>';
+        }
+        pipsHtml += '</span>';
       }
 
-      var card = h("div", "invest-card" + (disabled ? " disabled" : ""));
       card.innerHTML =
-        '<div class="card-name">' + item.name + levelInfo + '</div>' +
-        '<div class="card-cost">费用: ' + item.cost + ' 两</div>' +
-        '<div class="card-desc">' + (def.desc || "") + '</div>' +
-        (reason ? '<div class="card-reason">' + reason + '</div>' : '');
+        '<div class="card-name">' + escapeHtml(item.name) + pipsHtml + '</div>' +
+        '<div class="card-cost">' + item.cost + ' 两</div>' +
+        '<div class="card-desc">' + escapeHtml(def.desc || "") + '</div>' +
+        (reason ? '<div class="card-reason">' + escapeHtml(reason) + '</div>' : '');
 
       if (!disabled) {
         card.dataset.action = item.action;
         card.dataset.needsVillage = item.requires_village ? "1" : "0";
       }
+      return card;
+    }
 
-      container.appendChild(card);
+    standardActions.forEach(function (item) {
+      var def = defMap[item.action] || {};
+      container.appendChild(buildInvestCard(item, def));
     });
 
     // 自创施政选项
