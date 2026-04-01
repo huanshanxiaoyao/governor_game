@@ -58,6 +58,22 @@ class AIGovernorService:
         """AI知县施政决策：LLM为主，规则引擎兜底。返回事件描述列表"""
         county = neighbor.county_data
 
+        # ── Bug-B 修复：消费新任适应期和被动抵制标志 ──
+        # 新知县上任后头3个月处于适应期，施政力度保守
+        adaptation_months = county.get('_new_magistrate_adaptation_months', 0)
+        if adaptation_months > 0:
+            county['_new_magistrate_adaptation_months'] = adaptation_months - 1
+            county['_adaptation_active'] = True
+        else:
+            county.pop('_adaptation_active', None)
+
+        # 被动抵制：知府约谈施压后该县本月清空指令并暗中敷衍
+        if county.pop('_passive_resistance', None):
+            county.pop('pending_directives', None)
+            county['_passive_this_month'] = True
+        else:
+            county.pop('_passive_this_month', None)
+
         # 滚动月度快照：_snapshot_prev 供本月_build_context计算delta，
         # _snapshot_this 供下月_build_context使用
         county['_snapshot_prev'] = county.get('_snapshot_this', {})
@@ -359,9 +375,15 @@ class AIGovernorService:
         game_knowledge = cls._GAME_KNOWLEDGE
 
         # 知府指令单独构造，供 user prompt 使用
-        directives_section = (
-            f"\n【知府指令】\n{directives_desc}\n" if directives_desc else ""
-        )
+        extra_notes = []
+        if directives_desc:
+            extra_notes.append(f"【知府指令】\n{directives_desc}")
+        if county.get('_adaptation_active'):
+            remaining = county.get('_new_magistrate_adaptation_months', 0) + 1
+            extra_notes.append(f"【新任适应期】你刚接任本县，仍在熟悉情况（还剩约{remaining}个月），本月施政应以守成为主，避免大刀阔斧。")
+        if county.get('_passive_this_month'):
+            extra_notes.append("【内心抵触】你对知府的施压心存不满，本月表面顺从，但会在可能的范围内按自己意图行事。")
+        directives_section = ("\n" + "\n".join(extra_notes) + "\n") if extra_notes else ""
 
         # 任期进度（年份 + 剩余月数），供 AI 判断是否还值得发起长期投资
         from .constants import year_of, month_of_year as _moy2, MONTH_NAMES

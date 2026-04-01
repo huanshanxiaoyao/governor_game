@@ -1304,6 +1304,17 @@ class JudicialCaseflowService:
         instance.status = 'PREFECT_DECIDED'
         instance.save(update_fields=['status', 'updated_at'])
 
+        # 年度司法统计（供 AI 知府指令触发器使用）
+        from .constants import year_of as _year_of
+        current_year = _year_of(delivery_season)
+        js = county.get('judicial_year_stats') or {}
+        if js.get('year') != current_year:
+            js = {'year': current_year, 'total': 0, 'overturned': 0}
+        js['total'] += 1
+        if overturned:
+            js['overturned'] += 1
+        county['judicial_year_stats'] = js
+
         # 月报事件
         report['events'].append(event_text)
         if overturned:

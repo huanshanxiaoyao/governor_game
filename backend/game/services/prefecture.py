@@ -8,7 +8,7 @@ from typing import Optional
 
 from django.db import connection
 
-from ..models import AdminUnit, Agent, GameState, JudicialCaseInstance, NeighborPrecompute
+from ..models import AdminUnit, Agent, EventLog, GameState, JudicialCaseInstance, NeighborPrecompute
 from .constants import (
     COUNTY_TYPES,
     ARCHETYPE_COUNTY_TYPE_WEIGHTS,
@@ -31,6 +31,7 @@ from .emergency import EmergencyService
 from .magistrate_service import MagistrateService
 from .annual_review import AnnualReviewService
 from .judicial_caseflow import JudicialCaseflowService
+from llm.client import LLM_DEFAULT_TIMEOUT
 
 logger = logging.getLogger('game')
 
@@ -113,6 +114,9 @@ PREFECTURE_ANNUAL_ADMIN_COST = {
     "misc": 80,         # 衙署杂费
 }
 PREFECTURE_ANNUAL_ADMIN_TOTAL = sum(PREFECTURE_ANNUAL_ADMIN_COST.values())  # 600两
+
+GRANARY_MAX_STOCK = 20000.0   # 义仓最大容量（斤）
+GRANARY_INIT_STOCK = 10000.0  # 义仓建成时初始库存（斤）
 
 # ===== 府级投资规格 =====
 PREFECTURE_INVESTMENT_SPECS = {
@@ -373,6 +377,13 @@ class PrefectureService:
                 for k in ('treasury', 'morale', 'security', 'commercial', 'education')
             }
             county_data['subordinate_reports'] = []   # 历史汇报列表（最多保留8条）
+            # 下属对知府好感度（0-100）：影响服从度和汇报诚实度
+            _affinity_by_archetype = {
+                'VIRTUOUS': random.randint(60, 75),
+                'MIDDLING': random.randint(45, 60),
+                'CORRUPT':  random.randint(25, 40),
+            }
+            county_data['prefect_affinity'] = _affinity_by_archetype.get(spec['archetype'], 50)
 
             unit = AdminUnit.objects.create(
                 game=game,
@@ -414,7 +425,7 @@ class PrefectureService:
         with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_idx = {executor.submit(_gen, s): i for i, s in enumerate(specs)}
             try:
-                for future in as_completed(future_to_idx, timeout=20):
+                for future in as_completed(future_to_idx, timeout=LLM_DEFAULT_TIMEOUT + 5):
                     idx = future_to_idx[future]
                     try:
                         bios[idx] = future.result()
@@ -451,6 +462,14 @@ class PrefectureService:
 
         # ── 建设队列推进（每月冒头）──
         completed_construction = cls._tick_construction(pdata, season)
+        for proj in completed_construction:
+            EventLog.objects.create(
+                game=game, season=season,
+                event_type='prefecture_construction_complete',
+                category='PREFECTURE',
+                description=f'【建设完工】{proj.get("label", proj.get("project", ""))} 升至等级 {proj.get("level", "")}',
+                data=proj,
+            )
 
         subordinates = list(
             AdminUnit.objects.filter(game=game, unit_type='COUNTY', parent=prefecture_unit)
@@ -512,6 +531,21 @@ class PrefectureService:
             SettlementService.settle_county(unit.unit_data, season, report, game=None,
                                             prefecture_ctx=prefecture_ctx)
 
+            # ── Bug-A 修复：正月用玩家配额覆盖 _set_annual_quota 的公式计算值 ──
+            # settle_county 内 _set_annual_quota 会用公式重算 annual_quota，
+            # 但玩家已通过 distribute_quota 设定了本年配额，必须恢复玩家意图。
+            if moy == 1:
+                assigned = pdata.get('quota_assignments', {}).get(str(unit.id))
+                if assigned is not None:
+                    fq = unit.unit_data.get('annual_quota', {})
+                    ft = fq.get('total', 0) or float(assigned)
+                    ar = fq.get('agricultural', ft * 0.65) / ft if ft else 0.65
+                    unit.unit_data['annual_quota'] = {
+                        'total': round(float(assigned), 1),
+                        'agricultural': round(float(assigned) * ar, 1),
+                        'corvee': round(float(assigned) * (1 - ar), 1),
+                    }
+
             # ── 计算本月实际上缴增量（从 fiscal_year 差值推导）──
             fy_after = unit.unit_data.get('fiscal_year', {})
             if moy == 1:
@@ -552,22 +586,100 @@ class PrefectureService:
         else:
             pdata['treasury_collected'] = round(pdata.get('treasury_collected', 0) + remit_total, 1)
 
+        # ── 正月：省级年度施政重点下达 ──
+        if moy == 1:
+            pdata['province_annual_focus'] = cls._generate_province_focus(pdata, season)
+            focus_list = pdata.get('province_annual_focus') or []
+            EventLog.objects.create(
+                game=game, season=season,
+                event_type='prefecture_annual_focus',
+                category='PREFECTURE',
+                description=f'【省级施政重点】本年重点：{"、".join(focus_list) if focus_list else "无特别指示"}',
+                data={'focus': focus_list},
+            )
+
         # ── 三月：才池年度结算 ──
         if moy == 3:
             cls._advance_talent_pool(pdata, subordinates)
 
-        # ── 腊月：扣除年度行政开支 ──
+        # ── 九月：义仓秋粮充库（各县农业上缴额的3%） ──
+        if moy == 9 and pdata.get('granary'):
+            stock = pdata.get('granary_stock', 0.0)
+            from .constants import GRAIN_PER_LIANG
+            for unit in subordinates:
+                fy = unit.unit_data.get('fiscal_year', {})
+                agri_remitted = fy.get('agri_remitted', 0.0)
+                # 农业上缴折算为粮食（按 GRAIN_PER_LIANG 斤/两），取3%充库
+                grain_contribution = agri_remitted * GRAIN_PER_LIANG * 0.03
+                space = max(0.0, GRANARY_MAX_STOCK - stock)
+                actual = min(grain_contribution, space)
+                stock = round(stock + actual, 1)
+            pdata['granary_stock'] = stock
+            EventLog.objects.create(
+                game=game, season=season,
+                event_type='prefecture_granary_fill',
+                category='PREFECTURE',
+                description=f'【义仓秋粮充库】本月充库后存量：{stock:.0f} 斤（上限 {GRANARY_MAX_STOCK:.0f} 斤）',
+                data={'granary_stock': stock, 'granary_max': GRANARY_MAX_STOCK},
+            )
+
+        # ── 腊月：扣除年度行政开支 + 上缴省级定额 + 义仓损耗 ──
         if moy == 12:
             school_cost = [0, 120, 240, 480][min(pdata.get('school_level', 0), 3)]
             road_cost = [0, 100, 200][min(pdata.get('road_level', 0), 2)]
             total_cost = PREFECTURE_ANNUAL_ADMIN_TOTAL + school_cost + road_cost
-            pdata['treasury'] = round(pdata['treasury'] - total_cost, 1)
+            # 扣行政开支（保证不透支：府库不足时按实际扣除）
+            admin_deducted = min(total_cost, pdata.get('treasury', 0))
+            pdata['treasury'] = round(pdata.get('treasury', 0) - admin_deducted, 1)
+
+            # 省级上缴（在行政开支之后执行，保证不透支）
+            province_remit_due = float(pdata.get('annual_quota', 0))
+            province_remitted = round(min(province_remit_due, max(0.0, pdata.get('treasury', 0))), 1)
+            pdata['treasury'] = round(pdata.get('treasury', 0) - province_remitted, 1)
+            pdata['province_remit_due'] = round(province_remit_due, 1)
+            pdata['province_remitted'] = province_remitted
+            pdata['province_remit_gap'] = round(province_remit_due - province_remitted, 1)
+
+            # 义仓年度损耗（5%）
+            if pdata.get('granary') and pdata.get('granary_stock', 0) > 0:
+                pdata['granary_stock'] = round(pdata['granary_stock'] * 0.95, 1)
+
             pdata['year_end_review_pending'] = True
+            gap = pdata['province_remit_gap']
+            gap_note = f'缺口 {gap:.0f} 两' if gap > 0 else '足额上缴'
+            EventLog.objects.create(
+                game=game, season=season,
+                event_type='prefecture_year_end',
+                category='PREFECTURE',
+                description=(
+                    f'【腊月年终】行政开支 {admin_deducted:.0f} 两'
+                    f'｜省级上缴 {province_remitted:.0f}/{province_remit_due:.0f} 两（{gap_note}）'
+                    f'｜结余府库 {pdata["treasury"]:.0f} 两'
+                ),
+                data={
+                    'admin_deducted': round(admin_deducted, 1),
+                    'province_remit_due': pdata['province_remit_due'],
+                    'province_remitted': province_remitted,
+                    'province_remit_gap': gap,
+                    'treasury_after': pdata['treasury'],
+                },
+            )
 
         # ── 十月：府试自动结算 ──
         exam_result = None
         if moy == 10:
             exam_result = cls._run_exam(pdata, season)
+            if exam_result:
+                passed = exam_result.get('passed_count', 0)
+                top = exam_result.get('top_candidate', {})
+                top_note = f'，第一名：{top.get("name", "")}（{top.get("score", 0):.0f}分）' if top else ''
+                EventLog.objects.create(
+                    game=game, season=season,
+                    event_type='prefecture_exam_result',
+                    category='PREFECTURE',
+                    description=f'【府试放榜】本届录取 {passed} 人{top_note}',
+                    data=exam_result,
+                )
 
         # ── 汇报月：生成模糊汇报 ──
         if moy in REPORT_MONTHS:
@@ -588,6 +700,30 @@ class PrefectureService:
             judicial_processed = JudicialCaseflowService.auto_process_ai_counties(game, season)
             logger.info("advance_month game=%s season=%s: 司法自动处理 %.2fs",
                         game.id, season, _time.monotonic() - _t_judicial_start)
+
+        # ── 府志月报快照（每月固定写入）──
+        county_remit_summary = [
+            {'unit_id': u.id,
+             'county_name': u.unit_data.get('county_name', ''),
+             'remit': u.unit_data.get('last_remit', 0.0)}
+            for u in subordinates
+        ]
+        EventLog.objects.create(
+            game=game, season=season,
+            event_type='prefecture_month_settled',
+            category='PREFECTURE',
+            description=(
+                f'【{month_name(season)}府政月报】'
+                f'本月收缴 {remit_total:.0f} 两，府库 {pdata["treasury"]:.0f} 两'
+            ),
+            data={
+                'remit_total': round(remit_total, 1),
+                'treasury': pdata['treasury'],
+                'treasury_collected': pdata.get('treasury_collected', 0),
+                'county_remit': county_remit_summary,
+                'granary_stock': pdata.get('granary_stock', 0),
+            },
+        )
 
         next_season = season + 1
         transition = AnnualReviewService.handle_prefecture_transition(
@@ -659,7 +795,7 @@ class PrefectureService:
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(_decide, u): u for u in subordinates}
             try:
-                for future in as_completed(futures, timeout=20):
+                for future in as_completed(futures, timeout=LLM_DEFAULT_TIMEOUT + 5):
                     uid, events = future.result()
                     results[uid] = events
             except FuturesTimeoutError:
@@ -914,7 +1050,19 @@ class PrefectureService:
         for unit in subordinates:
             cd = unit.unit_data
             archetype = cd.get('governor_profile', {}).get('archetype', 'MIDDLING')
-            bias = 1 if archetype == 'CORRUPT' else 0   # CORRUPT 知县汇报偏高1档
+            affinity = cd.get('prefect_affinity', 50)
+
+            # 好感度决定基础偏差（低好感→多报虚假好消息）；CORRUPT 额外+1档
+            if affinity >= 70:
+                base_bias = 0
+            elif affinity >= 50:
+                base_bias = 1
+            elif affinity >= 30:
+                base_bias = 1
+            else:
+                base_bias = 2
+            corrupt_bonus = 1 if archetype == 'CORRUPT' else 0
+            bias = base_bias + corrupt_bonus
 
             def _fuzz(raw_score, extra_bias=0):
                 """将真实分值加噪声后转为档位标签"""
@@ -944,8 +1092,13 @@ class PrefectureService:
                 "notes": "",
             }
 
-            # CORRUPT 知县有概率隐瞒负面事项
-            if archetype == 'CORRUPT' and random.random() < 0.6:
+            # 低好感度或 CORRUPT 知县有概率隐瞒负面事项
+            hide_prob = 0.0
+            if archetype == 'CORRUPT':
+                hide_prob = 0.6
+            elif affinity < 40:
+                hide_prob = 0.3
+            if random.random() < hide_prob:
                 report_entry['notes'] = "（无特记事项）"
             else:
                 report_entry['notes'] = cd.get('_last_report_note', '')
@@ -1059,6 +1212,7 @@ class PrefectureService:
         """
         设定各下辖县的年度上缴目标。assignments = {unit_id: amount}。
         仅在正月（month_of_year(current_season) == 1）生效。
+        同步将配额写入各县 unit_data['annual_quota']，供 AI 知县 LLM 决策使用。
         """
         moy = month_of_year(game.current_season)
         if moy != 1:
@@ -1078,7 +1232,388 @@ class PrefectureService:
         game.player_unit.unit_data = pdata
         game.player_unit.save(update_fields=['unit_data'])
 
+        # 同步写入各县 annual_quota，让 AI 知县感知到本年配额
+        subordinates = list(
+            AdminUnit.objects.filter(game=game, unit_type='COUNTY', parent=game.player_unit)
+        )
+        for unit in subordinates:
+            assigned = assignments.get(unit.id, assignments.get(str(unit.id)))
+            if assigned is None:
+                continue
+            cd = unit.unit_data
+            # 按历史配额结构估算农/役比例
+            old_quota = cd.get('annual_quota') or {}
+            old_total = old_quota.get('total', 0) or assigned
+            agri_ratio = old_quota.get('agricultural', old_total * 0.65) / old_total if old_total else 0.65
+            corvee_ratio = 1.0 - agri_ratio
+            cd['annual_quota'] = {
+                'total': round(assigned, 1),
+                'agricultural': round(assigned * agri_ratio, 1),
+                'corvee': round(assigned * corvee_ratio, 1),
+            }
+            # 写入系统指令，确保 LLM 决策阶段能感知到
+            system_directive = {
+                "season": game.current_season,
+                "directive": f"本年府级税赋配额已下达，尔县应缴总额为{round(assigned)}两（含农赋与徭役折银），务请依时足额完纳。",
+            }
+            directives = cd.get('pending_directives', [])
+            directives.append(system_directive)
+            cd['pending_directives'] = directives[-3:]
+            unit.unit_data = cd
+            unit.save(update_fields=['unit_data'])
+
         return {"assigned": total_assigned, "annual_quota": annual_quota, "warnings": warnings}
+
+    # ==================== 资源调拨 ====================
+
+    @classmethod
+    def relief_county(cls, game, unit_id: int, amount: float) -> dict:
+        """
+        玩家主动向指定下辖县拨济，单位为两（银两）。
+        后端优先动用府级义仓（斤→折银等价），不足部分再从府库扣银购粮。
+        不能凭空产出：义仓不足 + 府库不足 → 报错。
+
+        义仓路径：1两 = GRAIN_PER_LIANG 斤，从 granary_stock 拨粮给县 peasant_grain_reserve。
+        银两路径：直接拨银给县 treasury（县可自行购粮）。
+        """
+        from .constants import GRAIN_PER_LIANG
+        if amount < 10:
+            return {"error": "单次拨款不得低于10两"}
+
+        pdata = game.player_unit.unit_data
+        treasury = pdata.get('treasury', 0.0)
+
+        unit = AdminUnit.objects.filter(
+            id=unit_id, game=game, unit_type='COUNTY', parent=game.player_unit,
+        ).first()
+        if not unit:
+            return {"error": "县不存在"}
+
+        # 请求粮食总量（斤）
+        grain_needed = amount * GRAIN_PER_LIANG
+
+        # ── Step 1：优先从义仓拨粮 ──
+        granary_stock = pdata.get('granary_stock', 0.0) if pdata.get('granary') else 0.0
+        grain_from_granary = min(grain_needed, granary_stock)
+        silver_from_granary = grain_from_granary / GRAIN_PER_LIANG  # 义仓不扣银，仅记录等值
+
+        # ── Step 2：剩余缺口从府库购粮（扣银） ──
+        remaining_grain = grain_needed - grain_from_granary
+        silver_needed = round(remaining_grain / GRAIN_PER_LIANG, 1)
+
+        # 验证府库是否足够（义仓已覆盖全部 → silver_needed=0，跳过验证）
+        if silver_needed > 0:
+            max_relief = round(treasury * 0.30, 1)
+            if silver_needed > max_relief:
+                return {"error": (
+                    f"义仓存粮不足（仅{round(granary_stock)}斤），剩余缺口需从府库支银"
+                    f"{silver_needed}两，超过府库余额30%上限（{max_relief}两）"
+                )}
+            if treasury < silver_needed + 50:
+                return {"error": (
+                    f"府库余额不足（现有{round(treasury, 1)}两），至少需{silver_needed + 50}两"
+                )}
+
+        # ── 执行扣减 ──
+        cd = unit.unit_data
+        county_name = cd.get('county_name', '本县')
+
+        # 义仓拨粮
+        if grain_from_granary > 0:
+            pdata['granary_stock'] = round(granary_stock - grain_from_granary, 1)
+            cd['peasant_grain_reserve'] = round(cd.get('peasant_grain_reserve', 0) + grain_from_granary, 1)
+
+        # 府库拨银（剩余缺口）
+        if silver_needed > 0:
+            pdata['treasury'] = round(treasury - silver_needed, 1)
+            cd['treasury'] = round(cd.get('treasury', 0) + silver_needed, 1)
+
+        # ── 好感度奖励 ──
+        if amount >= 200:
+            affinity_delta = 6
+        elif amount >= 100:
+            affinity_delta = 4
+        else:
+            affinity_delta = 3
+        old_affinity = cd.get('prefect_affinity', 50)
+        cd['prefect_affinity'] = max(0, min(100, old_affinity + affinity_delta))
+
+        # 记录事件
+        event_desc = f"【知府调济】"
+        if grain_from_granary > 0:
+            event_desc += f"义仓拨粮{round(grain_from_granary)}斤"
+        if silver_needed > 0:
+            event_desc += f"{'，' if grain_from_granary > 0 else ''}府库拨银{silver_needed}两购粮"
+        cd.setdefault('_emergency_events', []).append(event_desc)
+
+        unit.unit_data = cd
+        unit.save(update_fields=['unit_data'])
+        game.player_unit.unit_data = pdata
+        game.player_unit.save(update_fields=['unit_data'])
+
+        gp = cd.get('governor_profile', {})
+        return {
+            "unit_id": unit_id,
+            "county_name": county_name,
+            "governor_name": gp.get('name', ''),
+            "amount_requested": round(amount, 1),
+            "grain_from_granary": round(grain_from_granary, 1),
+            "grain_from_treasury": round(remaining_grain, 1),
+            "silver_spent": round(silver_needed, 1),
+            "granary_stock_after": round(pdata.get('granary_stock', 0), 1),
+            "county_grain_reserve_after": round(cd.get('peasant_grain_reserve', 0), 1),
+            "county_treasury_after": round(cd.get('treasury', 0), 1),
+            "prefecture_treasury_after": round(pdata.get('treasury', 0), 1),
+            "affinity_after": cd['prefect_affinity'],
+        }
+
+    # ==================== 约谈施压 ====================
+
+    # 约谈强度 → 中文标签 / affinity 基础惩罚
+    _PRESSURE_LABELS = {"light": "温和提醒", "moderate": "正式约谈", "heavy": "严厉训斥"}
+    _PRESSURE_AFFINITY_BASE = {"light": -1, "moderate": -3, "heavy": -6}
+
+    @classmethod
+    def confront_county(cls, game, unit_id: int, pressure: str, message: str) -> dict:
+        """
+        玩家约谈下属知县。
+        - 好感度 >= 65：诚实回应，承诺改进；affinity 轻微下降
+        - 好感度 30-64：敷衍或申辩；affinity 中幅下降
+        - 好感度 < 30：阳奉阴违；affinity 大幅下降，写入"消极"指令标记
+        LLM 生成知县回应文本，失败时规则兜底。
+        """
+        unit = AdminUnit.objects.filter(
+            id=unit_id, game=game, unit_type='COUNTY', parent=game.player_unit,
+        ).first()
+        if not unit:
+            return {"error": "县不存在"}
+
+        cd = unit.unit_data
+        gp = cd.get('governor_profile', {})
+        affinity = cd.get('prefect_affinity', 50)
+        archetype = gp.get('archetype', 'MIDDLING')
+        style = gp.get('style', 'baoshou')
+
+        pressure_label = cls._PRESSURE_LABELS.get(pressure, '正式约谈')
+        base_delta = cls._PRESSURE_AFFINITY_BASE.get(pressure, -3)
+
+        # 决定结果类型
+        if affinity >= 65:
+            outcome_default = "承诺改进"
+        elif affinity >= 30:
+            outcome_default = "敷衍了事" if archetype == 'CORRUPT' else "据理申辩"
+        else:
+            outcome_default = "阳奉阴违"
+
+        # 尝试 LLM 生成回应
+        response_text = None
+        outcome = outcome_default
+        affinity_hint = base_delta
+        try:
+            from llm.client import LLMClient
+            from llm.prompts import PromptRegistry as PR
+            _archetype_labels = {'VIRTUOUS': '清廉能吏', 'MIDDLING': '普通官员', 'CORRUPT': '贪腐官员'}
+            _style_labels = {
+                'minben': '民本派', 'zhengji': '政绩派',
+                'baoshou': '保守派', 'jinjin': '进取派', 'yuanhua': '圆滑派',
+            }
+            total_land = sum(v.get('farmland', 0) for v in cd.get('villages', []))
+            total_pop = sum(v.get('population', 0) for v in cd.get('villages', []))
+            aq = cd.get('annual_quota', {})
+            aq_total = aq.get('total', 0) if isinstance(aq, dict) else 0
+            fy = cd.get('fiscal_year', {})
+            fy_done = fy.get('agri_remitted', 0) + fy.get('commercial_tax', 0) + fy.get('corvee_tax', 0)
+            quota_pct = (fy_done / aq_total * 100) if aq_total else 100.0
+
+            sys_p, usr_p = PR.render(
+                'confront_response',
+                magistrate_name=gp.get('name', '知县'),
+                county_name=cd.get('county_name', '本县'),
+                archetype_label=_archetype_labels.get(archetype, '普通官员'),
+                style_label=_style_labels.get(style, '保守派'),
+                affinity=affinity,
+                morale_label=score_to_tier(cd.get('morale', 50)),
+                security_label=score_to_tier(cd.get('security', 50)),
+                quota_pct=quota_pct,
+                pressure_label=pressure_label,
+                message=message or f"本府对尔县近况甚为关切，请如实汇报。",
+            )
+            client = LLMClient(timeout=10, max_retries=1)
+            result = client.chat_json(
+                [{'role': 'system', 'content': sys_p}, {'role': 'user', 'content': usr_p}],
+                temperature=0.75, max_tokens=350,
+            )
+            if isinstance(result, dict) and result.get('response_text'):
+                response_text = result['response_text']
+                outcome = result.get('outcome', outcome_default)
+                affinity_hint = max(-12, min(5, int(result.get('affinity_hint', base_delta))))
+        except Exception as e:
+            logger.warning("约谈 LLM 失败（静默降级）: %s", e)
+
+        # 规则兜底
+        if not response_text:
+            if outcome_default == "承诺改进":
+                response_text = (
+                    f"下官承蒙知府垂询，惶恐之至。{cd.get('county_name', '本县')}近况确有不足，"
+                    "下官当竭力改进，不负大人厚望，请大人宽限时日。"
+                )
+            elif outcome_default == "据理申辩":
+                response_text = (
+                    f"大人明察。下官自知任内多有不易，然实情如此——"
+                    "本县民情复杂，资源有限，下官已尽力而为，望大人体察下情。"
+                )
+            elif outcome_default == "敷衍了事":
+                response_text = (
+                    f"下官谨遵大人训示，定当改进。诸事皆已在安排之中，请大人放心。"
+                )
+            else:  # 阳奉阴违
+                response_text = (
+                    f"下官谨记大人教诲，自当照章办理。"
+                )
+            affinity_hint = base_delta
+
+        # 更新好感度
+        new_affinity = max(0, min(100, affinity + affinity_hint))
+        cd['prefect_affinity'] = new_affinity
+
+        # 若承诺改进，写入 pending_directive 强化执行
+        if outcome == "承诺改进" and message:
+            directive = {
+                "season": game.current_season,
+                "directive": f"【约谈后承诺】{message[:80]}",
+            }
+            directives = cd.get('pending_directives', [])
+            directives.append(directive)
+            cd['pending_directives'] = directives[-3:]
+
+        # 若阳奉阴违，写入消极标记
+        if outcome == "阳奉阴违":
+            cd['_passive_resistance'] = True
+
+        unit.unit_data = cd
+        unit.save(update_fields=['unit_data'])
+
+        return {
+            "unit_id": unit_id,
+            "county_name": cd.get('county_name', ''),
+            "governor_name": gp.get('name', ''),
+            "pressure": pressure_label,
+            "outcome": outcome,
+            "response_text": response_text,
+            "affinity_before": affinity,
+            "affinity_after": new_affinity,
+        }
+
+    # ==================== 弹劾免职 ====================
+
+    @classmethod
+    def impeach_county(cls, game, unit_id: int, reason: str) -> dict:
+        """
+        玩家弹劾下属知县，需省级批准。
+        批准概率由 inspector_favor（按察使观感）和是否有客观证据决定。
+        通过后：替换为新随机知县，好感度重置为 MIDDLING 初始值。
+        府库扣 300 两（差旅/接任费用）。
+        """
+        pdata = game.player_unit.unit_data
+
+        unit = AdminUnit.objects.filter(
+            id=unit_id, game=game, unit_type='COUNTY', parent=game.player_unit,
+        ).first()
+        if not unit:
+            return {"error": "县不存在"}
+
+        cd = unit.unit_data
+        gp = cd.get('governor_profile', {})
+        old_name = gp.get('name', '该知县')
+        county_name = cd.get('county_name', '本县')
+        archetype = gp.get('archetype', 'MIDDLING')
+
+        # 检查是否有可用年度评议（差评为客观证据）
+        from .annual_review import AnnualReviewService
+        current_year = year_of(game.current_season)
+        cycle = AnnualReviewService._find_cycle(cd, current_year) or AnnualReviewService._find_cycle(cd, current_year - 1)
+        has_poor_review = False
+        if cycle:
+            pr = cycle.get('prefect_review', {})
+            has_poor_review = pr.get('grade') == '差'
+
+        # 批准概率
+        inspector_favor = pdata.get('inspector_favor', 50)
+        base_prob = inspector_favor / 100.0   # 0~1
+        if has_poor_review:
+            base_prob += 0.20
+        if archetype == 'CORRUPT':
+            base_prob += 0.15
+        base_prob = min(0.95, max(0.10, base_prob))
+
+        approved = random.random() < base_prob
+
+        if not approved:
+            # 弹劾被驳回：inspector_favor 略降，关系有损
+            pdata['inspector_favor'] = round(_clamp_meter(inspector_favor - 5), 1)
+            game.player_unit.unit_data = pdata
+            game.player_unit.save(update_fields=['unit_data'])
+            return {
+                "approved": False,
+                "unit_id": unit_id,
+                "county_name": county_name,
+                "governor_name": old_name,
+                "reason": f"按察使审核后认为证据不足，驳回弹劾。inspector_favor 已降至 {pdata['inspector_favor']}。",
+            }
+
+        # 弹劾通过：扣府库，替换知县
+        cost = 300
+        if pdata.get('treasury', 0) < cost:
+            return {"error": f"府库不足（需{cost}两差旅费用）"}
+        pdata['treasury'] = round(pdata['treasury'] - cost, 1)
+
+        # 生成新知县
+        c_type = cd.get('county_type', 'balanced_inland')
+        new_archetype = random.choices(
+            ['VIRTUOUS', 'MIDDLING', 'CORRUPT'], weights=[0.35, 0.50, 0.15]
+        )[0]
+        new_profile = generate_governor_profile(new_archetype)
+        new_style = derive_governor_style(new_profile)
+        used_names = {gp.get('name', '')}
+        new_name = '某知县'
+        for _ in range(20):
+            candidate = (
+                random.choice(list(GOVERNOR_SURNAMES))
+                + random.choice(list(GOVERNOR_GIVEN_NAMES))
+            )
+            if candidate not in used_names:
+                new_name = candidate
+                break
+
+        new_profile['name'] = new_name
+        new_profile['style'] = new_style
+        new_profile['archetype'] = new_archetype
+        new_profile['bio'] = f"{new_name}，新任{county_name}知县，接替{old_name}。"
+
+        cd['governor_profile'] = new_profile
+        cd['prefect_affinity'] = random.randint(45, 60)   # 新人中立好感度
+        # 适应期：能力暂降，3个月后自行恢复
+        cd['_new_magistrate_adaptation_months'] = 3
+
+        unit.unit_data = cd
+        unit.save(update_fields=['unit_data'])
+
+        # 按察使观感小幅提升（配合弹劾）
+        pdata['inspector_favor'] = round(_clamp_meter(inspector_favor + 3), 1)
+        game.player_unit.unit_data = pdata
+        game.player_unit.save(update_fields=['unit_data'])
+
+        return {
+            "approved": True,
+            "unit_id": unit_id,
+            "county_name": county_name,
+            "old_governor": old_name,
+            "new_governor": new_name,
+            "new_archetype": new_archetype,
+            "cost": cost,
+            "prefecture_treasury_after": pdata['treasury'],
+            "message": f"{old_name}已被免职，{new_name}接任{county_name}知县。新任知县需3个月适应期。",
+        }
 
     # ==================== 查询接口 ====================
 
@@ -1139,12 +1674,25 @@ class PrefectureService:
             "personnel_available": personnel.get("available", False),
             "personnel_phase": personnel.get("phase"),
             "personnel_summary": personnel.get("summary", {}),
+            "province_annual_focus": pdata.get('province_annual_focus'),
         }
 
     @classmethod
     def _build_overview_todos(cls, pdata: dict, subordinates: list, pending_judicial_count: int) -> list:
         """汇总府情总览的待办事项提醒。"""
         todo_items = []
+
+        # 正月：省级施政重点下达提醒（配额分配前）
+        focus = pdata.get('province_annual_focus') or {}
+        if focus.get('focuses') and not pdata.get('quota_assignments'):
+            todo_items.append({
+                "type": "province_focus",
+                "severity": "high",
+                "title": f"省级施政重点已下达：{'、'.join(focus['focuses'])}，请尽快分配配额",
+                "count": len(focus['focuses']),
+                "county_names": [],
+                "target_tab": "pref-tab-overview",
+            })
 
         if pdata.get('year_end_review_pending'):
             todo_items.append({
@@ -1198,6 +1746,77 @@ class PrefectureService:
             })
 
         return todo_items
+
+    # 施政重点选项（key → 关联指标）
+    _FOCUS_OPTIONS = {
+        "农业增产": {"metric": "morale",    "label": "全府均民心须不低于勉强（38）"},
+        "商业振兴": {"metric": "commercial", "label": "全府均商业须不低于及格（50）"},
+        "治安整顿": {"metric": "security",  "label": "全府均治安须不低于及格（50）"},
+        "文教兴盛": {"metric": "education", "label": "全府均文教须不低于勉强（38）"},
+    }
+    _FOCUS_THRESHOLDS = {
+        "农业增产": 38,
+        "商业振兴": 50,
+        "治安整顿": 50,
+        "文教兴盛": 38,
+    }
+
+    @classmethod
+    def _generate_province_focus(cls, pdata: dict, season: int) -> dict:
+        """正月随机生成1~2个省级施政重点，重置完成状态。"""
+        keys = list(cls._FOCUS_OPTIONS.keys())
+        count = random.choices([1, 2], weights=[0.3, 0.7])[0]
+        chosen = random.sample(keys, count)
+        return {
+            "focuses": chosen,
+            "labels": [cls._FOCUS_OPTIONS[k]["label"] for k in chosen],
+            "year": year_of(season),
+            "completed": [],   # 年底填入已完成项
+        }
+
+    @classmethod
+    def evaluate_province_focus(cls, game, subordinates: list) -> dict:
+        """
+        年底（腊月/正月入口）评估省级施政重点完成情况。
+        返回 {completed: [...], missed: [...], bonus_score: 0-20}。
+        """
+        pdata = game.player_unit.unit_data
+        focus_data = pdata.get('province_annual_focus') or {}
+        focuses = focus_data.get('focuses', [])
+        if not focuses:
+            return {"completed": [], "missed": [], "bonus_score": 0}
+
+        # 各指标全府加权均值
+        metric_map = {
+            "农业增产": "morale",
+            "商业振兴": "commercial",
+            "治安整顿": "security",
+            "文教兴盛": "education",
+        }
+        totals: dict = {}
+        weights: dict = {}
+        for unit in subordinates:
+            cd = unit.unit_data
+            pop = sum(v.get('population', 0) for v in cd.get('villages', []))
+            w = max(pop, 1)
+            for f, metric in metric_map.items():
+                totals[f] = totals.get(f, 0.0) + cd.get(metric, 50) * w
+                weights[f] = weights.get(f, 0.0) + w
+
+        completed = []
+        missed = []
+        for f in focuses:
+            avg = totals.get(f, 0) / weights.get(f, 1)
+            threshold = cls._FOCUS_THRESHOLDS.get(f, 38)
+            if avg >= threshold:
+                completed.append(f)
+            else:
+                missed.append(f)
+
+        bonus_score = len(completed) * 10
+        focus_data['completed'] = completed
+        pdata['province_annual_focus'] = focus_data
+        return {"completed": completed, "missed": missed, "bonus_score": bonus_score}
 
     @classmethod
     def get_county_detail(cls, game, unit_id: int) -> dict:
@@ -1271,6 +1890,7 @@ class PrefectureService:
                     level = item['level']
                     if field == 'granary':
                         pdata['granary'] = True
+                        pdata.setdefault('granary_stock', GRANARY_INIT_STOCK)
                     else:
                         pdata[field] = level
                     completed.append(f"{spec['label']}扩建完成（{level}级）")
@@ -1317,6 +1937,7 @@ class PrefectureService:
             # 即时完工（义仓）
             if field == 'granary':
                 pdata['granary'] = True
+                pdata.setdefault('granary_stock', GRANARY_INIT_STOCK)
             else:
                 pdata[field] = level
             pdata.setdefault('construction_queue', [])

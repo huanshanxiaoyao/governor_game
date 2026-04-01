@@ -433,6 +433,16 @@ class AnnualReviewService:
             "review_season": game.current_season,
         }
         cycle["state"] = "prefect_reviewed"
+
+        # 评议结果影响下属好感度
+        _grade_affinity_delta = {"优": 8, "良": 3, "中": -3, "差": -10}
+        delta = _grade_affinity_delta.get(grade, 0)
+        if delta:
+            cd = unit.unit_data
+            old_aff = cd.get('prefect_affinity', 50)
+            cd['prefect_affinity'] = max(0, min(100, old_aff + delta))
+            unit.unit_data = cd
+
         unit.save(update_fields=["unit_data"])
         return cls._serialize_prefecture_cycle(unit, cycle, "review")
 
@@ -518,11 +528,39 @@ class AnnualReviewService:
             unit.unit_data = cd
             unit.save(update_fields=["unit_data"])
 
-        if summary["finalized"] > 0:
+        # Bug-C 修复：评估省级施政重点完成情况，结果并入年度总结
+        from .prefecture import PrefectureService
+        focus_result = PrefectureService.evaluate_province_focus(game, subordinates)
+        summary["province_focus_result"] = focus_result
+        has_focus = bool(focus_result.get("completed") or focus_result.get("missed"))
+
+        if summary["finalized"] > 0 or has_focus:
             pdata = game.player_unit.unit_data
             pdata["personnel_last_result"] = summary
+            # 清除已评估的省级施政重点，等待正月重新下达
+            if has_focus:
+                pdata.pop("province_annual_focus", None)
             game.player_unit.unit_data = pdata
             game.player_unit.save(update_fields=["unit_data"])
+
+        if summary["finalized"] > 0:
+            grade_counts: dict = {}
+            replaced_names = []
+            for r in summary["results"]:
+                g = r.get("final_grade", "—")
+                grade_counts[g] = grade_counts.get(g, 0) + 1
+                if r.get("replacement_name"):
+                    replaced_names.append(f'{r["county_name"]}（{r["replacement_name"]}接任）')
+            grade_summary = "  ".join(f'{g}×{n}' for g, n in grade_counts.items())
+            replace_note = f'  撤换：{"、".join(replaced_names)}' if replaced_names else ''
+            log_game_event(
+                game,
+                event_type="prefecture_personnel_result",
+                category="PERSONNEL",
+                description=f'【{review_year}年度人事考核】{grade_summary}{replace_note}',
+                data=summary,
+                season=publish_season,
+            )
 
         return summary
 
@@ -1106,7 +1144,7 @@ class AnnualReviewService:
             {"role": "user", "content": user_prompt},
         ]
 
-        client = LLMClient(timeout=30.0, max_retries=2)
+        client = LLMClient(timeout=12.0, max_retries=2)
         try:
             result = client.chat_json(messages, temperature=0.6, max_tokens=700)
         except Exception:

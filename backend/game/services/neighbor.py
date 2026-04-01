@@ -23,6 +23,7 @@ from .settlement import SettlementService
 from .ai_governor import AIGovernorService
 from .emergency import EmergencyService
 from .state import load_county_state
+from llm.client import LLM_DEFAULT_TIMEOUT
 
 logger = logging.getLogger('game')
 
@@ -164,7 +165,7 @@ class NeighborService:
         with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_idx = {executor.submit(_gen_bio, s): i for i, s in enumerate(specs)}
             try:
-                for future in as_completed(future_to_idx, timeout=15):
+                for future in as_completed(future_to_idx, timeout=LLM_DEFAULT_TIMEOUT + 5):
                     idx = future_to_idx[future]
                     try:
                         bios[idx] = future.result()
@@ -239,6 +240,57 @@ class NeighborService:
             player_county_data=load_county_state(game),
         )
 
+        # AI知府 × 邻县联动：规则驱动，更新 prefect_affinity + pending_directives
+        # 注意：_settle_and_save 已将修改后的 county_data 持久化，
+        # 此处联动需要在 settle 后对最新 neighbor 对象再做一次批量写入。
+        try:
+            from .ai_prefect import PrefectAIService
+            # 重新从 DB 拉取最新 county_data（settle 已保存）
+            neighbors_fresh = list(game.neighbors.all())
+            PrefectAIService.interact_with_neighbors(game, neighbors_fresh, season)
+            # 批量保存联动后的修改
+            NeighborCounty.objects.bulk_update(neighbors_fresh, ['county_data'])
+        except Exception as _e:
+            logger.warning("AI知府邻县联动失败（非致命）: %s", _e)
+
+        # 府政动态：写一条汇总 EventLog 到 player game，供上级管理府志展示
+        try:
+            from ..models import EventLog
+            neighbors_snap = list(game.neighbors.all())
+            if neighbors_snap:
+                def _tier(v):
+                    if v >= 75: return '良好'
+                    if v >= 50: return '尚可'
+                    if v >= 25: return '偏差'
+                    return '极差'
+                snippets = [
+                    f'{n.county_name}（民心{_tier(n.county_data.get("morale", 50))}·治安{_tier(n.county_data.get("security", 50))}）'
+                    for n in neighbors_snap
+                ]
+                EventLog.objects.create(
+                    game=game,
+                    season=season,
+                    event_type='neighbor_monthly_summary',
+                    category='PREFECTURE',
+                    description=f'【{month_name(season)}府内各县动态】' + '；'.join(snippets),
+                    data={
+                        'season': season,
+                        'counties': [
+                            {
+                                'county_name': n.county_name,
+                                'morale': round(n.county_data.get('morale', 50), 1),
+                                'security': round(n.county_data.get('security', 50), 1),
+                                'education': round(n.county_data.get('education', 30), 1),
+                                'commercial': round(n.county_data.get('commercial', 50), 1),
+                                'last_remit': round(n.county_data.get('last_remit', 0), 1),
+                            }
+                            for n in neighbors_snap
+                        ],
+                    },
+                )
+        except Exception as _e:
+            logger.warning("邻县月结 EventLog 写入失败（非致命）: %s", _e)
+
     @classmethod
     def _apply_cached_results(cls, neighbors, cached):
         """从缓存应用预计算结果到 neighbor 对象"""
@@ -279,7 +331,7 @@ class NeighborService:
                 for n in neighbors
             }
             try:
-                for future in as_completed(futures, timeout=90):
+                for future in as_completed(futures, timeout=LLM_DEFAULT_TIMEOUT + 5):
                     nid, events = future.result()
                     decision_results[nid] = events
             except FuturesTimeoutError:
