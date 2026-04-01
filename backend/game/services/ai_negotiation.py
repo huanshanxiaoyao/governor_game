@@ -114,7 +114,7 @@ class AIGovernorNegotiationService:
             ctx = cls._build_ctx(meta, profile, village, event_type,
                                  willingness, leverage, round_num, event_desc)
             system_prompt, user_prompt = PromptRegistry.render('ai_governor_negotiation', **ctx)
-            client = LLMClient(timeout=15.0, max_retries=1)
+            client = LLMClient(timeout=12.0, max_retries=1)
             result = client.chat_json(
                 [{'role': 'system', 'content': system_prompt},
                  {'role': 'user', 'content': user_prompt}],

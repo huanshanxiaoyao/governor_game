@@ -64,6 +64,7 @@ class PrefectAIService:
                 logger.info("[知府AI][腊月司法复审] %.2fs", time.time() - t0)
             except Exception as e:
                 logger.warning("知府司法复审失败（腊月）: %s", e)
+            cls._update_prefecture_state(game, county, month)
             logger.info("[知府AI][run_monthly_turn 总耗时] month=%d %.2fs", month, time.time() - t_total)
             return
 
@@ -71,12 +72,42 @@ class PrefectAIService:
         context = cls._build_monthly_context(prefect, county, month)
         logger.info("[知府AI][build_monthly_context] %.2fs", time.time() - t0)
 
+        # 汇报月（2/5/8/11）：规则引擎优先判断是否触发结构化指令
         t0 = time.time()
-        decision = cls._try_llm_decision(context)
-        llm_used = decision is not None
-        if decision is None:
+        trigger_type, trigger_info = cls._check_directive_trigger(county, month)
+        if trigger_type:
+            # 规则已确定指令类型，尝试 LLM 生成文案（注入 trigger 信息）
+            context['_directive_trigger_type'] = trigger_type
+            context['_directive_trigger_info'] = trigger_info
+            decision = cls._try_llm_decision(context)
+            if decision is None:
+                affinity = county.get('prefect_affinity', 50)
+                decision = cls._directive_template(trigger_type, trigger_info, county, affinity)
+            llm_used = decision is not None and 'template' not in decision.get('reasoning', '')
+        else:
+            # 非汇报月或汇报月无触发条件：不发指令，仅内部记录
+            # _fallback_decision 仍用于生成 memo_entry 和好感度微调，但强制为 memo_only
             decision = cls._fallback_decision(prefect, county, moy)
-        logger.info("[知府AI][LLM决策%s] %.2fs", "成功" if llm_used else "降级fallback", time.time() - t0)
+            if decision.get('action', {}).get('type') in ('directive', 'praise'):
+                action = decision['action']
+                action['type'] = 'memo_only'
+                action['directive_text'] = None
+                action['directive_type'] = None
+                action['affinity_delta'] = 0  # 未发文则不产生好感度惩罚
+            llm_used = False
+        logger.info("[知府AI][LLM决策%s trigger=%s] %.2fs",
+                    "成功" if llm_used else "降级", trigger_type or "无", time.time() - t0)
+
+        # 约束 LLM 返回的 affinity_delta：按触发类型限定上下界，防止 LLM 自由赋值失控
+        if trigger_type and decision:
+            action = decision.get('action', {})
+            raw_delta = int(action.get('affinity_delta', 0))
+            if trigger_type == 'performance_warning':
+                action['affinity_delta'] = min(0, raw_delta)    # 警告不能涨好感
+            elif trigger_type == 'judicial_reminder':
+                action['affinity_delta'] = min(-1, raw_delta)   # 司法提醒至少 -1
+            elif trigger_type == 'encouragement':
+                action['affinity_delta'] = max(1, min(3, raw_delta))  # 鼓励 +1~+3
 
         t0 = time.time()
         cls._apply_decision(prefect, county, month, decision, report, game)
@@ -97,6 +128,7 @@ class PrefectAIService:
             except Exception as e:
                 logger.warning("知府司法复审失败: %s", e)
 
+        cls._update_prefecture_state(game, county, month)
         logger.info("[知府AI][run_monthly_turn 总耗时] month=%d %.2fs", month, time.time() - t_total)
 
     # ------------------------------------------------------------------
@@ -144,7 +176,7 @@ class PrefectAIService:
             'goals_desc': goals_desc,
             'memory_desc': memory_text,
             'season_label': month_name(month),
-            'county_name': county.get('county_type_name', '本县'),
+            'county_name': county.get('county_name', '本县'),
             'fuzzy_report': fuzzy,
             'quota_summary': quota_summary,
             'complaints': county.get('prefect_complaints', 0),
@@ -315,6 +347,143 @@ class PrefectAIService:
         except Exception as e:
             logger.warning("知府 LLM 决策失败（静默降级）: %s", e)
             return None
+
+    # ------------------------------------------------------------------
+    # 3b. 指令触发规则引擎（汇报月专用，优先级：judicial > performance > encouragement）
+    # ------------------------------------------------------------------
+
+    # 各指标基础警戒线（无省级重点时使用）
+    _DIRECTIVE_BASE_THRESHOLDS = {
+        'morale':    35,
+        'security':  35,
+        'education': 35,
+        # commercial 不单独触发，仅省级重点下才检查
+    }
+
+    # 省级重点 → 强化警戒线（超过基础线时取此值）
+    _DIRECTIVE_FOCUS_THRESHOLDS = {
+        '农业增产': ('morale',    45),
+        '治安整顿': ('security',  45),
+        '文教兴盛': ('education', 45),
+        '商业振兴': ('commercial', 45),
+    }
+
+    @classmethod
+    def _check_directive_trigger(cls, county: dict, season: int, province_focus: list | None = None) -> tuple:
+        """
+        检查是否需要在汇报月（2/5/8/11）触发结构化指令。
+        返回 (trigger_type, trigger_info) 或 (None, None)。
+
+        trigger_type: 'judicial_reminder' | 'performance_warning' | 'encouragement' | None
+        trigger_info: dict，含触发细节（供生成文案使用）
+        """
+        from .constants import month_of_year, year_of
+        moy = month_of_year(season)
+        if moy not in (2, 5, 8, 11):
+            return None, None
+
+        # ── 优先级1：司法提醒 ──
+        js = county.get('judicial_year_stats') or {}
+        if js.get('year') == year_of(season):
+            total = js.get('total', 0)
+            overturned = js.get('overturned', 0)
+            if total > 0 and overturned > 3 and overturned / total > 0.60:
+                return 'judicial_reminder', {
+                    'overturned': overturned, 'total': total,
+                    'rate_pct': round(overturned / total * 100),
+                }
+
+        # ── 优先级2：绩效提醒 ──
+        # 计算各指标实际警戒线（基础 or 省级重点加严）
+        thresholds = dict(cls._DIRECTIVE_BASE_THRESHOLDS)
+        if province_focus:
+            for focus_key, (metric, stricter) in cls._DIRECTIVE_FOCUS_THRESHOLDS.items():
+                if focus_key in province_focus:
+                    thresholds[metric] = max(thresholds.get(metric, 0), stricter)
+
+        low_metrics = []
+        for metric, threshold in thresholds.items():
+            val = county.get(metric, 50)
+            if val < threshold:
+                low_metrics.append({'metric': metric, 'value': round(val, 1), 'threshold': threshold})
+
+        if low_metrics:
+            return 'performance_warning', {'low_metrics': low_metrics}
+
+        # ── 优先级3：鼓励嘉奖 ──
+        morale    = county.get('morale', 50)
+        security  = county.get('security', 50)
+        education = county.get('education', 30)
+        affinity  = county.get('prefect_affinity', 50)
+        aq = county.get('annual_quota', {})
+        quota_total = aq.get('total', 0) if isinstance(aq, dict) else 0
+        fy = county.get('fiscal_year', {})
+        ytd = (fy.get('agri_remitted', 0)
+               + fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
+               + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+        from .constants import month_of_year as _moy
+        expected_progress = _moy(season) / 12.0
+        quota_ok = (quota_total <= 0) or (ytd / quota_total >= expected_progress * 0.85)
+        if morale >= 60 and security >= 60 and education >= 55 and quota_ok and affinity >= 50:
+            return 'encouragement', {
+                'morale': round(morale, 1),
+                'security': round(security, 1),
+                'education': round(education, 1),
+            }
+
+        return None, None
+
+    @classmethod
+    def _directive_template(cls, trigger_type: str, trigger_info: dict, county: dict, affinity: int) -> dict:
+        """
+        规则兜底文本（LLM 失败时使用）。
+        返回 decision dict（与 _fallback_decision 格式一致）。
+        """
+        county_name = county.get('county_name', '本县')
+        if trigger_type == 'judicial_reminder':
+            ov = trigger_info['overturned']
+            rt = trigger_info['rate_pct']
+            text = (
+                f'本府注意到，本年度{county_name}司法复审中已有{ov}案改判，改判率达{rt}%，'
+                '远超正常水准。此非小事，改判频繁意味着原判失当，有损本县司法威信。'
+                '望知县认真审视司法程序，提高断案质量，减少轻率结案之弊。'
+            )
+            return {'action': {
+                'type': 'directive', 'directive_type': '司法整顿',
+                'directive_text': text,
+                'affinity_delta': -3 if affinity < 50 else -1,
+                'memo_entry': f'司法改判率{rt}%，已下达整顿指令。',
+            }, 'analysis': '司法改判率偏高', 'reasoning': 'template: judicial_reminder'}
+
+        elif trigger_type == 'performance_warning':
+            low = trigger_info['low_metrics']
+            _metric_names = {'morale': '民心', 'security': '治安', 'education': '文教', 'commercial': '商业'}
+            details = '、'.join(
+                f"{_metric_names.get(m['metric'], m['metric'])}（{m['value']}，警戒线{m['threshold']}）"
+                for m in low
+            )
+            tone = '限期整改，否则将上报巡抚' if affinity < 40 else '望知县务必重视，尽快改善'
+            text = (
+                f'据本月汇报，{county_name}以下指标低于警戒线：{details}。{tone}。'
+            )
+            return {'action': {
+                'type': 'directive', 'directive_type': '绩效提醒',
+                'directive_text': text,
+                'affinity_delta': -2 if affinity < 40 else 0,
+                'memo_entry': f'绩效提醒：{details[:40]}。',
+            }, 'analysis': '指标低于警戒线', 'reasoning': 'template: performance_warning'}
+
+        else:  # encouragement
+            text = (
+                f'近月汇报显示{county_name}各项施政均属良好，民心、治安、文教皆有可观表现，'
+                '本府深感欣慰，特此嘉勉，望再接再厉，为全府表率。'
+            )
+            return {'action': {
+                'type': 'praise', 'directive_type': '嘉奖',
+                'directive_text': text,
+                'affinity_delta': 2,
+                'memo_entry': '各项指标良好，嘉奖。',
+            }, 'analysis': '指标优良', 'reasoning': 'template: encouragement'}
 
     # ------------------------------------------------------------------
     # 4. 规则引擎兜底
@@ -632,7 +801,7 @@ class PrefectAIService:
                 'prefect_annual_evaluation_letter',
                 prefect_name=prefect.name,
                 prefecture_name=attrs.get('prefecture', '本府'),
-                county_name=county.get('county_type_name', '本县'),
+                county_name=county.get('county_name', '本县'),
                 personality_desc=personality_desc,
                 ideology_desc=ideology_desc,
                 evaluation_notes=notes_text,
@@ -717,7 +886,7 @@ class PrefectAIService:
             'goals_desc': goals_desc,
             'memory_desc': cls._describe_memory(attrs),
             'fuzzy_county_summary': cls._build_fuzzy_report(county),
-            'county_name': county.get('county_type_name', '本县'),
+            'county_name': county.get('county_name', '本县'),
             'season': game.current_season,
             'affinity': attrs.get('player_affinity', 50),
         }
@@ -762,3 +931,223 @@ class PrefectAIService:
             letter = '本县本年施政多有疏漏，指标完成不足，民情有忧，评定为差。'
             delta = -2 if affinity <= 40 else 0
         return {'evaluation_letter': letter, 'subjective_delta': delta}
+
+    # 8. AI知府 × 邻县知县联动（知县模式专用）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def interact_with_neighbors(cls, game, neighbors: list, month: int):
+        """
+        知县模式下，AI知府每月对邻县执行规则驱动联动动作（无LLM调用）。
+
+        联动逻辑：
+        - 正月：AI知府向每个邻县下达年度配额指令，初始化 prefect_affinity（若缺失）
+        - 汇报月（2/5/8/11）：按统一触发规则写 pending_directives（模板文本，不调 LLM）
+        - 月度表现评估：基于财政进度调整 prefect_affinity
+        """
+        if not neighbors:
+            return
+
+        moy = month_of_year(month)
+
+        for neighbor in neighbors:
+            cd = neighbor.county_data
+            # 初始化 prefect_affinity（邻县缺少此字段时）
+            if 'prefect_affinity' not in cd:
+                import random
+                archetype = cd.get('governor_profile', {}).get('archetype', 'MIDDLING')
+                _defaults = {'VIRTUOUS': 65, 'MIDDLING': 50, 'CORRUPT': 35}
+                cd['prefect_affinity'] = _defaults.get(archetype, 50) + random.randint(-5, 5)
+
+            # ── 正月：下达年度配额目标 ──
+            if moy == 1:
+                cls._issue_annual_quota_directive(cd, neighbor.county_name or '', month)
+
+            # ── 月度表现评估（基于财政进度，调整好感度）──
+            perf_delta = cls._assess_neighbor_performance(cd, moy)
+            new_affinity = max(0, min(100, cd.get('prefect_affinity', 50) + perf_delta))
+            cd['prefect_affinity'] = new_affinity
+
+            # ── 汇报月：触发结构化指令（规则判断，模板填充，不调 LLM）──
+            if moy in (2, 5, 8, 11):
+                trigger_type, trigger_info = cls._check_directive_trigger(cd, month)
+                if trigger_type:
+                    tmpl = cls._directive_template(trigger_type, trigger_info, cd, new_affinity)
+                    directive_text = tmpl['action'].get('directive_text', '')
+                    # 写入 pending_directives 供 AI 知县下月决策参考
+                    directives = cd.setdefault('pending_directives', [])
+                    directives.append({"season": month, "directive": directive_text})
+                    cd['pending_directives'] = directives[-3:]
+                    # 同步更新好感度
+                    delta = tmpl['action'].get('affinity_delta', 0)
+                    cd['prefect_affinity'] = max(0, min(100, new_affinity + delta))
+
+            # ── 腊月：对表现最差的县发出年终警告（统一处理，见下方）──
+
+    @classmethod
+    def _issue_annual_quota_directive(cls, cd: dict, county_name: str, season: int):
+        """正月下达年度配额目标指令到邻县 pending_directives。"""
+        aq = cd.get('annual_quota', {})
+        if not aq:
+            return
+        total = aq.get('total', 0)
+        directive = f"本年度配额目标为 {total} 两，请知县务必按期完成，勿使府库有缺。"
+        directives = cd.setdefault('pending_directives', [])
+        # 避免重复写入同年正月指令
+        if not any(d.get('season') == season for d in directives):
+            directives.append({"season": season, "directive": directive})
+            cd['pending_directives'] = directives[-3:]
+
+    @classmethod
+    def _assess_neighbor_performance(cls, cd: dict, moy: int) -> int:
+        """
+        基于当月财政进度评估 AI 知县表现，返回 prefect_affinity 增减值（-3 ~ +2）。
+        仅在秋税期后（7月起）才有明显影响。
+        """
+        if moy < 4:
+            return 0
+        aq = cd.get('annual_quota', {})
+        if not aq:
+            return 0
+        quota_total = aq.get('total', 0)
+        if quota_total <= 0:
+            return 0
+        fy = cd.get('fiscal_year', {})
+        ytd = (fy.get('agri_remitted', 0)
+               + fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
+               + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+        # 期望进度：按月线性推进
+        expected_ratio = min(moy / 12.0, 1.0)
+        actual_ratio = ytd / quota_total if quota_total else 0.0
+        gap = actual_ratio - expected_ratio
+        if gap >= 0.1:
+            return 2    # 超额完成
+        elif gap >= 0:
+            return 0    # 正常
+        elif gap >= -0.1:
+            return -1   # 略有不足
+        else:
+            return -3   # 严重滞后
+
+    # ------------------------------------------------------------------
+    # 9. 府级状态模拟（府库、义仓、基础建设）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _update_prefecture_state(cls, game, county: dict, month: int) -> None:
+        """维护知县视角下的府级模拟状态：府库余额、义仓、基础建设。每月在 run_monthly_turn 末调用。"""
+        from ..models import NeighborCounty
+        moy = month_of_year(month)
+        yr  = year_of(month)
+
+        ps = county.setdefault('prefecture_state', {
+            'treasury': 800.0,
+            'granary': False,
+            'granary_stock': 0.0,
+            'road_level': 0,
+            'river_work_level': 0,
+            'school_level': 0,
+        })
+
+        # 避免同一 season 重复更新
+        if ps.get('_last_season') == month:
+            return
+        ps['_last_season'] = month
+
+        # ── 计算本月净上缴（本县 fiscal_year delta）──────────────────────────
+        fy      = county.get('fiscal_year', {})
+        prev_fy = county.get('_pref_prev_fy', {})
+
+        # 年初 fiscal_year 重置时 prev 归零
+        if moy == 1 or not prev_fy:
+            prev_fy = {k: 0.0 for k in fy}
+
+        def _net(fy_snap, tax_key, retained_key):
+            return max(0.0, fy_snap.get(tax_key, 0) - fy_snap.get(retained_key, 0))
+
+        def _delta(key):
+            return max(0.0, fy.get(key, 0) - prev_fy.get(key, 0))
+
+        player_remit = (
+            _delta('agri_remitted')
+            + (_net(fy, 'corvee_tax',      'corvee_retained')      - _net(prev_fy, 'corvee_tax',      'corvee_retained'))
+            + (_net(fy, 'commercial_tax',  'commercial_retained')  - _net(prev_fy, 'commercial_tax',  'commercial_retained'))
+        )
+        player_remit = max(0.0, player_remit)
+        county['_pref_prev_fy'] = {k: v for k, v in fy.items()}
+
+        # ── 邻县贡献估算（YTD / 月份）──────────────────────────────────────
+        neighbor_monthly = 0.0
+        try:
+            for nb in NeighborCounty.objects.filter(game=game):
+                nfy = (nb.county_data or {}).get('fiscal_year', {})
+                n_ytd = (
+                    nfy.get('agri_remitted', 0)
+                    + max(0, nfy.get('corvee_tax', 0) - nfy.get('corvee_retained', 0))
+                    + max(0, nfy.get('commercial_tax', 0) - nfy.get('commercial_retained', 0))
+                )
+                neighbor_monthly += n_ytd / max(1, moy)
+        except Exception:
+            pass
+
+        ps['treasury'] = round(ps.get('treasury', 800.0) + player_remit + neighbor_monthly, 1)
+
+        # ── 年末：扣除府级行政开支 ────────────────────────────────────────
+        if moy == 12:
+            annual_cost = 1200.0  # 府衙俸禄 + 基建维护 估算
+            ps['treasury'] = max(0.0, round(ps['treasury'] - annual_cost, 1))
+
+        # ── 季末：AI知府酌情投资府级基建 ─────────────────────────────────
+        if moy in {3, 6, 9}:
+            cls._try_prefecture_invest(game, county, ps, month)
+
+        county['prefecture_state'] = ps
+
+    @classmethod
+    def _try_prefecture_invest(cls, game, county: dict, ps: dict, month: int) -> None:
+        """AI知府在季末以府库盈余投资基础建设，并记入府志。"""
+        from ..models import EventLog
+
+        PLANS = [
+            {'key': 'road_level',       'max': 2, 'cost': 250, 'name': '官道修缮', 'effect': '促进商旅往来'},
+            {'key': 'river_work_level', 'max': 2, 'cost': 350, 'name': '水利疏浚', 'effect': '减少旱涝风险'},
+            {'key': 'school_level',     'max': 3, 'cost': 400, 'name': '府学扩建', 'effect': '提升全府文教'},
+            {'key': 'granary',          'max': 1, 'cost': 300, 'name': '建设义仓', 'effect': '备荒救灾'},
+        ]
+        treasury = ps.get('treasury', 0.0)
+        _RESERVE = 300.0  # 至少保留 300 两
+
+        for plan in PLANS:
+            key     = plan['key']
+            current = 1 if (key == 'granary' and ps.get('granary')) else ps.get(key, 0)
+            if current >= plan['max']:
+                continue
+            if treasury < plan['cost'] + _RESERVE:
+                continue
+
+            # 执行投资
+            treasury -= plan['cost']
+            ps['treasury'] = round(treasury, 1)
+            if key == 'granary':
+                ps['granary']       = True
+                ps['granary_stock'] = 5000.0
+            else:
+                ps[key] = current + 1
+
+            desc = (
+                f'【府级建设】知府拨款 {plan["cost"]} 两，{plan["name"]}'
+                f'（{plan["effect"]}）。府库余额：{ps["treasury"]} 两。'
+            )
+            try:
+                EventLog.objects.create(
+                    game=game, season=month,
+                    event_type='prefecture_invest',
+                    category='PREFECTURE',
+                    description=desc,
+                    data={'investment': plan['name'], 'cost': plan['cost'],
+                          'new_level': ps.get(key)},
+                )
+            except Exception as _e:
+                logger.warning("府级投资日志失败: %s", _e)
+            break  # 每季至多一项建设
+

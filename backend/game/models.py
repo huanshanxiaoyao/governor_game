@@ -163,6 +163,11 @@ class Agent(models.Model):
         ('PROVINCIAL_GOVERNOR', '巡抚'),
         ('PROVINCIAL_COMMISSIONER', '布政使/按察使'),
         ('PREFECT_PEER', '知州'),
+        # 县衙六房与衙役三班
+        ('LIUFANG', '六房书办'),
+        ('CONSTABLE', '捕快'),
+        ('BAILIFF_CEREMONY', '皂班'),
+        ('BAILIFF_LABOR', '壮班'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='agents')
@@ -218,6 +223,8 @@ class EventLog(models.Model):
         ('ANNEXATION', '兼并'),
         ('PROMISE', '承诺'),
         ('PREFECT', '知府'),
+        ('PREFECTURE', '府政'),
+        ('PERSONNEL', '人事'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='event_logs')

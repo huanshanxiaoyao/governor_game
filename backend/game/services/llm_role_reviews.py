@@ -549,7 +549,7 @@ class LLMRoleReviewService:
 
         for attempt in (1, 2):
             try:
-                client = LLMClient(timeout=20.0, max_retries=2)
+                client = LLMClient(timeout=12.0, max_retries=2)
                 result = client.chat_json(
                     messages,
                     temperature=0.55 if attempt == 1 else 0.2,

@@ -4,7 +4,7 @@ import random
 
 from ..agent_defs import MVP_AGENTS, MVP_RELATIONSHIPS
 from ..models import Agent, DialogueMessage, Relationship
-from .local_npc import build_county_local_agent_definitions, ensure_county_local_cast
+from .local_npc import build_county_local_agent_definitions, build_yamen_staff_definitions, ensure_county_local_cast
 from .state import load_county_state, save_player_state
 
 from llm.client import LLMClient
@@ -63,7 +63,7 @@ class AgentService:
             save_player_state(game, county)
 
         name_to_agent = {}
-        all_defs = list(MVP_AGENTS) + build_county_local_agent_definitions(county)
+        all_defs = list(MVP_AGENTS) + build_yamen_staff_definitions() + build_county_local_agent_definitions(county)
 
         for defn in all_defs:
             agent = Agent.objects.create(
@@ -685,9 +685,28 @@ class AgentService:
     @classmethod
     def get_agents_list(cls, game):
         """返回游戏中所有NPC的概要信息"""
-        agents = Agent.objects.filter(game=game).order_by('id')
+        from django.db.models import Q
+        agent_qs = list(Agent.objects.filter(game=game).order_by('id'))
+
+        # 批量查询关系，避免 N+1
+        all_rels = Relationship.objects.filter(
+            Q(agent_a__game=game) | Q(agent_b__game=game)
+        ).select_related('agent_a', 'agent_b')
+
+        rel_map = {}
+        for r in all_rels:
+            for aid, other in [(r.agent_a_id, r.agent_b), (r.agent_b_id, r.agent_a)]:
+                if aid not in rel_map:
+                    rel_map[aid] = []
+                rel_map[aid].append({
+                    'name': other.name,
+                    'role_title': other.role_title,
+                    'affinity': r.affinity,
+                    'desc': r.data.get('desc', ''),
+                })
+
         result = []
-        for a in agents:
+        for a in agent_qs:
             memory = a.attributes.get('memory', [])
             recent_memory = memory[-3:] if memory else []
             attrs = a.attributes
@@ -712,6 +731,7 @@ class AgentService:
                 'all_memory': a.attributes.get('memory', []),
                 'province': attrs.get('province', ''),
                 'prefecture': attrs.get('prefecture', ''),
+                'relationships': rel_map.get(a.id, []),
             })
         return result
 
