@@ -171,6 +171,16 @@
     startIrrigationNegotiation: function (gameId, villageName) {
       return request("POST", "/api/games/" + gameId + "/negotiations/start-irrigation/", { village_name: villageName });
     },
+    // NPC 主动行动
+    respondNpcRequest: function (gameId, requestId, action) {
+      return request("POST", "/api/games/" + gameId + "/npc-requests/" + requestId + "/respond/", { action: action });
+    },
+    getClanYouth: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/clan-youth/");
+    },
+    nominateClanYouth: function (gameId, agentId) {
+      return request("POST", "/api/games/" + gameId + "/clan-youth/" + agentId + "/nominate/");
+    },
     // Staff
     getStaff: function (gameId) {
       return request("GET", "/api/games/" + gameId + "/staff/");

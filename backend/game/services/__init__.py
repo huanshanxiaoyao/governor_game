@@ -27,6 +27,7 @@ from .constants import (
     calculate_infra_months,
 )
 from .county import CountyService
+from .clan import ClanService
 from .investment import InvestmentService
 from .settlement import SettlementService
 from .ai_governor import AIGovernorService
@@ -52,6 +53,7 @@ from .counsel import CounselService
 from .policy_review import PolicyReviewService
 from .policy_sync import PolicySyncService
 from .imperial_tour import ImperialTourService
+from .village_events import VillageEventService
 
 __all__ = [
     "MONTHS_PER_YEAR",
@@ -105,4 +107,5 @@ __all__ = [
     "save_player_state",
     "mutate_player_state",
     "ImperialTourService",
+    "VillageEventService",
 ]

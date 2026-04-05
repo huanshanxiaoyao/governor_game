@@ -120,6 +120,14 @@ class PromiseService:
                     snapshot['initial_farmland'] = v['farmland']
                     break
 
+        elif promise_type == 'UPGRADE_FACILITY':
+            snapshot['initial_facility_levels'] = {
+                'school_level':    county.get('school_level', 0),
+                'irrigation_level': county.get('irrigation_level', 0),
+                'medical_level':   county.get('medical_level', 0),
+                'bailiff_level':   county.get('bailiff_level', 0),
+            }
+
         return snapshot
 
     # ------------------------------------------------------------------
@@ -143,8 +151,17 @@ class PromiseService:
                 if cls._is_in_construction(promise, game):
                     events.append(f'承诺延期：{promise.description}（项目建设中，暂不计为违约）')
                 else:
-                    cls._resolve_promise(promise, game, 'BROKEN')
-                    events.append(f'承诺已违约：{promise.description}（清名-5）')
+                    # UPGRADE_FACILITY 超期3个月才真正违约，并施加额外民心/好感惩罚
+                    grace = 3 if promise.promise_type == 'UPGRADE_FACILITY' else 0
+                    if game.current_season < promise.deadline_season + grace:
+                        events.append(f'承诺延期警告：{promise.description}（尚在{grace}月宽限期内）')
+                    else:
+                        cls._resolve_promise(promise, game, 'BROKEN')
+                        if promise.promise_type == 'UPGRADE_FACILITY':
+                            cls._apply_upgrade_facility_broken_penalty(promise, game)
+                            events.append(f'承诺严重违约：{promise.description}（清名-5，民心/好感大幅下降）')
+                        else:
+                            events.append(f'承诺已违约：{promise.description}（清名-5）')
 
         return events
 
@@ -156,13 +173,24 @@ class PromiseService:
         'REPAIR_ROADS': 'repair_roads',
         'BUILD_GRANARY': 'build_granary',
         'BUILD_MEDICAL': 'build_medical',
+        # UPGRADE_FACILITY 可对应多个设施 action，特殊处理
     }
+
+    # UPGRADE_FACILITY 可能对应的设施 action
+    _FACILITY_ACTIONS = ('build_irrigation', 'expand_school', 'build_medical', 'hire_bailiffs')
 
     @classmethod
     def _is_in_construction(cls, promise, game):
         """检查承诺对应的项目是否仍在建设中（active_investments）。"""
         county = load_county_state(game)
         active = county.get('active_investments', [])
+
+        if promise.promise_type == 'UPGRADE_FACILITY':
+            # 只要有任意县级设施正在建设即视为在建
+            for inv in active:
+                if inv.get('action') in cls._FACILITY_ACTIONS:
+                    return True
+            return False
 
         action = cls._TYPE_TO_ACTION.get(promise.promise_type)
         if not action:
@@ -236,8 +264,34 @@ class PromiseService:
         elif promise.promise_type == 'BUILD_GRANARY':
             return county.get('has_granary', False)
 
+        elif promise.promise_type == 'UPGRADE_FACILITY':
+            # 承诺后只要任意县级设施等级有提升即视为履行
+            initial_levels = ctx.get('initial_facility_levels', {})
+            FACILITY_KEYS = ('school_level', 'irrigation_level', 'medical_level', 'bailiff_level')
+            for key in FACILITY_KEYS:
+                if county.get(key, 0) > initial_levels.get(key, 0):
+                    return True
+            return False
+
         # OTHER: cannot auto-validate
         return False
+
+    @classmethod
+    def _apply_upgrade_facility_broken_penalty(cls, promise, game):
+        """UPGRADE_FACILITY 违约额外惩罚：民心和地主好感大幅下降。"""
+        from .state import load_county_state, save_player_state
+        from .settlement_metrics import MetricsMixin
+        from ..models import Agent
+        county = load_county_state(game)
+        MetricsMixin.apply_county_stat_delta(county, 'morale', -15)
+        save_player_state(game, county)
+        # 地主好感 -15
+        agent = promise.agent
+        if agent:
+            attrs = agent.attributes or {}
+            attrs['player_affinity'] = max(-99, int(attrs.get('player_affinity', 50)) - 15)
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
 
     @classmethod
     def _resolve_promise(cls, promise, game, new_status):

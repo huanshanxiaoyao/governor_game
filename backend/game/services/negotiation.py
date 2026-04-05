@@ -85,7 +85,10 @@ class NegotiationService:
             place = village_name or agent.name
             return None, f'{place}已有进行中的{existing_type}谈判，请先处理'
 
-        max_rounds = {'ANNEXATION': 8, 'IRRIGATION': 12, 'HIDDEN_LAND': 8}.get(event_type, 8)
+        max_rounds = {
+            'ANNEXATION': 8, 'IRRIGATION': 12, 'HIDDEN_LAND': 8,
+            'VILLAGE_REQ_SCHOOL': 3, 'VILLAGE_REQ_TAX': 3, 'LANDLORD_DEMAND_FACILITY': 3,
+        }.get(event_type, 8)
 
         session = NegotiationSession.objects.create(
             game=game,
@@ -132,6 +135,12 @@ class NegotiationService:
             cls._apply_annexation_outcome(session, outcome)
         elif session.event_type == 'HIDDEN_LAND':
             cls._apply_hidden_land_outcome(session, outcome)
+        elif session.event_type == 'VILLAGE_REQ_SCHOOL':
+            cls._apply_village_req_school_outcome(session, outcome)
+        elif session.event_type == 'VILLAGE_REQ_TAX':
+            cls._apply_village_req_tax_outcome(session, outcome)
+        elif session.event_type == 'LANDLORD_DEMAND_FACILITY':
+            cls._apply_landlord_demand_facility_outcome(session, outcome)
         else:
             cls._apply_irrigation_outcome(session, outcome)
 
@@ -205,6 +214,12 @@ class NegotiationService:
             result = cls._negotiate_annexation(ctx, game, session)
         elif session.event_type == 'HIDDEN_LAND':
             result = cls._negotiate_hidden_land(ctx, game, session)
+        elif session.event_type == 'VILLAGE_REQ_SCHOOL':
+            result = cls._negotiate_village_req_school(ctx, game, session)
+        elif session.event_type == 'VILLAGE_REQ_TAX':
+            result = cls._negotiate_village_req_tax(ctx, game, session)
+        elif session.event_type == 'LANDLORD_DEMAND_FACILITY':
+            result = cls._negotiate_landlord_demand_facility(ctx, game, session)
         else:
             result = cls._negotiate_irrigation(ctx, game, session)
 
@@ -1042,6 +1057,200 @@ class NegotiationService:
                 'cumulative_complaints': county['prefect_complaints'],
             },
         )
+
+    # ------------------------------------------------------------------
+    # 村民请愿·建村塾（VILLAGE_REQ_SCHOOL）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _negotiate_village_req_school(cls, ctx, game, session):
+        """村民里长向知县请愿建村塾——轻量LLM对话。"""
+        cd = session.context_data
+        ctx['schools_elsewhere'] = cd.get('schools_elsewhere', 0)
+
+        system_prompt, user_prompt = PromptRegistry.render('npc_request_school', **ctx)
+        messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
+
+        try:
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.75, max_tokens=384)
+        except Exception as e:
+            logger.warning("VILLAGE_REQ_SCHOOL LLM failed: %s", e)
+            result = {
+                'dialogue': f'{session.agent.name}期待地看着县令，等待回应。',
+                'attitude_change': 0,
+                'final_decision': None,
+                'new_memory': '',
+            }
+        return cls._normalize_npc_request_response(result)
+
+    @classmethod
+    def _apply_village_req_school_outcome(cls, session, outcome):
+        """村塾请愿结算：仅民心微调；真正建塾承诺由 PromiseService 提取。"""
+        from .state import load_county_state, save_player_state
+        from .settlement_metrics import MetricsMixin
+        game = session.game
+        county = load_county_state(game)
+        decision = outcome.get('final_decision')
+        village_name = session.context_data.get('village_name', '')
+
+        for v in county.get('villages', []):
+            if v['name'] == village_name:
+                if decision == 'accept':
+                    v['morale'] = min(100.0, float(v.get('morale', 50)) + 3)
+                else:
+                    v['morale'] = max(0.0, float(v.get('morale', 50)) - 3)
+                break
+
+        MetricsMixin._sync_county_from_villages(county, 'morale')
+        save_player_state(game, county)
+
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='village_req_school_outcome',
+            category='SOCIAL',
+            description=f'{village_name}建塾请愿：{"县令应允" if decision == "accept" else "县令婉拒"}',
+            data={'village_name': village_name, 'decision': decision},
+        )
+
+    # ------------------------------------------------------------------
+    # 村民请愿·减税（VILLAGE_REQ_TAX）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _negotiate_village_req_tax(cls, ctx, game, session):
+        """村民里长向知县请愿减税——轻量LLM对话。"""
+        cd = session.context_data
+        ctx['agri_suitability_pct'] = round(cd.get('agri_suitability', 0.5) * 100)
+        ctx['current_tax_pct'] = round(cd.get('current_tax_rate', 0.12) * 100, 1)
+
+        system_prompt, user_prompt = PromptRegistry.render('npc_request_tax', **ctx)
+        messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
+
+        try:
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.75, max_tokens=384)
+        except Exception as e:
+            logger.warning("VILLAGE_REQ_TAX LLM failed: %s", e)
+            result = {
+                'dialogue': f'{session.agent.name}双手合十，面露愁容。',
+                'attitude_change': 0,
+                'final_decision': None,
+                'new_memory': '',
+            }
+        return cls._normalize_npc_request_response(result)
+
+    @classmethod
+    def _apply_village_req_tax_outcome(cls, session, outcome):
+        """减税请愿结算：接受则直接降税至当前税率的80%；拒绝则民心下降。"""
+        from .state import load_county_state, save_player_state
+        from .settlement_metrics import MetricsMixin
+        game = session.game
+        county = load_county_state(game)
+        decision = outcome.get('final_decision')
+
+        if decision == 'accept':
+            old_rate = county.get('tax_rate', 0.12)
+            new_rate = round(old_rate * 0.80, 4)
+            new_rate = max(0.05, new_rate)  # 最低5%税率
+            # 记录税收缺口（用于推算上交知府的税收压力）
+            county['tax_gap'] = county.get('tax_gap', 0) + round(old_rate - new_rate, 4)
+            county['tax_rate'] = new_rate
+            # 民心微升
+            MetricsMixin.apply_county_stat_delta(county, 'morale', 5)
+            desc = f'减税请愿：县令应允，税率从{old_rate:.1%}降至{new_rate:.1%}'
+        else:
+            MetricsMixin.apply_county_stat_delta(county, 'morale', -8)
+            desc = '减税请愿：县令拒绝，民心下降'
+
+        save_player_state(game, county)
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='village_req_tax_outcome',
+            category='SOCIAL',
+            description=desc,
+            data={'decision': decision, 'new_tax_rate': county.get('tax_rate')},
+        )
+
+    # ------------------------------------------------------------------
+    # 地主要求·升级公共设施（LANDLORD_DEMAND_FACILITY）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _negotiate_landlord_demand_facility(cls, ctx, game, session):
+        """地主要求升级公共设施——轻量LLM对话。"""
+        cd = session.context_data
+        ctx['low_facilities'] = cd.get('low_facilities', '相关设施')
+
+        system_prompt, user_prompt = PromptRegistry.render('npc_demand_facility', **ctx)
+        messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
+
+        try:
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.80, max_tokens=384)
+        except Exception as e:
+            logger.warning("LANDLORD_DEMAND_FACILITY LLM failed: %s", e)
+            result = {
+                'dialogue': f'{session.agent.name}眉头微皱，等待县令表态。',
+                'attitude_change': 0,
+                'final_decision': None,
+                'new_memory': '',
+            }
+        return cls._normalize_npc_request_response(result)
+
+    @classmethod
+    def _apply_landlord_demand_facility_outcome(cls, session, outcome):
+        """升级设施要求结算：接受则民心/好感+5；拒绝则-5。承诺由 PromiseService 提取。"""
+        from .state import load_county_state, save_player_state
+        from .settlement_metrics import MetricsMixin
+        game = session.game
+        county = load_county_state(game)
+        agent = session.agent
+        decision = outcome.get('final_decision')
+        village_name = session.context_data.get('village_name', '')
+
+        delta = 5 if decision == 'accept' else -5
+        MetricsMixin.apply_county_stat_delta(county, 'morale', delta)
+        save_player_state(game, county)
+
+        # 好感度调整
+        attrs = agent.attributes or {}
+        attrs['player_affinity'] = max(-99, min(99, int(attrs.get('player_affinity', 50)) + delta))
+        agent.attributes = attrs
+        agent.save(update_fields=['attributes'])
+
+        EventLog.objects.create(
+            game=game, season=game.current_season,
+            event_type='landlord_demand_facility_outcome',
+            category='SOCIAL',
+            description=f'{village_name}地主{agent.name}升级设施要求：{"县令承诺改善" if decision == "accept" else "县令拒绝"}',
+            data={'village_name': village_name, 'decision': decision,
+                  'low_facilities': session.context_data.get('low_facilities', '')},
+        )
+
+    # ------------------------------------------------------------------
+    # 辅助：NPC请愿类响应归一化
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _normalize_npc_request_response(cls, result):
+        """对话请愿类统一归一化（比谈判类更简洁）。"""
+        defaults = {
+            'dialogue': '（沉默不语）',
+            'attitude_change': 0,
+            'final_decision': None,
+            'new_memory': '',
+        }
+        for key, default in defaults.items():
+            if key not in result:
+                result[key] = default
+        try:
+            result['attitude_change'] = max(-5, min(5, int(result['attitude_change'])))
+        except (ValueError, TypeError):
+            result['attitude_change'] = 0
+        if result['final_decision'] not in (None, 'accept', 'refuse'):
+            result['final_decision'] = None
+        return result
 
     # ------------------------------------------------------------------
     # Chat History

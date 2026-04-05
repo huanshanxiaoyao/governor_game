@@ -553,6 +553,12 @@ class InvestmentService:
         price_index = county.get("price_index", 1.0)
         actual_cost = cls.get_actual_cost(county, action)
 
+        # 地主出资补贴（G1：宗族/乡绅出资兴建村塾）
+        if action == "fund_village_school":
+            subsidy = county.pop("landlord_school_subsidy", 0)
+            if subsidy:
+                actual_cost = max(0, actual_cost - subsidy)
+
         # Deduct cost
         county["treasury"] -= actual_cost
 

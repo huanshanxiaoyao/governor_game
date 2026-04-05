@@ -198,6 +198,14 @@ class SettlementService(
         # Player-only post-settlement
         cls._process_land_surveys(county, report)
 
+        # 宗族状态月度更新（affinity漂移 → 重算clan_affinity → 低亲密度事件）
+        if game is not None and game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .clan import ClanService
+                ClanService.update_clan_state(game, county, month, report)
+            except Exception as e:
+                logger.warning("宗族状态更新失败（非致命）: %s", e)
+
         # AI知府月度行动（知县游戏）
         if game.player_role == 'COUNTY_MAGISTRATE':
             t0 = time.time()
@@ -268,9 +276,21 @@ class SettlementService(
             except Exception as e:
                 logger.warning("邻县施政同步失败（非致命）: %s", e)
 
+        # NPC 主动行动触发（村民请愿 / 地主要求 / 自动效果）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .village_events import VillageEventService
+                agents_qs = list(Agent.objects.filter(game=game))
+                VillageEventService.check_and_generate(game, county, agents_qs, report)
+            except Exception as e:
+                logger.warning("VillageEventService 触发失败（非致命）: %s", e)
+
         save_player_state(game, county)
         logger.info("[推进 month=%d][总耗时 advance_season] %.2fs", month, time.time() - t_total)
-        game.save(update_fields=["current_season", "updated_at"])
+        game.save(update_fields=["current_season", "pending_events", "updated_at"])
+
+        # 将当月新增 npc_pending_requests 附加到 report，供前端立即提示
+        report['npc_pending_requests'] = county.get('npc_pending_requests', [])
 
         # Log settlement summary
         # Keep legacy keys for existing summary analyzers, and store full month payload

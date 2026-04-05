@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_prefecture, views_letter, views_counsel, views_bench
+from . import views, views_prefecture, views_letter, views_counsel, views_bench, views_village
 
 urlpatterns = [
     path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
@@ -53,6 +53,11 @@ urlpatterns = [
     path("games/<int:game_id>/negotiations/active-list/", views.ActiveNegotiationsListView.as_view(), name="negotiation-active-list"),
     path("games/<int:game_id>/negotiations/start-irrigation/", views.StartIrrigationNegotiationView.as_view(), name="negotiation-start-irrigation"),
     path("games/<int:game_id>/negotiations/<int:session_id>/chat/", views.NegotiationChatView.as_view(), name="negotiation-chat"),
+    # NPC 主动行动 — 村民请愿 / 地主要求
+    path("games/<int:game_id>/npc-requests/<str:request_id>/respond/", views_village.NpcRequestRespondView.as_view(), name="npc-request-respond"),
+    # 宗族后生
+    path("games/<int:game_id>/clan-youth/", views_village.ClanYouthListView.as_view(), name="clan-youth-list"),
+    path("games/<int:game_id>/clan-youth/<int:agent_id>/nominate/", views_village.ClanYouthNominateView.as_view(), name="clan-youth-nominate"),
     # Disaster relief application
     path("games/<int:game_id>/disaster-relief/", views.DisasterReliefView.as_view(), name="game-disaster-relief"),
     # Imperial tour levy
