@@ -168,6 +168,8 @@ class Agent(models.Model):
         ('CONSTABLE', '捕快'),
         ('BAILIFF_CEREMONY', '皂班'),
         ('BAILIFF_LABOR', '壮班'),
+        # 宗族后生（宗族举贤生成的候选人）
+        ('CLAN_YOUTH', '宗族后生'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='agents')
@@ -277,6 +279,10 @@ class NegotiationSession(models.Model):
         ('ANNEXATION', '地主兼并'),
         ('IRRIGATION', '兴建水利'),
         ('HIDDEN_LAND', '隐匿土地'),
+        # NPC主动行动 — 对话请愿类
+        ('VILLAGE_REQ_SCHOOL', '村民请愿·建村塾'),
+        ('VILLAGE_REQ_TAX', '村民请愿·减税'),
+        ('LANDLORD_DEMAND_FACILITY', '地主要求·升级公共设施'),
     ]
     STATUS_CHOICES = [
         ('active', '进行中'),
@@ -285,7 +291,7 @@ class NegotiationSession(models.Model):
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='negotiations')
     agent = models.ForeignKey('Agent', on_delete=models.CASCADE, related_name='negotiations')
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
     current_round = models.IntegerField(default=0)
     max_rounds = models.IntegerField(help_text='ANNEXATION=8, IRRIGATION=12')
@@ -351,6 +357,7 @@ class Promise(models.Model):
         ('RECLAIM_LAND', '开垦荒地'),
         ('REPAIR_ROADS', '修缮道路'),
         ('BUILD_GRANARY', '开设义仓'),
+        ('UPGRADE_FACILITY', '升级公共设施'),
         ('OTHER', '其他'),
     ]
     STATUS_CHOICES = [
