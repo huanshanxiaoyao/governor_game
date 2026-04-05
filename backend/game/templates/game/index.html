@@ -143,7 +143,7 @@
     <button class="tab-btn active" data-tab="tab-dashboard">县情总览</button>
     <button class="tab-btn" data-tab="tab-actions">施政</button>
     <button id="county-judicial-tab-btn" class="tab-btn hidden" data-tab="tab-judicial">司法</button>
-    <button class="tab-btn" data-tab="tab-relationships">社交</button>
+    <button class="tab-btn" data-tab="tab-relationships">社交<span id="npc-request-badge" class="tab-badge hidden"></span></button>
     <button class="tab-btn" data-tab="tab-villages">村庄</button>
     <button class="tab-btn" data-tab="tab-neighbors">邻县</button>
     <button class="tab-btn" data-tab="tab-officialdom">官场</button>
@@ -240,6 +240,7 @@
       <tbody id="village-tbody"></tbody>
     </table>
 
+
     <!-- Village detail modal -->
     <div id="village-detail-modal" class="modal hidden">
       <div class="modal-content village-detail-content">
@@ -319,6 +320,14 @@
 
   <!-- Tab: Relationships (人脉) -->
   <div id="tab-relationships" class="tab-content hidden">
+    <div id="npc-pending-section" class="hidden">
+      <div class="social-section-hd">待处理请愿</div>
+      <div id="npc-pending-cards" class="npc-pending-cards"></div>
+    </div>
+    <div class="social-subtab-bar">
+      <button class="social-subtab-btn active" data-subtab="social-local-panel">本县人物</button>
+      <button class="social-subtab-btn" data-subtab="social-upper-panel">上位</button>
+    </div>
     <div id="relationships-list">
       <p class="hint">加载中...</p>
     </div>
@@ -573,6 +582,9 @@
     </div>
     <div id="nego-messages" class="nego-messages"></div>
     <div id="nego-resolved" class="nego-resolved hidden"></div>
+    <div id="nego-promise-hint" class="nego-promise-hint hidden">
+      💡 若同意承诺，请在回复中明确时限，如"我将在三个月内办妥"
+    </div>
     <div id="nego-input-area" class="nego-input-area">
       <select id="nego-speaker" class="nego-speaker">
         <option value="PLAYER">县令亲谈</option>

@@ -2005,6 +2005,15 @@ body {
   color: #5c4a2a;
 }
 .nego-outcome strong { display: block; margin-bottom: 4px; }
+.nego-promise-hint {
+  margin: 0 20px 8px;
+  padding: 8px 12px;
+  background: #fdf3d0;
+  border-left: 3px solid #d4a017;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #6b4c0a;
+}
 
 /* === Irrigation Negotiate Section === */
 #irrigation-negotiate-section {
@@ -2363,6 +2372,149 @@ body {
   background: #f5efe0;
   border-radius: 3px;
   margin: 8px 0 6px 0;
+}
+
+/* === 社会身份标签 === */
+.agent-identity-line {
+  font-size: 0.78em;
+  color: #8a7a5a;
+  padding: 2px 0 4px 0;
+  line-height: 1.4;
+}
+.hometown-badge {
+  display: inline-block;
+  font-size: 0.72em;
+  background: #e8f4e8;
+  color: #276627;
+  border: 1px solid #b5d6b5;
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* === 宗族概览 === */
+.player-identity-line {
+  font-size: 0.82em;
+  color: #6a5a3a;
+  background: #fdf8ee;
+  border: 1px solid #e0d5b0;
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin-bottom: 10px;
+}
+#village-clan-section {
+  margin-top: 20px;
+}
+.social-subtab-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid #d4c5a0;
+  margin-bottom: 14px;
+}
+.social-subtab-btn {
+  padding: 5px 14px;
+  border: 1px solid #b8a070;
+  border-radius: 4px;
+  background: #f5ede0;
+  color: #5a3a10;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+.social-subtab-btn.active {
+  background: #8b5e1a;
+  color: #fff;
+  border-color: #8b5e1a;
+}
+.clan-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.clan-card {
+  background: #fdf9f0;
+  border: 1px solid #d5c89a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.85em;
+}
+.clan-card-tension {
+  border-color: #d4a017;
+  background: #fefbee;
+}
+.clan-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.clan-name {
+  font-weight: 700;
+  color: #5a3e1b;
+  font-size: 0.95em;
+}
+.clan-label {
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.clan-affinity-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 0.82em;
+  color: #6a5a3a;
+}
+.clan-bar { flex: 1; height: 6px; }
+.clan-detail-row {
+  font-size: 0.78em;
+  color: #7a6a4a;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.clan-detail-label {
+  color: #8a7a5a;
+  min-width: 56px;
+  flex-shrink: 0;
+}
+.clan-none-hint {
+  color: #aaa;
+  font-style: italic;
+}
+.clan-official-tag {
+  display: inline-block;
+  background: #f0ece0;
+  border: 1px solid #d4c9a8;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin: 1px 2px 1px 0;
+  font-size: 0.95em;
+  color: #5a4a2a;
+}
+.clan-influence-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.82em;
+  color: #6a5a3a;
+}
+.clan-influence-fill {
+  background: #8b7355 !important;
+}
+.clan-warning {
+  margin-top: 6px;
+  font-size: 0.8em;
+  color: #b44a00;
+  background: #fff3e0;
+  border-left: 3px solid #e67e22;
+  padding: 3px 7px;
+  border-radius: 2px;
 }
 
 /* === Village Deltas === */
@@ -4244,6 +4396,29 @@ body {
   vertical-align: middle;
 }
 .judicial-tab-badge.hidden { display: none; }
+
+/* 待处理请愿区块（社交Tab顶部） */
+.npc-pending-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0 16px;
+}
+
+/* NPC请求徽章（社交Tab） */
+.tab-badge {
+  display: inline-block;
+  background: #e67e22;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 8px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tab-badge.hidden { display: none; }
 
 /* 待审卷宗列表 */
 .judicial-pending-list {
@@ -6146,4 +6321,39 @@ body {
   font-weight: bold;
   color: #5a3a10;
   font-size: 0.95em;
+}
+
+/* ── NPC 简单请愿卡片（V2赈灾 / G1出资建塾）── */
+.npc-request-card {
+  background: #fffbf0;
+  border: 1px solid #c8a060;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.npc-req-msg {
+  font-size: 0.88em;
+  color: #4a2c10;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.npc-req-btns {
+  display: flex;
+  gap: 8px;
+}
+.npc-req-btns button {
+  padding: 4px 14px;
+  border-radius: 4px;
+  border: 1px solid #a07040;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.btn-npc-accept { background: #4a7c59; color: #fff; }
+.btn-npc-accept:hover { background: #3a6a49; }
+.btn-npc-refuse { background: #f5f0e8; color: #5a3a10; }
+.btn-npc-refuse:hover { background: #e8dcc8; }
+.npc-req-done {
+  font-size: 0.85em;
+  color: #6a7a6a;
+  font-style: italic;
 }

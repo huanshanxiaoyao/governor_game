@@ -1030,6 +1030,7 @@
       });
       tbody.appendChild(tr);
     });
+
   }
 
   function _formatNum(n, fallback) {

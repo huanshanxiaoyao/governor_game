@@ -14,6 +14,9 @@
     ANNEXATION: "地主兼并",
     IRRIGATION: "兴建水利",
     HIDDEN_LAND: "隐匿土地",
+    VILLAGE_REQ_SCHOOL: "村民请愿·建村塾",
+    VILLAGE_REQ_TAX: "村民请愿·减税",
+    LANDLORD_DEMAND_FACILITY: "地主要求·升级设施",
   };
 
   function formatMsgTime(isoString) {
@@ -143,6 +146,17 @@
     resolvedDiv.innerHTML = "";
 
     var inputArea = el("nego-input-area");
+
+    // 承诺提示（仅请愿/要求类谈判显示）
+    var REQUEST_TYPES = ['VILLAGE_REQ_SCHOOL', 'VILLAGE_REQ_TAX', 'LANDLORD_DEMAND_FACILITY'];
+    var hintEl = el("nego-promise-hint");
+    if (hintEl) {
+      if (REQUEST_TYPES.indexOf(session.event_type) !== -1) {
+        hintEl.classList.remove("hidden");
+      } else {
+        hintEl.classList.add("hidden");
+      }
+    }
 
     if (session.status === "resolved") {
       inputArea.classList.add("hidden");
@@ -354,7 +368,7 @@
   var LOCAL_ROLES = {
     ADVISOR: true, DEPUTY: true,
     LIUFANG: true, CONSTABLE: true, BAILIFF_CEREMONY: true, BAILIFF_LABOR: true,
-    GENTRY: true, VILLAGER: true,
+    GENTRY: true, VILLAGER: true, CLAN_YOUTH: true,
   };
 
   // 汇报链（知县视角；知府玩家时 PREFECT 不在链内）
@@ -384,17 +398,43 @@
     var barPct   = Math.max(0, Math.min(100, ((aff + 99) / 198) * 100));
     var roleInfo = a.role_title + (a.village_name ? "（" + a.village_name + "）" : "");
 
-    var actionBtn = isLocal
-      ? '<button class="btn btn-small btn-staff-chat rel-action-btn"' +
-          ' data-agent-id="' + a.id + '" data-agent-name="' + escapeHtml(a.name) + '">交谈</button>'
-      : '<button class="btn btn-small btn-agent-letter rel-action-btn"' +
-          ' data-agent-id="' + a.id + '">书信</button>';
+    // 社会身份标签
+    var si = a.social_identity || {};
+    var identityParts = [];
+    if (a.age) identityParts.push(a.age + '岁');
+    if (si.native_place && si.native_place !== '__local__') identityParts.push(si.native_place + '人');
+    if (si.clan_id && si.clan_id !== '__local__') identityParts.push(si.clan_id);
+    var identityHtml = '';
+    if (identityParts.length) {
+      identityHtml = '<div class="agent-identity-line">' + escapeHtml(identityParts.join(' · ')) + '</div>';
+    }
+    // 同乡标签（去掉"年岁相仿"，只保留同乡）
+    var hometownHtml = '';
+    var _hrel = (a.hometown_relation || '').replace('年岁相仿', '').replace('、', '').trim();
+    if (_hrel) {
+      hometownHtml = '<span class="hometown-badge">' + escapeHtml(_hrel) + '</span>';
+    }
+
+    var actionBtn;
+    if (a.role === 'CLAN_YOUTH') {
+      var nominated = (a.attributes && a.attributes.exam_eligible);
+      actionBtn = '<button class="btn btn-small btn-clan-nominate rel-action-btn"' +
+        ' data-agent-id="' + a.id + '">' + (nominated ? '取消举荐' : '举荐应试') + '</button>';
+    } else if (isLocal) {
+      actionBtn = '<button class="btn btn-small btn-staff-chat rel-action-btn"' +
+        ' data-agent-id="' + a.id + '" data-agent-name="' + escapeHtml(a.name) + '">交谈</button>';
+    } else {
+      actionBtn = '<button class="btn btn-small btn-agent-letter rel-action-btn"' +
+        ' data-agent-id="' + a.id + '">书信</button>';
+    }
 
     var html =
       '<div class="relationship-card-header">' +
         '<span class="relationship-name">' + escapeHtml(a.name) + '</span>' +
         '<span class="relationship-role">' + escapeHtml(roleInfo) + '</span>' +
+        hometownHtml +
       '</div>' +
+      identityHtml +
       '<div class="rel-card-middle">' +
         '<div>' +
           '<div class="affinity-value ' + affClass + '">好感度: ' + aff + '</div>' +
@@ -437,6 +477,145 @@
     return card;
   }
 
+  // ── 宗族概览（从 county_data.clans 读取） ────────────────────────────────
+
+  var _CLAN_AFFINITY_LABELS = [
+    [70, '和睦', '#27ae60'],
+    [40, '平稳', '#2980b9'],
+    [20, '冷淡', '#d4a017'],
+    [10, '对抗', '#e67e22'],
+    [0,  '敌对', '#c0392b'],
+  ];
+
+  function _clanAffinityLabel(aff) {
+    for (var i = 0; i < _CLAN_AFFINITY_LABELS.length; i++) {
+      if (aff >= _CLAN_AFFINITY_LABELS[i][0]) {
+        return { text: _CLAN_AFFINITY_LABELS[i][1], color: _CLAN_AFFINITY_LABELS[i][2] };
+      }
+    }
+    return { text: '敌对', color: '#c0392b' };
+  }
+
+  function _renderClanOverview(container, agents) {
+    var g = Game.state.currentGame;
+    var clans = ((g || {}).county_data || {}).clans || {};
+    var playerSi = ((g || {}).county_data || {}).player_social_identity || {};
+
+    if (!Object.keys(clans).length) return;
+
+    // 按 total_influence 降序，只展示本县有落脚点的宗族（local_members 非空）
+    var clanIds = Object.keys(clans).filter(function (id) {
+      return (clans[id].local_members || []).length > 0;
+    }).sort(function (a, b) {
+      return (clans[b].total_influence || 0) - (clans[a].total_influence || 0);
+    });
+
+    var hd = document.createElement('div');
+    hd.className = 'social-section-hd';
+    hd.textContent = '本县宗族（' + clanIds.length + ' 支）';
+    container.appendChild(hd);
+
+    // 玩家身份信息行
+    if (playerSi.native_place || playerSi.clan_id) {
+      var playerInfoDiv = document.createElement('div');
+      playerInfoDiv.className = 'player-identity-line';
+      var parts = [];
+      if (playerSi.native_place) parts.push('你的籍贯：' + playerSi.native_place);
+      if (playerSi.clan_id)      parts.push('宗族：' + playerSi.clan_id);
+      if (playerSi.age)          parts.push('年龄：' + playerSi.age + '岁');
+      playerInfoDiv.textContent = parts.join('　');
+      container.appendChild(playerInfoDiv);
+    }
+
+    // agent id → agent 查找表
+    var agentById = {};
+    agents.forEach(function (a) { agentById[a.id] = a; });
+
+    var grid = document.createElement('div');
+    grid.className = 'clan-overview-grid';
+
+    clanIds.forEach(function (clanId) {
+      var clan = clans[clanId];
+      var aff = clan.clan_affinity || 50;
+      var label = _clanAffinityLabel(aff);
+      var barPct = Math.max(0, Math.min(100, aff));
+      var totalInfluence = clan.total_influence || 0;
+      var influenceBarPct = Math.max(0, Math.min(100, Math.round(totalInfluence / 4)));
+      var streak = clan.low_affinity_streak || 0;
+
+      // 本县地主（GENTRY）列表
+      var localGentry = (clan.local_members || [])
+        .map(function (id) { return agentById[id]; })
+        .filter(function (a) { return a && a.role === 'GENTRY'; });
+      var gentryDesc = localGentry.map(function (a) {
+        var vName = (a.attributes || {}).village_name || '';
+        return escapeHtml(a.name) + (vName ? '（' + escapeHtml(vName) + '）' : '');
+      }).join('、');
+
+      // 在外同族官员
+      var officialLines = (clan.official_members || [])
+        .map(function (id) { return agentById[id]; })
+        .filter(Boolean)
+        .map(function (a) {
+          return '<span class="clan-official-tag">' +
+            escapeHtml(a.name) + ' — ' + escapeHtml(a.role_title || a.role) +
+          '</span>';
+        })
+        .join(' ');
+
+      // 同府他县分支
+      var branches = clan.other_county_branches || 0;
+      var branchText = branches > 0
+        ? '约 ' + branches + ' 县有族人'
+        : '暂无已知分支';
+
+      var warningHtml = '';
+      if (aff < 30) {
+        var warnText = aff < 10
+          ? '⚠ 宗族已公然对抗，秋粮征收严重折损'
+          : '⚠ 宗族心存不满，征收效率下降';
+        if (streak >= 2) warnText += '，已连续' + streak + '月对立';
+        warningHtml = '<div class="clan-warning">' + warnText + '</div>';
+      }
+
+      // 所在村庄
+      var villages = (clan.local_villages || []).map(escapeHtml).join('、') || '—';
+
+      var card = document.createElement('div');
+      card.className = 'clan-card' + (aff < 30 ? ' clan-card-tension' : '');
+      card.innerHTML =
+        '<div class="clan-card-header">' +
+          '<span class="clan-name">' + escapeHtml(clanId) + '</span>' +
+          '<span class="clan-label" style="color:' + label.color + '">' + label.text + '</span>' +
+        '</div>' +
+        '<div class="clan-affinity-row">' +
+          '<span>宗族态度</span>' +
+          '<div class="affinity-bar clan-bar">' +
+            '<div class="affinity-bar-fill" style="width:' + barPct + '%;background:' + label.color + '"></div>' +
+          '</div>' +
+          '<span>' + aff + '</span>' +
+        '</div>' +
+        '<div class="clan-detail-row"><span class="clan-detail-label">所在村庄</span>' + villages + '</div>' +
+        (gentryDesc ? '<div class="clan-detail-row"><span class="clan-detail-label">本族地主</span>' + gentryDesc + '</div>' : '') +
+        '<div class="clan-detail-row"><span class="clan-detail-label">在外同族</span>' +
+          (officialLines || '<span class="clan-none-hint">无</span>') +
+        '</div>' +
+        '<div class="clan-detail-row"><span class="clan-detail-label">同府他县</span>' + escapeHtml(branchText) + '</div>' +
+        '<div class="clan-influence-row">' +
+          '<span class="clan-detail-label">整体影响力</span>' +
+          '<div class="affinity-bar clan-bar">' +
+            '<div class="affinity-bar-fill clan-influence-fill" style="width:' + influenceBarPct + '%"></div>' +
+          '</div>' +
+          '<span>' + totalInfluence + '</span>' +
+        '</div>' +
+        warningHtml;
+
+      grid.appendChild(card);
+    });
+
+    container.appendChild(grid);
+  }
+
   function renderRelationships(agents) {
     var container = el("relationships-list");
     container.innerHTML = "";
@@ -453,7 +632,6 @@
     var playerPrefecture = adminLoc.prefecture || "";
 
     // 汇报链：只保留玩家所在省/府的直接上级官员
-    // PREFECT → 所在府的知府；PROVINCIAL_GOVERNOR/COMMISSIONER → 所在省
     var localAgents   = agents.filter(function (a) { return !!LOCAL_ROLES[a.role]; });
     var emperorAgents = agents.filter(function (a) { return a.role === "EMPEROR"; });
     var centralAgents = agents.filter(function (a) { return !!CENTRAL_ROLES[a.role]; });
@@ -463,7 +641,6 @@
       if (a.role === "PREFECT") {
         return !playerPrefecture || a.prefecture === playerPrefecture;
       }
-      // PROVINCIAL_GOVERNOR / PROVINCIAL_COMMISSIONER
       return !playerProvince || a.province === playerProvince;
     });
 
@@ -472,53 +649,79 @@
       negoByAgent[s.agent_name] = s;
     });
 
-    function renderSection(title, list, isLocal) {
+    // ── 本县人物 panel ────────────────────────────────────────────
+    var localPanel = document.createElement("div");
+    localPanel.id = "social-local-panel";
+
+    function renderSubgroup(panelEl, title, list, isLocal) {
+      if (!list.length) return;
+      var subHd = document.createElement("div");
+      subHd.className = "social-sub-hd";
+      subHd.textContent = title;
+      panelEl.appendChild(subHd);
+      var grid = document.createElement("div");
+      grid.className = "social-section-grid";
+      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, isLocal)); });
+      panelEl.appendChild(grid);
+    }
+
+    // 顺序：幕僚 → 乡绅 → 村民代表 → 六房 → 衙役三班 → 宗族后生
+    var localSubgroups = [
+      { title: "幕僚",    roles: ["ADVISOR", "DEPUTY"] },
+      { title: "乡绅",    roles: ["GENTRY"] },
+      { title: "村民代表", roles: ["VILLAGER"] },
+      { title: "六房",    roles: ["LIUFANG"] },
+      { title: "衙役三班", roles: ["CONSTABLE", "BAILIFF_CEREMONY", "BAILIFF_LABOR"] },
+      { title: "宗族后生", roles: ["CLAN_YOUTH"] },
+    ];
+    localSubgroups.forEach(function (sg) {
+      var sub = localAgents.filter(function (a) { return sg.roles.indexOf(a.role) !== -1; });
+      renderSubgroup(localPanel, sg.title, sub, true);
+    });
+    container.appendChild(localPanel);
+
+    // ── 上位 panel ────────────────────────────────────────────────
+    var upperPanel = document.createElement("div");
+    upperPanel.id = "social-upper-panel";
+    upperPanel.className = "hidden";
+
+    function renderUpperSection(panelEl, title, list) {
       if (!list.length) return;
       var hd = document.createElement("div");
       hd.className = "social-section-hd";
       hd.textContent = title;
-      container.appendChild(hd);
-
+      panelEl.appendChild(hd);
       var grid = document.createElement("div");
       grid.className = "social-section-grid";
-      list.forEach(function (a) {
-        grid.appendChild(_buildRelCard(a, negoByAgent, isLocal));
-      });
-      container.appendChild(grid);
+      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, false)); });
+      panelEl.appendChild(grid);
     }
 
-    function renderLocalPersonnel(list) {
-      if (!list.length) return;
-      var sectionHd = document.createElement("div");
-      sectionHd.className = "social-section-hd";
-      sectionHd.textContent = "本县人物";
-      container.appendChild(sectionHd);
+    renderUpperSection(upperPanel, "皇帝", emperorAgents);
+    renderUpperSection(upperPanel, "汇报链", chainAgents);
+    renderUpperSection(upperPanel, "中央官员", centralAgents);
+    container.appendChild(upperPanel);
 
-      var subgroups = [
-        { title: "幕僚", roles: ["ADVISOR", "DEPUTY"] },
-        { title: "六房", roles: ["LIUFANG"] },
-        { title: "衙役三班", roles: ["CONSTABLE", "BAILIFF_CEREMONY", "BAILIFF_LABOR"] },
-        { title: "乡绅", roles: ["GENTRY"] },
-        { title: "村民代表", roles: ["VILLAGER"] },
-      ];
-      subgroups.forEach(function (sg) {
-        var sub = list.filter(function (a) { return sg.roles.indexOf(a.role) !== -1; });
-        if (!sub.length) return;
-        var subHd = document.createElement("div");
-        subHd.className = "social-sub-hd";
-        subHd.textContent = sg.title;
-        container.appendChild(subHd);
-        var grid = document.createElement("div");
-        grid.className = "social-section-grid";
-        sub.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, true)); });
-        container.appendChild(grid);
+    // 绑定「举荐」按钮
+    container.querySelectorAll(".btn-clan-nominate").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var agentId = parseInt(btn.dataset.agentId, 10);
+        var g = Game.state.currentGame;
+        if (!g) return;
+        btn.disabled = true;
+        Game.api.nominateClanYouth(g.id, agentId)
+          .then(function (res) {
+            var nominated = res.exam_eligible;
+            btn.textContent = nominated ? '取消举荐' : '举荐应试';
+            btn.disabled = false;
+            Game.components.showToast(res.message || (nominated ? '已举荐应试' : '已取消举荐'), 'success');
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            Game.components.showToast(err.message || '操作失败', 'error');
+          });
       });
-    }
-
-    renderLocalPersonnel(localAgents);
-    renderSection("皇帝", emperorAgents, false);
-    renderSection("汇报链", chainAgents, false);
-    renderSection("中央官员", centralAgents, false);
+    });
 
     // 绑定「书信」按钮
     container.querySelectorAll(".btn-agent-letter").forEach(function (btn) {
@@ -838,6 +1041,7 @@
   C.showNegotiationResolved = showNegotiationResolved;
   C.renderEventLogs = renderEventLogs;
   C.renderRelationships = renderRelationships;
+  C.renderClanOverview = _renderClanOverview;
   C.openAgentProfile = openAgentProfile;
   C.renderStaffTab = renderStaffTab;
   C.openStaffChat = openStaffChat;

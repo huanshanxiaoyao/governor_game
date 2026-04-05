@@ -1888,6 +1888,52 @@
     };
   }
 
+  // ==================== NPC 简单请愿处理（V2赈灾 / G1出资建塾）====================
+
+  function _renderNpcRequestCards(npcReqs, gameId) {
+    var resultBody = el("advance-result-body");
+    if (!resultBody || !npcReqs || !npcReqs.length) return;
+
+    npcReqs.forEach(function (req) {
+      // 只展示需要玩家响应的简单类（非谈判类）
+      if (req.type !== "VILLAGE_RELIEF" && req.type !== "GENTRY_FUND_SCHOOL") return;
+
+      var card = document.createElement("div");
+      card.className = "npc-request-card";
+      card.innerHTML =
+        "<div class='npc-req-msg'>" + components.escapeHtml(req.message) + "</div>" +
+        "<div class='npc-req-btns'>" +
+          "<button class='btn-npc-accept' data-req-id='" + req.id + "' data-game-id='" + gameId + "'>接受</button>" +
+          "<button class='btn-npc-refuse' data-req-id='" + req.id + "' data-game-id='" + gameId + "'>拒绝</button>" +
+        "</div>";
+      card.querySelector(".btn-npc-accept").addEventListener("click", function () {
+        _respondNpcRequest(gameId, req.id, "accept", card);
+      });
+      card.querySelector(".btn-npc-refuse").addEventListener("click", function () {
+        _respondNpcRequest(gameId, req.id, "refuse", card);
+      });
+      resultBody.appendChild(card);
+    });
+  }
+
+  function _respondNpcRequest(gameId, reqId, action, card) {
+    var btns = card.querySelectorAll("button");
+    btns.forEach(function (b) { b.disabled = true; });
+    api.respondNpcRequest(gameId, reqId, action)
+      .then(function (data) {
+        var msg = (data.result && data.result.message) ? data.result.message : (action === "accept" ? "已接受" : "已拒绝");
+        card.innerHTML = "<div class='npc-req-done'>" + components.escapeHtml(msg) + "</div>";
+        // 刷新侧边栏数据
+        api.getGame(gameId).then(function (gameData) {
+          Game.setGame(gameData);
+        }).catch(function () {});
+      })
+      .catch(function (err) {
+        components.showToast(err.message || "操作失败", "error");
+        btns.forEach(function (b) { b.disabled = false; });
+      });
+  }
+
   function doAdvance(g, btn) {
     btn.disabled = true;
     btn.textContent = "推进中...";
@@ -1945,6 +1991,9 @@
                 resultBody.appendChild(hint);
               }
             }
+            // NPC 简单请愿（V2赈灾 / G1地主出资）注入月报
+            var npcReqs = report.npc_pending_requests || [];
+            _renderNpcRequestCards(npcReqs, data.id);
           });
         }
       })
@@ -2060,6 +2109,11 @@
       roleSelf + "受县衙所托，特来当面商议",
       "县衙已命" + roleSelf + "与你就此事直陈利害",
     ]);
+
+    // 请愿类无需师爷/县丞代转——直接提示玩家亲自回应
+    if (type === "VILLAGE_REQ_SCHOOL" || type === "VILLAGE_REQ_TAX" || type === "LANDLORD_DEMAND_FACILITY") {
+      return "";  // 请愿类不提供预设代转语，由玩家自行回复
+    }
 
     if (speakerRole === "ADVISOR") {
       if (type === "HIDDEN_LAND") {
@@ -2348,6 +2402,13 @@
   el("events-category-filter").addEventListener("change", loadEventLogs);
   el("btn-refresh-events").addEventListener("click", loadEventLogs);
 
+  // 社交子 Tab 按钮绑定
+  document.querySelectorAll(".social-subtab-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      showSocialSubtab(this.dataset.subtab);
+    });
+  });
+
   // Auto-load when tab is activated
   var origShowTab = Game.screens.showTab;
   Game.screens.showTab = function (tabId) {
@@ -2370,10 +2431,24 @@
     }
   };
 
+  function _updateNpcRequestBadge(data) {
+    var badge = document.getElementById("npc-request-badge");
+    if (!badge) return;
+    var reqs = (data && data.county_data && data.county_data.npc_pending_requests) || [];
+    var count = reqs.length;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
+  }
+
   var _origSetGame = Game.setGame;
   Game.setGame = function (data) {
     _origSetGame(data);
     updateCountyJudicialTabVisibility(data);
+    _updateNpcRequestBadge(data);
     // 每次游戏状态更新后刷新流言板（仅知县模式）
     if (data && data.player_role === "COUNTY_MAGISTRATE") {
       loadRumorsBoard();
@@ -2818,6 +2893,49 @@
       .catch(function () {});
   }
 
+  function showSocialSubtab(subtabId) {
+    ["social-local-panel", "social-upper-panel"].forEach(function (id) {
+      var panel = document.getElementById(id);
+      if (panel) panel.classList.toggle("hidden", id !== subtabId);
+    });
+    document.querySelectorAll(".social-subtab-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.subtab === subtabId);
+    });
+  }
+
+  function _renderSocialNpcPending(g) {
+    var section = document.getElementById("npc-pending-section");
+    var cardsEl = document.getElementById("npc-pending-cards");
+    if (!section || !cardsEl) return;
+    var reqs = (g.county_data && g.county_data.npc_pending_requests) || [];
+    var simple = reqs.filter(function (r) {
+      return r.type === "VILLAGE_RELIEF" || r.type === "GENTRY_FUND_SCHOOL";
+    });
+    if (!simple.length) {
+      section.classList.add("hidden");
+      return;
+    }
+    section.classList.remove("hidden");
+    cardsEl.innerHTML = "";
+    simple.forEach(function (req) {
+      var card = document.createElement("div");
+      card.className = "npc-request-card";
+      card.innerHTML =
+        "<div class='npc-req-msg'>" + components.escapeHtml(req.message) + "</div>" +
+        "<div class='npc-req-btns'>" +
+          "<button class='btn-npc-accept' data-req-id='" + req.id + "'>接受</button>" +
+          "<button class='btn-npc-refuse' data-req-id='" + req.id + "'>拒绝</button>" +
+        "</div>";
+      card.querySelector(".btn-npc-accept").addEventListener("click", function () {
+        _respondNpcRequest(g.id, req.id, "accept", card);
+      });
+      card.querySelector(".btn-npc-refuse").addEventListener("click", function () {
+        _respondNpcRequest(g.id, req.id, "refuse", card);
+      });
+      cardsEl.appendChild(card);
+    });
+  }
+
   function loadRelationships() {
     var g = Game.state.currentGame;
     if (!g) return;
@@ -2825,9 +2943,13 @@
     var container = document.getElementById("relationships-list");
     container.innerHTML = '<p class="hint">加载中...</p>';
 
+    _renderSocialNpcPending(g);
+
     api.getAgents(g.id)
       .then(function (agents) {
         components.renderRelationships(agents);
+        // 恢复/默认显示本县人物子 Tab
+        showSocialSubtab("social-local-panel");
       })
       .catch(function () {
         container.innerHTML = '<p class="hint">加载失败</p>';
