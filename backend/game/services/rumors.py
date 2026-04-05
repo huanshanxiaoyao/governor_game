@@ -40,8 +40,56 @@ class RumorsService:
         rumors += cls._get_player_action_rumors(game)     # ≤3 条
         rumors += cls._get_annual_review_rumors(game)     # ≤1 条
         rumors += cls._get_clan_gov_penalty_rumors(game)  # ≤1 条
+        rumors += cls._get_clan_tension_rumors(game)      # ≤2 条
         random.shuffle(rumors)
         return rumors[:8]
+
+    # ── 宗族紧张流言（最多 2 条） ──────────────────────────────────────────────
+
+    @classmethod
+    def _get_clan_tension_rumors(cls, game):
+        """clan_affinity < 30 的宗族，提前在流言板发出预警。"""
+        county = load_county_state(game)
+        clans = county.get('clans') or {}
+        if not clans:
+            return []
+
+        _TENSION_TEMPLATES = [
+            "{clan_id}近日颇有怨言，族中耆老私下抱怨苛政，乡间已有传言。",
+            "有人说{clan_id}族人对官府颇为不满，秋收时恐怕不肯爽快缴粮。",
+            "{clan_id}族中几个后生在集市上口出怨言，称赋税太重难以为继。",
+            "坊间传言{clan_id}与县衙关系日趋冷淡，乡绅们私下串联，意向不明。",
+            "{clan_id}据说已有人暗中劝说族人秋收少报，以减轻税负。",
+        ]
+
+        _HOSTILE_TEMPLATES = [
+            "{clan_id}与官府对立已久，族中壮丁暗中串联，秋粮恐将大打折扣。",
+            "消息灵通者称{clan_id}已准备好联合抗粮，若不设法安抚，此秋难过。",
+        ]
+
+        rumors = []
+        for clan_id, clan in clans.items():
+            affinity = clan.get('clan_affinity', 50)
+            if affinity >= 30:
+                continue
+
+            if affinity < 10:
+                template = random.choice(_HOSTILE_TEMPLATES)
+            else:
+                template = random.choice(_TENSION_TEMPLATES)
+
+            rumors.append({
+                'type': 'clan_tension',
+                'clan_id': clan_id,
+                'clan_affinity': affinity,
+                'text': template.format(clan_id=clan_id),
+                'urgency': 'high' if affinity < 10 else 'normal',
+            })
+
+            if len(rumors) >= 2:
+                break
+
+        return rumors
 
     # ── 邻县大事（最多 6 条） ──────────────────────────────────────────────────
 

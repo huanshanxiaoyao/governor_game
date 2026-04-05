@@ -62,8 +62,15 @@ class AgentService:
         if ensure_county_local_cast(county):
             save_player_state(game, county)
 
+        local_prefecture = (county.get('admin_location') or {}).get('prefecture', '')
+        player_si = county.get('player_social_identity') or {}
+
         name_to_agent = {}
-        all_defs = list(MVP_AGENTS) + build_yamen_staff_definitions() + build_county_local_agent_definitions(county)
+        all_defs = (
+            list(MVP_AGENTS)
+            + build_yamen_staff_definitions(county)
+            + build_county_local_agent_definitions(county)
+        )
 
         for defn in all_defs:
             agent = Agent.objects.create(
@@ -84,7 +91,16 @@ class AgentService:
             Relationship.objects.create(agent_a=agent_a, agent_b=agent_b, affinity=affinity, data=data)
 
         cls._create_dynamic_local_relationships(name_to_agent)
-        return list(name_to_agent.values())
+
+        # ── 社交身份后处理 ──
+        all_agents = list(name_to_agent.values())
+        if local_prefecture:
+            cls._resolve_local_social_identities(all_agents, local_prefecture)
+        if player_si:
+            cls._apply_hometown_bonuses(all_agents, player_si)
+        cls._initialize_clans(game, all_agents, county)
+
+        return all_agents
 
     @classmethod
     def _create_dynamic_local_relationships(cls, name_to_agent):
@@ -271,6 +287,169 @@ class AgentService:
             )
 
         return created
+
+    # ------------------------------------------------------------------
+    # 1b. 社会身份后处理
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_local_social_identities(agents, local_prefecture: str):
+        """将 MVP 本地 NPC 的 social_identity 中的 '__local__' 替换为实际府名。"""
+        to_update = []
+        for agent in agents:
+            attrs = agent.attributes or {}
+            si = attrs.get('social_identity')
+            if not si or si.get('native_place') != '__local__':
+                continue
+            si['native_place'] = local_prefecture
+            si['clan_id'] = f"{local_prefecture}{si['surname']}氏"
+            to_update.append(agent)
+        if to_update:
+            for agent in to_update:
+                Agent.objects.filter(pk=agent.pk).update(attributes=agent.attributes)
+
+    @staticmethod
+    def _apply_hometown_bonuses(agents, player_si: dict):
+        """
+        对与玩家同籍贯或年龄相仿的 NPC 施加 player_affinity 加成，
+        并在 attributes 中记录 hometown_relation 标签。
+        同籍贯: +20；年龄差 ≤5 岁: 额外 +10（两者可叠加，上限 +30）。
+        """
+        player_native = player_si.get('native_place', '')
+        player_age = player_si.get('age', 0)
+        if not player_native and not player_age:
+            return
+
+        to_update = []
+        for agent in agents:
+            attrs = agent.attributes or {}
+            si = attrs.get('social_identity') or {}
+            agent_native = si.get('native_place', '')
+            agent_age = attrs.get('age', 0)
+
+            bonus = 0
+            tags = []
+
+            if player_native and agent_native and agent_native not in ('__local__', '') \
+                    and agent_native == player_native:
+                bonus += 20
+                tags.append('同乡')
+
+            if player_age and agent_age and abs(agent_age - player_age) <= 5:
+                bonus += 10
+                tags.append('年岁相仿')
+
+            if bonus <= 0:
+                continue
+
+            attrs['player_affinity'] = min(99, attrs.get('player_affinity', 50) + bonus)
+            if tags:
+                attrs['hometown_relation'] = '、'.join(tags)
+            to_update.append(agent)
+
+        if to_update:
+            for agent in to_update:
+                Agent.objects.filter(pk=agent.pk).update(attributes=agent.attributes)
+
+    @staticmethod
+    def _agent_clan_power(agent) -> int:
+        """根据 role 与属性估算该 agent 对宗族实力的贡献值。"""
+        attrs = agent.attributes or {}
+        intelligence = attrs.get('intelligence', 5)
+        charisma = attrs.get('charisma', 5)
+        role = agent.role
+        if role == 'GENTRY':
+            return 30 + intelligence * 4
+        if role == 'VILLAGER':
+            return 10 + charisma * 2
+        if role in ('ADVISOR', 'DEPUTY'):
+            return 20
+        return 5
+
+    # 宗族本地成员只算地主（GENTRY）；村民代表（VILLAGER）不代表宗族势力
+    _LOCAL_ROLES = {'GENTRY'}
+
+    @classmethod
+    def _initialize_clans(cls, game, agents, county):
+        """
+        从 agents 的 social_identity 聚合宗族信息，写入 county_data['clans']。
+        宗族定义：府 × 姓氏（如"登州府张氏"），是跨县的府级网络。
+        知县只能看到本县有 GENTRY/VILLAGER 落脚点的宗族。
+
+        每条宗族数据结构：
+          local_members:        本县 GENTRY/VILLAGER agent ID 列表
+          local_villages:       本县有族人的村庄名列表
+          local_power:          本县地主实力累计
+          official_members:     同宗但任职官员的 agent ID 列表（任意角色）
+          other_county_branches:同府其他县的族人数量级（游戏初始化时随机模拟，0-4）
+          total_influence:      宗族整体影响力（local_power + 官员加成 + 他县加成）
+          clan_affinity:        本县 GENTRY player_affinity 均值
+        """
+        clans: dict = {}
+        local_prefecture = (county.get('admin_location') or {}).get('prefecture', '')
+
+        # 保留已有的 other_county_branches（避免每次刷新随机变化）
+        existing_clans = county.get('clans') or {}
+
+        for agent in agents:
+            si = (agent.attributes or {}).get('social_identity') or {}
+            clan_id = si.get('clan_id', '')
+            native_place = si.get('native_place', '')
+            if not clan_id or clan_id == '__local__':
+                continue
+            # 只纳入与本县同府的宗族
+            if local_prefecture and native_place != local_prefecture:
+                continue
+
+            if clan_id not in clans:
+                existing = existing_clans.get(clan_id) or {}
+                clans[clan_id] = {
+                    'local_members': [],
+                    'local_villages': [],
+                    'local_power': 0,
+                    'official_members': [],
+                    'other_county_branches': existing.get(
+                        'other_county_branches', random.randint(0, 4)
+                    ),
+                    'total_influence': 0,
+                    'clan_affinity': 50,
+                }
+
+            role = agent.role
+            if role in cls._LOCAL_ROLES:
+                clans[clan_id]['local_members'].append(agent.id)
+                clans[clan_id]['local_power'] += cls._agent_clan_power(agent)
+                village_name = (agent.attributes or {}).get('village_name', '')
+                if village_name and village_name not in clans[clan_id]['local_villages']:
+                    clans[clan_id]['local_villages'].append(village_name)
+            else:
+                clans[clan_id]['official_members'].append(agent.id)
+
+        # 只保留本县有落脚点的宗族（知县视角）
+        clans = {cid: c for cid, c in clans.items() if c['local_members']}
+
+        # 计算 clan_affinity（只取 GENTRY 均值）和 total_influence
+        agent_map = {a.id: a for a in agents}
+        for clan_id, clan in clans.items():
+            gentry_agents = [
+                agent_map[mid] for mid in clan['local_members']
+                if mid in agent_map and agent_map[mid].role == 'GENTRY'
+            ]
+            if gentry_agents:
+                avg = sum(
+                    (a.attributes or {}).get('player_affinity', 50)
+                    for a in gentry_agents
+                ) / len(gentry_agents)
+                clan['clan_affinity'] = round(avg)
+
+            official_influence = len(clan['official_members']) * 50
+            other_influence = clan['other_county_branches'] * 30
+            clan['total_influence'] = clan['local_power'] + official_influence + other_influence
+            # 向后兼容：结算代码读 'power'，保持与 local_power 同步
+            clan['power'] = clan['local_power']
+
+        county['clans'] = clans
+        save_player_state(game, county)
 
     # ------------------------------------------------------------------
     # 2. Context Building
@@ -732,6 +911,12 @@ class AgentService:
                 'province': attrs.get('province', ''),
                 'prefecture': attrs.get('prefecture', ''),
                 'relationships': rel_map.get(a.id, []),
+                # 社会身份（年龄 / 籍贯 / 宗族）
+                'age': attrs.get('age'),
+                'social_identity': attrs.get('social_identity', {}),
+                'hometown_relation': attrs.get('hometown_relation', ''),
+                # 宗族后生专用
+                'attributes': {'exam_eligible': attrs.get('exam_eligible', False)} if a.role == 'CLAN_YOUTH' else {},
             })
         return result
 

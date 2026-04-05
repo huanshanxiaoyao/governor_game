@@ -12,6 +12,7 @@ from .constants import (
     month_of_year,
 )
 from .ledger import ensure_county_ledgers, refresh_village_grain_ledgers
+from .clan import get_county_security_delta
 
 
 class MetricsMixin:
@@ -260,6 +261,11 @@ class MetricsMixin:
         elif county["morale"] < 30:
             delta -= 0.67
 
+        # 宗族关系影响治安（按实力加权，各宗族 power 越大影响越显著）
+        clan_delta = get_county_security_delta(county)
+        if clan_delta != 0.0:
+            delta += clan_delta
+
         # 直接更新各村，县级聚合
         for v in county["villages"]:
             v["security"] = max(0.0, min(100.0, float(v.get("security", 50.0)) + delta))
@@ -269,7 +275,9 @@ class MetricsMixin:
         if actual_change != 0:
             report["events"].append(
                 f"治安变化: {'+' if actual_change > 0 else ''}"
-                f"{actual_change:.1f} (当前: {county['security']:.1f})")
+                f"{actual_change:.1f} (当前: {county['security']:.1f})"
+                + (f"（含宗族修正{clan_delta:+.1f}）" if clan_delta != 0.0 else "")
+            )
 
     @classmethod
     def _update_education(cls, county, report):

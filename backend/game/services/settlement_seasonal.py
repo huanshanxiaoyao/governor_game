@@ -25,6 +25,7 @@ from .ledger import (
 )
 from .career_track import CareerTrackService
 from .state import load_county_state, save_player_state
+from .clan import get_county_tax_compliance
 
 
 class SeasonalMixin:
@@ -489,6 +490,30 @@ class SeasonalMixin:
             )
         else:
             county.pop("clan_gov_tax_penalty", None)
+
+        # ── 宗族配合度：影响地主账本实收（按 gentry_land_ratio 拆分后加权） ──
+        clan_compliance = get_county_tax_compliance(county)
+        if clan_compliance != 1.0:
+            gentry_ratio = county.get('gentry_land_ratio', 0.3)
+            gentry_tax = agri_tax * gentry_ratio
+            peasant_tax = agri_tax * (1 - gentry_ratio)
+            compliance_loss = gentry_tax * (1 - clan_compliance)
+            agri_tax = peasant_tax + gentry_tax * clan_compliance
+            if clan_compliance < 1.0:
+                report["events"].append(
+                    f"【宗族征收】宗族配合不足，地主账本实收折减"
+                    f"（综合配合系数{clan_compliance:.2f}），"
+                    f"地主税收减少约{round(compliance_loss)}两"
+                )
+                county['clan_tax_compliance'] = {
+                    'season': report.get('season'),
+                    'compliance': round(clan_compliance, 2),
+                    'loss': round(compliance_loss, 1),
+                }
+            else:
+                county.pop('clan_tax_compliance', None)
+        else:
+            county.pop('clan_tax_compliance', None)
 
         # Remittance on agri tax only
         remit_ratio = county.get("remit_ratio", 0.65)

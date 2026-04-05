@@ -273,7 +273,34 @@ class CountyService:
         EmergencyService.ensure_state(county)
         EmergencyService.refresh_state(county)
 
+        # 玩家社会身份（籍贯+年龄，用于同乡/同年关系计算）
+        # 在游戏创建阶段可由玩家自定义覆盖；此处生成随机默认值
+        county['player_social_identity'] = _generate_player_social_identity()
+
         return county
+
+
+_PLAYER_NATIVE_PLACES = [
+    "苏州府", "杭州府", "绍兴府", "宁波府", "扬州府",
+    "济南府", "开封府", "西安府", "太原府",
+    "福州府", "广州府",
+    "成都府", "武昌府",
+]
+
+_PLAYER_SURNAMES = ["陈", "王", "李", "张", "刘", "黄", "林", "吴", "赵", "钱", "孙", "周"]
+
+
+def _generate_player_social_identity() -> dict:
+    """为新游戏随机生成玩家籍贯与年龄，用于同乡关系计算。"""
+    surname = random.choice(_PLAYER_SURNAMES)
+    native_place = random.choice(_PLAYER_NATIVE_PLACES)
+    age = random.randint(26, 38)
+    return {
+        "surname": surname,
+        "native_place": native_place,
+        "clan_id": f"{native_place}{surname}氏",
+        "age": age,
+    }
 
 
 def _compute_initial_peasant_production(county):

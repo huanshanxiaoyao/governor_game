@@ -103,7 +103,14 @@ def _render_list(values, *, name, village_name, surname):
     ]
 
 
-def _build_agent_definition(village, persona, *, name_field):
+def _get_local_prefecture(county) -> str:
+    """从 county_data 的 admin_location 取府名，未设置时返回空串。"""
+    if not county:
+        return ""
+    return (county.get("admin_location") or {}).get("prefecture", "")
+
+
+def _build_agent_definition(village, persona, *, name_field, county=None):
     village_name = village.get("name", "")
     name = village.get(name_field, "")
     surname = surname_from_village(village_name)
@@ -122,6 +129,16 @@ def _build_agent_definition(village, persona, *, name_field):
         attrs.get("goals", []), name=name, village_name=village_name, surname=surname,
     )
 
+    # ── 社会身份：年龄 + 籍贯/宗族 ──
+    age_base = persona.get("age_base", 40)
+    attrs["age"] = age_base + random.randint(-2, 3)
+    local_prefecture = _get_local_prefecture(county)
+    attrs["social_identity"] = {
+        "surname": surname,
+        "native_place": local_prefecture,
+        "clan_id": f"{local_prefecture}{surname}氏" if local_prefecture else "",
+    }
+
     return {
         "name": name,
         "role": persona["role"],
@@ -131,7 +148,10 @@ def _build_agent_definition(village, persona, *, name_field):
     }
 
 
-_YAMEN_SURNAMES = ["王", "李", "张", "刘", "陈", "杨", "赵", "钱", "周", "吴"]
+_YAMEN_SURNAMES         = ["王", "李", "张", "刘", "陈", "杨", "赵", "钱", "周", "吴",
+                           "胡", "林", "郑", "罗", "韩", "曹", "沈", "董", "傅", "叶"]
+_YAMEN_SURNAME_WEIGHTS  = [10,  10,  10,   8,   8,   6,   5,   3,   5,   5,
+                            4,   4,   4,   4,   3,   3,   3,   3,   3,   3]
 _CLERK_GIVEN_NAMES = ["文远", "德财", "守礼", "明典", "书贤", "安邦", "承恩", "正直", "有道", "仁义"]
 _OFFICER_GIVEN_NAMES = ["铁柱", "石头", "虎子", "大壮", "三儿", "福根", "发旺", "长顺", "得力", "猛生"]
 
@@ -151,15 +171,17 @@ _SANBAN_DEFS = [
 ]
 
 
-def build_yamen_staff_definitions():
+def build_yamen_staff_definitions(county=None):
     """生成六房书办（×6）与衙役三班班头（×3）Agent 定义。"""
     used_names = set()
     defs = []
+    local_prefecture = _get_local_prefecture(county)
 
     # 六房书办
     for lf in _LIUFANG_DEFS:
-        surname = random.choice(_YAMEN_SURNAMES)
+        surname = random.choices(_YAMEN_SURNAMES, weights=_YAMEN_SURNAME_WEIGHTS, k=1)[0]
         name = _generate_unique_name(surname, _CLERK_GIVEN_NAMES, used_names)
+        age = random.randint(30, 50)
         defs.append({
             "name": name,
             "role": "LIUFANG",
@@ -191,6 +213,12 @@ def build_yamen_staff_definitions():
                 ],
                 "bio": f"{name}，{lf['role_title']}，负责{lf['focus']}。在县衙任职多年，熟稔文书程序。",
                 "backstory": f"{name}出身书香小户，科举无望后入衙为吏。在{lf['dept']}房多年，积累了一套处理公务的经验，为人谨慎少言。",
+                "age": age,
+                "social_identity": {
+                    "surname": surname,
+                    "native_place": local_prefecture,
+                    "clan_id": f"{local_prefecture}{surname}氏" if local_prefecture else "",
+                },
                 "memory": [],
                 "player_affinity": 50,
             },
@@ -198,8 +226,9 @@ def build_yamen_staff_definitions():
 
     # 衙役三班班头
     for sb in _SANBAN_DEFS:
-        surname = random.choice(_YAMEN_SURNAMES)
+        surname = random.choices(_YAMEN_SURNAMES, weights=_YAMEN_SURNAME_WEIGHTS, k=1)[0]
         name = _generate_unique_name(surname, _OFFICER_GIVEN_NAMES, used_names)
+        age = random.randint(28, 48)
         defs.append({
             "name": name,
             "role": sb["role"],
@@ -234,6 +263,12 @@ def build_yamen_staff_definitions():
                     f"{name}入衙多年，从普通差役做到班头。"
                     f"熟悉衙门规矩，处事干练，对上官忠顺，对下属有一定约束力。"
                 ),
+                "age": age,
+                "social_identity": {
+                    "surname": surname,
+                    "native_place": local_prefecture,
+                    "clan_id": f"{local_prefecture}{surname}氏" if local_prefecture else "",
+                },
                 "memory": [],
                 "player_affinity": 48,
             },
@@ -251,9 +286,9 @@ def build_county_local_agent_definitions(county):
         gentry_persona = GENTRY_PERSONA_BY_ID[village["gentry_persona_id"]]
         villager_persona = VILLAGER_PERSONA_BY_ID[village["villager_persona_id"]]
         definitions.append(
-            _build_agent_definition(village, gentry_persona, name_field="gentry_name")
+            _build_agent_definition(village, gentry_persona, name_field="gentry_name", county=county)
         )
         definitions.append(
-            _build_agent_definition(village, villager_persona, name_field="villager_name")
+            _build_agent_definition(village, villager_persona, name_field="villager_name", county=county)
         )
     return definitions

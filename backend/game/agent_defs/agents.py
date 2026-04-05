@@ -42,6 +42,12 @@ MVP_AGENTS = [
             "bio": "沈清远，年三十五，绍兴师爷世家出身。科举不第后转投幕僚之道，精通刑名钱谷。为人机敏谨慎，善于察言观色，是县令最可倚仗的左膀右臂。",
             "backstory": "自幼聪慧过人，十六岁中秀才，后屡试不第。其父为知名师爷，临终前将毕生所学倾囊相授。游历各地任幕僚十余年，见多识广，深谙官场之道。此番受聘入县衙，望能一展所长。",
 
+            "age": 35,
+            "social_identity": {
+                "surname": "沈",
+                "native_place": "绍兴府",
+                "clan_id": "绍兴府沈氏",
+            },
             "memory": [],
             "player_affinity": 60,
         },
@@ -83,6 +89,12 @@ MVP_AGENTS = [
             "bio": "周正卿，年四十二，八品县丞。举人出身，在县衙任职十余年，熟稳公务流程。为人谨慎务实，做事循规蹈矩，是县令不可或缺的副手。",
             "backstory": "周正卿出身小吏之家，自幼在衙门耳濡目染。中举后未能更进一步，便在县衙扎下根来。历经三任县令，深谙官场生存之道：不出头、不犯错、稳扎稳打。虽无大才，却胜在勤勉可靠。对新任县令持观望态度，既盼有所作为，又怕被牵连。",
 
+            "age": 42,
+            "social_identity": {
+                "surname": "周",
+                "native_place": "济南府",
+                "clan_id": "济南府周氏",
+            },
             "memory": [],
             "player_affinity": 55,
         },
@@ -124,6 +136,12 @@ MVP_AGENTS = [
             "bio": "李秀才，年六十三，本县德高望重的老秀才。一生未中举，却在乡间办学育人，深受百姓爱戴。为人正直仁厚，常为乡里排忧解难。",
             "backstory": "少年得志中秀才，此后数十年屡试不第。转而在乡间开馆授徒，桃李满县。虽无官身，却因学识和品行被推举为耆老，是民间舆论的风向标。",
 
+            "age": 63,
+            "social_identity": {
+                "surname": "李",
+                "native_place": "__local__",   # 本地人，初始化时替换为实际府名
+                "clan_id": "__local__",
+            },
             "memory": [],
             "player_affinity": 50,
         },
@@ -165,6 +183,12 @@ MVP_AGENTS = [
             "bio": "张铁根，年四十，本县里长。庄稼汉出身，为人朴实直率，说话不绕弯子。在村民中有一定威望，是基层民意的代表。",
             "backstory": "祖祖辈辈种地为生，因人实在、办事公道被乡里推为里长。识字不多但脑子灵活，对农事了如指掌。新县令来了，他最关心的就是今年的税会不会涨。",
 
+            "age": 40,
+            "social_identity": {
+                "surname": "张",
+                "native_place": "__local__",   # 本地人，初始化时替换为实际府名
+                "clan_id": "__local__",
+            },
             "memory": [],
             "player_affinity": 45,
         },
@@ -178,6 +202,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 55,
         "attributes": {
             "intelligence": 6,
             "charisma": 6,
@@ -220,6 +245,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 48,
         "attributes": {
             "intelligence": 5,
             "charisma": 4,
@@ -262,6 +288,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 52,
         "attributes": {
             "intelligence": 7,
             "charisma": 5,
@@ -304,6 +331,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 42,
         "attributes": {
             "intelligence": 7,
             "charisma": 7,
@@ -346,6 +374,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 46,
         "attributes": {
             "intelligence": 7,
             "charisma": 6,
@@ -388,6 +417,7 @@ GENTRY_PERSONAS = [
         "role": "GENTRY",
         "role_title": "地主",
         "tier": "FULL",
+        "age_base": 38,
         "attributes": {
             "intelligence": 5,
             "charisma": 5,
@@ -434,6 +464,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 45,
         "attributes": {
             "intelligence": 4,
             "charisma": 5,
@@ -476,6 +507,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 37,
         "attributes": {
             "intelligence": 6,
             "charisma": 5,
@@ -518,6 +550,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 32,
         "attributes": {
             "intelligence": 4,
             "charisma": 6,
@@ -560,6 +593,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 24,
         "attributes": {
             "intelligence": 6,
             "charisma": 5,
@@ -602,6 +636,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 50,
         "attributes": {
             "intelligence": 5,
             "charisma": 4,
@@ -644,6 +679,7 @@ VILLAGER_PERSONAS = [
         "role": "VILLAGER",
         "role_title": "村民代表",
         "tier": "FULL",
+        "age_base": 34,
         "attributes": {
             "intelligence": 5,
             "charisma": 6,
@@ -943,9 +979,25 @@ PREFECT_SURNAMES = ["赵", "钱", "孙", "李", "周", "吴", "郑", "王", "冯
 PREFECT_GIVEN_NAMES = ["廷章", "景明", "文远", "守正", "承德", "绍谦", "昌隆", "克己", "维新", "宗礼", "秉义", "尚贤", "世安", "正卿", "怀仁", "允中"]
 
 
+# 官员与地主共用的名字池（104个），供 officialdom_constants 复用
 GENTRY_GIVEN_NAMES = [
+    # 雅致文人风（原 OFFICIAL_GIVEN_NAMES，54 个）
+    "岩",   "承恩", "文博", "学思", "敬之", "怀远", "仲谋",
+    "慕清", "世安", "伯衡", "景行", "子厚", "如璋", "廷玉",
+    "士弘", "国维", "宗翰", "元亮", "正卿", "鸿渐", "思远",
+    "明德", "崇礼", "维桢", "秉文", "嘉猷", "鼎臣", "济川",
+    "安世", "怀德", "尚义", "若水", "载之", "立本", "允恭",
+    "公望", "希贤", "克明", "从周", "存道", "敏行", "鸿章",
+    "承德", "时中", "仁甫", "守贞", "文礼", "宏道", "守约",
+    "嘉祐", "从善", "德昭", "用晦", "师古",
+    # 乡绅淳朴风（原 GENTRY_GIVEN_NAMES，50 个）
     "伯年", "景和", "德成", "文昌", "廷瑞", "守中", "世隆", "允厚",
     "承业", "宗贤", "维礼", "仲安", "国祯", "克让", "绍先", "载丰",
+    "秉义", "延年", "应祥", "志远", "嘉禄", "益民", "方正", "文渊",
+    "景元", "明善", "宗正", "士达", "承先", "积善", "德馨", "怀芳",
+    "养和", "尚志", "文锦", "宝树", "守望", "立言", "福绵", "庆余",
+    "若璧", "延祺", "善庆", "思齐", "文焕", "义方", "培基", "崇本",
+    "敦厚", "懋德",
 ]
 
 VILLAGER_GIVEN_NAMES = [
