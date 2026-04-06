@@ -1934,6 +1934,24 @@
       });
   }
 
+  function _doAdvanceWithBribeCheck(g, btn) {
+    api.checkBribes(g.id)
+      .then(function (res) {
+        _pendingBribes = res.offers || [];
+        if (_pendingBribes.length > 0) {
+          btn.disabled = false;
+          btn.textContent = "推进月份";
+          _bribeAdvanceCallback = function () { doAdvance(g, btn); };
+          showNextBribe();
+        } else {
+          doAdvance(g, btn);
+        }
+      })
+      .catch(function () {
+        doAdvance(g, btn);
+      });
+  }
+
   function doAdvance(g, btn) {
     btn.disabled = true;
     btn.textContent = "推进中...";
@@ -2026,27 +2044,43 @@
       return;
     }
 
+    // 宗族举贤待操作提示（非阻拦，仅提示一次）
+    if (g.county_data && g.county_data.clan_youth_pending) {
+      if (!window._clanYouthReminderShown) {
+        window._clanYouthReminderShown = true;
+        components.showAdvisorDialog(
+          "大人，各村地主刚刚推举了宗族后生，尚待大人考量是否举荐府试。" +
+          "若此月不作表态，举荐机会便告错失，宗族或会颇感失望。" +
+          "是否前往查看，抑或径直推进？",
+          [
+            { label: "前往查看", action: function () {
+                Game.screens.showTab("tab-relationships");
+                setTimeout(function () {
+                  var el2 = document.querySelector(".social-sub-hd[data-sg='宗族后生']");
+                  if (el2) el2.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 400);
+              }
+            },
+            { label: "径直推进", action: function () {
+                var btn2 = el("btn-advance");
+                btn2.disabled = true;
+                btn2.textContent = "检查中...";
+                _doAdvanceWithBribeCheck(g, btn2);
+              }
+            },
+          ]
+        );
+        return;
+      }
+    }
+    // 每次进入新月时重置提示标记
+    window._clanYouthReminderShown = false;
+
     var btn = el("btn-advance");
     btn.disabled = true;
     btn.textContent = "检查中...";
     stopPrecomputePolling();
-
-    api.checkBribes(g.id)
-      .then(function (res) {
-        _pendingBribes = res.offers || [];
-        if (_pendingBribes.length > 0) {
-          btn.disabled = false;
-          btn.textContent = "推进月份";
-          _bribeAdvanceCallback = function () { doAdvance(g, btn); };
-          showNextBribe();
-        } else {
-          doAdvance(g, btn);
-        }
-      })
-      .catch(function () {
-        // checkBribes failed — proceed without bribe check
-        doAdvance(g, btn);
-      });
+    _doAdvanceWithBribeCheck(g, btn);
 
   });
 
@@ -2409,6 +2443,27 @@
     });
   });
 
+  // 宗族举贤提示条：跳转至社交Tab宗族后生区块
+  (function () {
+    var gotoBtn = document.getElementById("btn-goto-clan-youth");
+    if (!gotoBtn) return;
+    gotoBtn.addEventListener("click", function () {
+      Game.screens.showTab("tab-relationships");
+      // 等待 loadRelationships 渲染完毕后滚动到宗族后生区
+      setTimeout(function () {
+        var youthSection = document.querySelector(".social-sub-hd[data-sg='宗族后生']");
+        if (!youthSection) {
+          // fallback：找第一张 CLAN_YOUTH 卡片
+          youthSection = document.querySelector(".btn-clan-nominate");
+          if (youthSection) youthSection = youthSection.closest(".relationship-card");
+        }
+        if (youthSection) {
+          youthSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 400);
+    });
+  }());
+
   // Auto-load when tab is activated
   var origShowTab = Game.screens.showTab;
   Game.screens.showTab = function (tabId) {
@@ -2444,11 +2499,28 @@
     }
   }
 
+  function _updateClanYouthNotice(data) {
+    var notice = document.getElementById("clan-youth-notice");
+    if (!notice) return;
+    var pending = data && data.county_data && data.county_data.clan_youth_pending;
+    if (pending) {
+      notice.classList.remove("hidden");
+    } else {
+      notice.classList.add("hidden");
+    }
+  }
+
   var _origSetGame = Game.setGame;
   Game.setGame = function (data) {
     _origSetGame(data);
     updateCountyJudicialTabVisibility(data);
     _updateNpcRequestBadge(data);
+    _updateClanYouthNotice(data);
+    // 月份切换时重置举贤提示标记
+    if (!Game.setGame._lastSeason || Game.setGame._lastSeason !== (data && data.current_season)) {
+      window._clanYouthReminderShown = false;
+      Game.setGame._lastSeason = data && data.current_season;
+    }
     // 每次游戏状态更新后刷新流言板（仅知县模式）
     if (data && data.player_role === "COUNTY_MAGISTRATE") {
       loadRumorsBoard();

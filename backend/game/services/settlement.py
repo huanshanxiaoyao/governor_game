@@ -152,6 +152,8 @@ class SettlementService(
         month = game.current_season
         report = {"season": month, "events": []}
         ensure_county_ledgers(county)
+        # 月初清除宗族举贤待操作标记（上月机会已过）
+        county.pop('clan_youth_pending', None)
         t_total = time.time()
 
         # 投递已完成的异步结果（司法复审 + 自创施政审批）

@@ -657,6 +657,7 @@
       if (!list.length) return;
       var subHd = document.createElement("div");
       subHd.className = "social-sub-hd";
+      subHd.dataset.sg = title;
       subHd.textContent = title;
       panelEl.appendChild(subHd);
       var grid = document.createElement("div");
@@ -768,18 +769,26 @@
       '</div>';
     body.innerHTML += headerHtml;
 
-    // Stats
-    var statsHtml =
-      '<div class="profile-section">' +
-        '<h4>基础属性</h4>' +
-        '<div class="profile-grid">' +
-          '<div class="profile-stat"><span class="profile-stat-label">智力</span><span class="profile-stat-value">' + agent.intelligence + '</span></div>' +
-          '<div class="profile-stat"><span class="profile-stat-label">魅力</span><span class="profile-stat-value">' + agent.charisma + '</span></div>' +
-          '<div class="profile-stat"><span class="profile-stat-label">忠诚</span><span class="profile-stat-value">' + agent.loyalty + '</span></div>' +
+    // Stats（宗族后生暂不展示基础属性，防止玩家单纯按数值择优）
+    if (agent.role !== 'CLAN_YOUTH') {
+      var statsHtml =
+        '<div class="profile-section">' +
+          '<h4>基础属性</h4>' +
+          '<div class="profile-grid">' +
+            '<div class="profile-stat"><span class="profile-stat-label">智力</span><span class="profile-stat-value">' + agent.intelligence + '</span></div>' +
+            '<div class="profile-stat"><span class="profile-stat-label">魅力</span><span class="profile-stat-value">' + agent.charisma + '</span></div>' +
+            '<div class="profile-stat"><span class="profile-stat-label">忠诚</span><span class="profile-stat-value">' + agent.loyalty + '</span></div>' +
+            '<div class="profile-stat"><span class="profile-stat-label">好感度</span><span class="profile-stat-value">' + agent.affinity + '</span></div>' +
+          '</div>' +
+        '</div>';
+      body.innerHTML += statsHtml;
+    } else {
+      body.innerHTML +=
+        '<div class="profile-section">' +
           '<div class="profile-stat"><span class="profile-stat-label">好感度</span><span class="profile-stat-value">' + agent.affinity + '</span></div>' +
-        '</div>' +
-      '</div>';
-    body.innerHTML += statsHtml;
+          '<p class="hint" style="margin-top:6px">此子潜质尚待观察，举荐后方知分晓。</p>' +
+        '</div>';
+    }
 
     // Personality
     var p = agent.personality || {};
@@ -1046,4 +1055,38 @@
   C.renderStaffTab = renderStaffTab;
   C.openStaffChat = openStaffChat;
   C.appendStaffChatMessage = appendStaffChatMessage;
+
+  // ── 师爷提示对话框 ──────────────────────────────────────────────────────────
+  // showAdvisorDialog(text, buttons)
+  // buttons: [{label, action}]
+
+  function showAdvisorDialog(text, buttons) {
+    var modal = el('advisor-dialog-modal');
+    var textEl = el('advisor-dialog-text');
+    var btnsEl = el('advisor-dialog-btns');
+    if (!modal) return;
+
+    textEl.textContent = text;
+    btnsEl.innerHTML = '';
+    buttons.forEach(function (b) {
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-small';
+      btn.textContent = b.label;
+      btn.addEventListener('click', function () {
+        modal.classList.add('hidden');
+        if (b.action) b.action();
+      });
+      btnsEl.appendChild(btn);
+    });
+
+    modal.classList.remove('hidden');
+    // 点击背景关闭（取第一个按钮动作 = 默认"继续"）
+    modal.onclick = function (e) {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+      }
+    };
+  }
+
+  C.showAdvisorDialog = showAdvisorDialog;
 })();

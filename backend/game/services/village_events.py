@@ -259,7 +259,7 @@ class VillageEventService:
                                         '海', '清', '正', '光', '耀', '泽', '成', '辉'])
                 youth_name = f'{surname}{given}{given2}'
 
-                youth_agent = Agent.objects.create(
+                Agent.objects.create(
                     game=game,
                     name=youth_name,
                     role='CLAN_YOUTH',
@@ -274,9 +274,12 @@ class VillageEventService:
                             'clan_id': clan_id,
                         },
                         'bio': f'{youth_name}，年{age}岁，{vname}人，{gentry_agent.name}族中后生，尚未出仕。',
-                        'exam_eligible': False,  # 待知县举荐
+                        'exam_eligible': False,
                         'memory': [],
                         'player_affinity': 50,
+                        'intelligence': random.randint(3, 7),
+                        'charisma': random.randint(3, 7),
+                        'loyalty': random.randint(3, 7),
                         'generated_season': game.current_season,
                         'sponsor_agent_id': gentry_agent.id,
                     },
@@ -288,6 +291,7 @@ class VillageEventService:
                 f'【宗族举贤】各村地主推举族中后生：{"、".join(created_names)}，可在社交Tab查看并考量举荐。'
             )
             report['clan_youth_generated'] = True
+            county['clan_youth_pending'] = True
 
     # ────────────────────────────────────────────────
     # D2: 地主要求·升级公共设施

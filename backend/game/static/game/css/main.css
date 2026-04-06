@@ -1869,6 +1869,54 @@ body {
   to { opacity: 0; }
 }
 
+/* === 师爷提示对话框 === */
+.advisor-dialog-content {
+  max-width: 420px;
+  text-align: center;
+  padding: 28px 24px 20px;
+}
+.advisor-dialog-icon {
+  font-size: 2em;
+  margin-bottom: 12px;
+}
+.advisor-dialog-text {
+  font-size: 0.95em;
+  color: #3d2b1a;
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+.advisor-dialog-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* === 宗族举贤提示条 === */
+.clan-youth-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  background: #f0f7ea;
+  border: 1px solid #6b8f4a;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #3d5a27;
+}
+.clan-youth-notice.hidden { display: none !important; }
+.clan-youth-notice-icon { font-size: 1.1em; flex-shrink: 0; }
+.clan-youth-notice-text { flex: 1; }
+.btn-clan-youth-goto {
+  background: #6b8f4a;
+  color: #fff;
+  border: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-clan-youth-goto:hover { background: #527a35; }
+
 /* === Negotiation Banner === */
 .negotiation-banner {
   display: flex;

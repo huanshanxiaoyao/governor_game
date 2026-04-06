@@ -174,28 +174,58 @@ class ClanYouthNominateView(APIView):
         except Agent.DoesNotExist:
             return Response({"error": "宗族后生不存在"}, status=404)
 
+        import random as _random
         attrs = agent.attributes or {}
         current = attrs.get('exam_eligible', False)
         attrs['exam_eligible'] = not current
         agent.attributes = attrs
         agent.save(update_fields=['attributes'])
 
-        # 若举荐：对应村地主好感度 +5~10
+        affinity_msg = ''
         if attrs['exam_eligible']:
+            # 被举荐后生好感 +10
+            attrs['player_affinity'] = min(99, int(attrs.get('player_affinity', 50)) + 10)
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
+
+            # 同游戏中其他宗族后生好感 -3（竞争落选）
+            others = Agent.objects.filter(game=game, role='CLAN_YOUTH').exclude(id=agent_id)
+            to_update = []
+            for other in others:
+                oa = other.attributes or {}
+                oa['player_affinity'] = max(0, int(oa.get('player_affinity', 50)) - 3)
+                other.attributes = oa
+                to_update.append(other)
+            if to_update:
+                Agent.objects.bulk_update(to_update, ['attributes'])
+
+            # 举荐人（地主）好感提升 + 写入记忆
             sponsor_id = attrs.get('sponsor_agent_id')
             if sponsor_id:
-                gain = __import__('random').randint(5, 10)
                 try:
                     sponsor = Agent.objects.get(id=sponsor_id, game=game)
                     sp_attrs = sponsor.attributes or {}
+                    gain = _random.randint(5, 10)
                     sp_attrs['player_affinity'] = min(99, int(sp_attrs.get('player_affinity', 50)) + gain)
+                    # 写入记忆
+                    memory = sp_attrs.get('memory', [])
+                    memory.append(
+                        f'第{game.current_season}月，族中后生{agent.name}获知县举荐参加府试，举族皆荣。'
+                    )
+                    if len(memory) > 20:
+                        memory = memory[-20:]
+                    sp_attrs['memory'] = memory
                     sponsor.attributes = sp_attrs
                     sponsor.save(update_fields=['attributes'])
                     affinity_msg = f'，{sponsor.name}好感+{gain}'
                 except Agent.DoesNotExist:
-                    affinity_msg = ''
-            else:
-                affinity_msg = ''
+                    pass
+
+            # 清除待操作标记
+            county = load_county_state(game)
+            county['clan_youth_pending'] = False
+            save_player_state(game, county)
+
             msg = f'已举荐{agent.name}为府试候选{affinity_msg}'
         else:
             msg = f'已取消{agent.name}的举荐'

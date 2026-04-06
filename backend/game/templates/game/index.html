@@ -156,6 +156,11 @@
     <div id="disaster-alert" class="disaster-alert hidden"></div>
     <div id="negotiation-banner" class="negotiation-banner hidden"></div>
     <div id="negotiation-count-info"></div>
+    <div id="clan-youth-notice" class="clan-youth-notice hidden">
+      <span class="clan-youth-notice-icon">📋</span>
+      <span class="clan-youth-notice-text">各村地主推举了宗族后生，等待知县考量举荐府试候选人</span>
+      <button id="btn-goto-clan-youth" class="btn btn-small btn-clan-youth-goto">前往查看</button>
+    </div>
     <div class="dashboard-layout">
       <!-- 主列 -->
       <div class="dashboard-main">
@@ -609,6 +614,15 @@
 </div>
 
 <!-- ==================== Staff Chat Modal ==================== -->
+<!-- 师爷提示对话框（非阻拦，供非强制性提示使用） -->
+<div id="advisor-dialog-modal" class="modal hidden">
+  <div class="modal-content advisor-dialog-content">
+    <div class="advisor-dialog-icon">📜</div>
+    <p id="advisor-dialog-text" class="advisor-dialog-text"></p>
+    <div id="advisor-dialog-btns" class="advisor-dialog-btns"></div>
+  </div>
+</div>
+
 <div id="staff-chat-modal" class="modal hidden">
   <div class="modal-content nego-modal-content">
     <div class="nego-header">
