@@ -232,6 +232,7 @@ class PromiseSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(
         source='get_status_display', read_only=True,
     )
+    agent_id = serializers.IntegerField(source='agent.id', read_only=True)
     agent_name = serializers.CharField(source='agent.name', read_only=True)
 
     class Meta:
@@ -240,7 +241,7 @@ class PromiseSerializer(serializers.ModelSerializer):
             'id', 'promise_type', 'promise_type_display',
             'description', 'status', 'status_display',
             'season_made', 'deadline_season', 'context',
-            'agent_name', 'created_at', 'resolved_at',
+            'agent_id', 'agent_name', 'created_at', 'resolved_at',
         ]
 
 

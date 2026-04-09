@@ -642,6 +642,8 @@ class InvestView(APIView):
 
         if success:
             county = load_county_state(game, refresh=True)
+            if action == 'build_irrigation':
+                NegotiationService.prefetch_irrigation_briefs(game, county)
             return Response({
                 "success": True,
                 "message": message,
@@ -1365,11 +1367,16 @@ class EventLogListView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
+        # 府政类别归府志（PrefectureOverviewForCountyView），县志默认不显示
+        _PREFECTURE_CATEGORIES = ('PREFECTURE', 'PREFECT')
+
         qs = EventLog.objects.filter(game=game).order_by('-created_at')
 
         category = request.query_params.get('category')
         if category:
             qs = qs.filter(category=category)
+        else:
+            qs = qs.exclude(category__in=_PREFECTURE_CATEGORIES)
 
         season = request.query_params.get('season')
         if season:
@@ -1403,6 +1410,13 @@ class PromiseListView(APIView):
         promise_status = request.query_params.get('status')
         if promise_status:
             qs = qs.filter(status=promise_status)
+
+        agent_id = request.query_params.get('agent_id')
+        if agent_id:
+            try:
+                qs = qs.filter(agent_id=int(agent_id))
+            except (ValueError, TypeError):
+                pass
 
         serializer = PromiseSerializer(qs, many=True)
         return Response(serializer.data)
