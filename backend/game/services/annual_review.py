@@ -848,6 +848,21 @@ class AnnualReviewService:
         complaint_penalty = 5 * min(3, complaints)
         adjusted_score = max(0.0, adjusted_score - complaint_penalty)
 
+        # 好感度直接参与评级边界：高好感微加分、低好感微扣分（±2.5/5分），
+        # 避免完全依赖 LLM 主观调分才能体现关系影响
+        affinity = float(county.get("prefect_affinity", 50) or 50)
+        if affinity >= 75:
+            affinity_nudge = 5.0
+        elif affinity >= 62:
+            affinity_nudge = 2.5
+        elif affinity <= 25:
+            affinity_nudge = -5.0
+        elif affinity <= 38:
+            affinity_nudge = -2.5
+        else:
+            affinity_nudge = 0.0
+        adjusted_score = max(0.0, min(100.0, adjusted_score + affinity_nudge))
+
         algorithmic_grade = cls._grade_from_score(adjusted_score)
 
         # 3条以上投诉强制降一档
@@ -955,37 +970,146 @@ class AnnualReviewService:
         strengths = cls._strength_labels(snapshot)
         weaknesses = cls._weakness_labels(snapshot)
         county_name = county.get("county_name", "本县")
+        incident_flags = snapshot.get("incident_flags") or []
+        quota_pct = float(snapshot.get("quota_completion_pct", 0) or 0)
+        score = float(snapshot.get("objective_score", 50) or 50)
+        judicial = snapshot.get("judicial_summary") or {}
 
-        achievements = f"{county_name}本年以{strengths[0]}为先，"
-        if len(strengths) > 1:
-            achievements += f"兼顾{strengths[1]}，"
-        achievements += "府里下达之事大体有次第推进。"
+        has_disaster = any("灾" in f for f in incident_flags)
+        has_riot = any("暴动" in f for f in incident_flags)
+        has_takeover = any("接管" in f for f in incident_flags)
+        has_relief_fraud = any("失实" in f for f in incident_flags)
+        judicial_overturned = int(judicial.get("overturned_count", 0) or 0)
+        judicial_remanded = int(judicial.get("remand_count", 0) or 0)
 
-        unfinished = f"未竟之务主要在{weaknesses[0]}。"
-        if len(weaknesses) > 1:
-            unfinished += f"另有{weaknesses[1]}尚待收束。"
-
-        if archetype == "CORRUPT":
-            faults = "日常办差尚称无大错，细务间或失之急躁。"
-        elif archetype == "VIRTUOUS":
-            faults = f"本官自知在{weaknesses[0]}一项仍多不足，处置有时偏缓。"
-        else:
-            faults = f"过失主要在{weaknesses[0]}，尚未尽合上司所期。"
-
-        if snapshot.get("incident_flags"):
+        # ── achievements ──
+        if has_riot or has_takeover:
             if archetype == "CORRUPT":
-                faults = "本年亦有数事牵累吏治，然多属下情纷杂所致。"
+                achievements = (
+                    f"{county_name}本年境内有所波折，幸赖各方协力，大局得以维持，"
+                    f"赋税亦按期解运，未误府中事体。"
+                )
             else:
-                faults += " 又因本年有灾变牵制，处置未能周全。"
-
-        if style == "minben":
-            plan = "来年当先安民力、实仓廪，再图缓缓进取。"
-        elif style == "zhengji":
-            plan = "来年当补齐短板，务求赋税与文教两端并进。"
-        elif style == "jinqu":
-            plan = "来年当先整饬积弊，择要大举兴办，求见成效。"
+                achievements = (
+                    f"{county_name}本年遭遇境内动荡，本官竭力弹压安抚，"
+                    f"以{strengths[0]}为重，未使事态进一步扩大。"
+                )
+        elif has_disaster:
+            disaster_label = next((f for f in incident_flags if "灾" in f), "灾情")
+            achievements = (
+                f"{county_name}本年遭遇{disaster_label}，本官一面组织赈济、"
+                f"一面力保{strengths[0]}，赋税征解亦无大误。"
+            )
+        elif score >= 78:
+            achievements = (
+                f"{county_name}本年施政，{strengths[0]}与{strengths[1]}均有可观进展，"
+                f"赋税按期入库，民情大体稳定。"
+            )
+        elif score >= 62:
+            achievements = (
+                f"{county_name}本年以{strengths[0]}为先，兼顾{strengths[1]}，"
+                f"府里下达事宜大体有次第推进，无大失误。"
+            )
         else:
-            plan = "来年当循序整顿旧务，先稳后进，不使短板再拖累全局。"
+            achievements = (
+                f"{county_name}本年主要精力用于维持{strengths[0]}，"
+                f"勉力保住地方基本秩序，未使局面进一步恶化。"
+            )
+
+        # ── unfinished ──
+        unfinished = f"未竟之务主要在{weaknesses[0]}。"
+        if quota_pct < 85 and weaknesses[0] != "税赋征解":
+            unfinished += f" 另赋税征解尚有缺口（完成率{quota_pct:.0f}%），来年须加紧补足。"
+        elif len(weaknesses) > 1:
+            unfinished += f" 另有{weaknesses[1]}亦待收束。"
+        if judicial_remanded:
+            unfinished += f" 司法一项有{judicial_remanded}案被府台发回重审，尚待重新核办。"
+
+        # ── faults ──
+        if has_riot:
+            if archetype == "CORRUPT":
+                faults = (
+                    f"本年境内秩序有所动荡，下情纷杂，本官处置不够果断，"
+                    f"致使事态扩大，实有失职之处。"
+                )
+            else:
+                faults = (
+                    f"本年境内发生暴动，{weaknesses[0]}疏于预防，"
+                    f"本官负有直接责任，深感愧疚。"
+                )
+        elif has_takeover:
+            if archetype == "VIRTUOUS":
+                faults = (
+                    f"本年{weaknesses[0]}积累过久，引致府台亲历介入，"
+                    f"本官难辞其咎，甚感惭愧。"
+                )
+            else:
+                faults = (
+                    f"本年{weaknesses[0]}处置失当，以致府台督导介入，"
+                    f"本官自知有失职守。"
+                )
+        elif has_relief_fraud:
+            if archetype == "CORRUPT":
+                faults = "本年灾情申报手续略有疏漏，实因事务繁多、下吏失察，当另加整饬。"
+            else:
+                faults = (
+                    "本年减免申报存在核算偏差，本官未能严格把关，"
+                    "经府台查核后已予纠正，深以为戒。"
+                )
+        elif judicial_overturned:
+            if archetype == "VIRTUOUS":
+                faults = (
+                    f"本官在司法一项尚多不足，本年有{judicial_overturned}案经府台复核推翻，"
+                    f"愧对当事人，来年当精审慎断。"
+                )
+            else:
+                faults = (
+                    f"司法方面，本年有{judicial_overturned}案被府台推翻，"
+                    f"暴露本官断案功夫不足，当认真检讨。"
+                )
+        elif archetype == "CORRUPT":
+            faults = f"日常办差尚称无大错，{weaknesses[0]}一项稍有不足，细务间或失之急躁。"
+        elif archetype == "VIRTUOUS":
+            faults = (
+                f"本官自知在{weaknesses[0]}一项仍多不足，"
+                f"处置有时偏缓，未能尽合上司所期。"
+            )
+        else:
+            faults = f"过失主要在{weaknesses[0]}，尚未尽合上司所期，当加以改进。"
+
+        # ── plan ──
+        if has_riot or has_takeover:
+            plan = (
+                f"来年当首先整饬吏治、安抚民心，以防范{weaknesses[0]}再度失控为要务，"
+                f"不使今年覆辙重演。"
+            )
+        elif archetype == "CORRUPT" and style != "minben":
+            plan = f"来年当循旧理务、维稳为先，重点补足{weaknesses[0]}，不使地方再起波折。"
+        elif style == "minben":
+            plan = (
+                f"来年当先安民力、实仓廪，轻徭薄赋，"
+                f"待民情稳固后再图补足{weaknesses[0]}。"
+            )
+        elif style == "zhengji":
+            plan = (
+                f"来年当补齐{weaknesses[0]}短板，"
+                f"务求赋税征解与民生稳定两端并进，不偏废一方。"
+            )
+        elif style == "jinqu":
+            plan = (
+                f"来年当择要大举兴办，重点突破{weaknesses[0]}，"
+                f"求见成效，不以循旧敷衍了事。"
+            )
+        elif archetype == "VIRTUOUS":
+            plan = (
+                f"来年当深加检讨{weaknesses[0]}，以民事为本，"
+                f"循序整顿，力求各项指标均有实质改善。"
+            )
+        else:
+            plan = (
+                f"来年当先稳住{weaknesses[0]}，再图在{strengths[0]}上进一步巩固，"
+                f"以求稳中求进。"
+            )
 
         return {
             "achievements": achievements,

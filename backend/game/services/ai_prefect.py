@@ -786,15 +786,37 @@ class PrefectAIService:
         affinity = attrs.get('player_affinity', 50)
         complaints = county.get('prefect_complaints', 0)
 
-        quota = county.get('annual_quota', {})
-        fy = county.get('fiscal_year', {})
-        agri_quota = quota.get('agri', 0)
-        agri_done = fy.get('agri_remitted', 0)
-        quota_pct = (agri_done / agri_quota * 100) if agri_quota > 0 else 0
+        # 优先使用结算系统已维护的全口径配额完成率（含农业税+徭役+商税）
+        quota_completion = county.get('quota_completion') or {}
+        if quota_completion.get('completion_rate') is not None:
+            quota_pct = float(quota_completion['completion_rate'])
+        else:
+            # 兜底：从 fiscal_year 计算（仅农业税，key 历史曾有误）
+            quota = county.get('annual_quota', {})
+            fy = county.get('fiscal_year', {})
+            agri_quota = float(quota.get('agricultural', quota.get('agri', 0)) or 0)
+            agri_done = float(fy.get('agri_remitted', 0) or 0)
+            quota_pct = (agri_done / agri_quota * 100) if agri_quota > 0 else 0
 
         incident_note = ''
         if county.get('disaster_this_year'):
             incident_note = f'- 本年遭遇{county["disaster_this_year"].get("type", "灾情")}\n'
+
+        # 提取本年知府对该县下达的指令（按绝对月份过滤），注入评语供 LLM 回顾
+        year_start = (year - 1) * 12 + 1
+        year_end = year * 12
+        year_directives = [
+            d for d in county.get('prefect_directives', [])
+            if year_start <= int(d.get('month', 0) or 0) <= year_end
+        ]
+        if year_directives:
+            directive_lines = '\n'.join(
+                f"- [{d.get('month', '?')}月] {d.get('directive_type', '')}: {d.get('text', '')[:60]}"
+                for d in year_directives[-6:]
+            )
+            directive_section = f'本年曾下达以下指令：\n{directive_lines}'
+        else:
+            directive_section = '本年未向该县下达具体指令。'
 
         try:
             system_prompt, user_prompt = PromptRegistry.render(
@@ -815,6 +837,7 @@ class PrefectAIService:
                 education_label=_tier_label(county.get('education', 50)),
                 complaints=complaints,
                 incident_note=incident_note,
+                directive_section=directive_section,
             )
             client = LLMClient()
             result = client.chat_json(
@@ -908,9 +931,10 @@ class PrefectAIService:
         if grade not in order:
             return grade
         idx = order.index(grade)
-        if delta >= 8:
+        # 阈值从 ±8 降至 ±5，让主观调分更容易实际生效
+        if delta >= 5:
             new_idx = min(len(order) - 1, idx + 1)
-        elif delta <= -8:
+        elif delta <= -5:
             new_idx = max(0, idx - 1)
         else:
             new_idx = idx
@@ -1090,12 +1114,71 @@ class PrefectAIService:
         except Exception:
             pass
 
-        ps['treasury'] = round(ps.get('treasury', 800.0) + player_remit + neighbor_monthly, 1)
+        # ── 明制：府留存30%，70%起运上缴省级 ────────────────────────────
+        # 历史依据：明一条鞭法后，起运约占60-70%，存留30-40%；
+        # 存留由县、府、省三级分摊，府这一级约留10-15%（全额的），
+        # 此处简化为：府收到各县上缴后留存30%，70%上缴布政使司。
+        _PROVINCE_REMIT_RATIO = 0.85
+        total_received = player_remit + neighbor_monthly
+        province_up = round(total_received * _PROVINCE_REMIT_RATIO, 1)
+        prefecture_net = round(total_received * (1.0 - _PROVINCE_REMIT_RATIO), 1)
+        ps['treasury'] = round(ps.get('treasury', 800.0) + prefecture_net, 1)
+        # 累计本年省级上缴（用于年末府志汇报）
+        ps['province_remit_ytd'] = round(ps.get('province_remit_ytd', 0.0) + province_up, 1)
 
-        # ── 年末：扣除府级行政开支 ────────────────────────────────────────
+        # ── 府志：记录本县上缴及省级起运（仅有实际上缴时写入）──────────
+        if player_remit > 5:
+            county_name = county.get('county_name', '本县')
+            player_province_up = round(player_remit * _PROVINCE_REMIT_RATIO, 1)
+            player_net = round(player_remit * (1.0 - _PROVINCE_REMIT_RATIO), 1)
+            try:
+                from ..models import EventLog
+                EventLog.objects.create(
+                    game=game, season=month,
+                    event_type='county_tax_remit',
+                    category='PREFECTURE',
+                    description=(
+                        f'【税收上缴】{county_name}上缴府库 {round(player_remit)} 两'
+                        f'（府留存 {player_net} 两，起运省级 {player_province_up} 两）'
+                        f'，府库余额 {ps["treasury"]} 两'
+                    ),
+                    data={
+                        'county_name': county_name,
+                        'player_remit': round(player_remit, 1),
+                        'player_net': player_net,
+                        'player_province_up': player_province_up,
+                        'neighbor_monthly': round(neighbor_monthly, 1),
+                        'treasury_after': ps['treasury'],
+                    },
+                )
+            except Exception as _e:
+                logger.warning("县税上缴府志记录失败: %s", _e)
+
+        # ── 年末：府衙行政开支 + 省级年度汇总 ────────────────────────────
         if moy == 12:
-            annual_cost = 1200.0  # 府衙俸禄 + 基建维护 估算
-            ps['treasury'] = max(0.0, round(ps['treasury'] - annual_cost, 1))
+            # 府衙自身行政开支（俸禄、典史、教谕等）：存留中的一部分
+            annual_admin = 300.0
+            ps['treasury'] = max(0.0, round(ps['treasury'] - annual_admin, 1))
+            province_remit_ytd = ps.pop('province_remit_ytd', 0.0)
+            try:
+                from ..models import EventLog
+                EventLog.objects.create(
+                    game=game, season=month,
+                    event_type='prefecture_year_end',
+                    category='PREFECTURE',
+                    description=(
+                        f'【腊月年终】本年各县起运省级合计 {province_remit_ytd:.0f} 两'
+                        f'，府衙行政开支 {annual_admin:.0f} 两'
+                        f'，府库余额 {ps["treasury"]} 两'
+                    ),
+                    data={
+                        'province_remit_ytd': province_remit_ytd,
+                        'annual_admin': annual_admin,
+                        'treasury_after': ps['treasury'],
+                    },
+                )
+            except Exception as _e:
+                logger.warning("府年终府志记录失败: %s", _e)
 
         # ── 季末：AI知府酌情投资府级基建 ─────────────────────────────────
         if moy in {3, 6, 9}:
