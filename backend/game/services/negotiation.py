@@ -23,8 +23,12 @@ from llm.prompts import PromptRegistry
 logger = logging.getLogger('game')
 NEGOTIATION_INACTIVE_SEASONS = 3
 
+# NPC 主动发起 vs 玩家发起的谈判类型
+_NPC_INITIATED_TYPES = frozenset({'VILLAGE_REQ_SCHOOL', 'VILLAGE_REQ_TAX', 'LANDLORD_DEMAND_FACILITY', 'GENTRY_RELIEF_OFFER'})
+_PLAYER_INITIATED_TYPES = frozenset({'ANNEXATION', 'IRRIGATION', 'HIDDEN_LAND'})
+
 # Round-pressure text by progress
-_PRESSURE_EARLY = '你可以坚持立场，从容应对。'
+_PRESSURE_EARLY = ''
 _PRESSURE_MID = '需认真考虑对方论点，可适当让步。'
 _PRESSURE_LATE = '谈判即将结束，准备给出最终答复。'
 _PRESSURE_FINAL = '这是最后一轮，你必须在 final_decision 中给出明确决定，不能为 null。'
@@ -86,9 +90,10 @@ class NegotiationService:
             return None, f'{place}已有进行中的{existing_type}谈判，请先处理'
 
         max_rounds = {
-            'ANNEXATION': 8, 'IRRIGATION': 12, 'HIDDEN_LAND': 8,
-            'VILLAGE_REQ_SCHOOL': 3, 'VILLAGE_REQ_TAX': 3, 'LANDLORD_DEMAND_FACILITY': 3,
-        }.get(event_type, 8)
+            'ANNEXATION': 6, 'IRRIGATION': 6, 'HIDDEN_LAND': 6,
+            'VILLAGE_REQ_SCHOOL': 6, 'VILLAGE_REQ_TAX': 6, 'LANDLORD_DEMAND_FACILITY': 6,
+            'GENTRY_RELIEF_OFFER': 4,
+        }.get(event_type, 6)
 
         session = NegotiationSession.objects.create(
             game=game,
@@ -113,6 +118,42 @@ class NegotiationService:
                 'context_data': context_data,
             },
         )
+
+        # 异步生成开场白：NPC 发起型生成 NPC 开场陈情；玩家发起型生成师爷提示
+        if event_type in _NPC_INITIATED_TYPES:
+            threading.Thread(
+                target=cls._generate_npc_opening, args=(game, session), daemon=True,
+            ).start()
+        elif event_type == 'IRRIGATION':
+            # 水利谈判：投资创建时已预生成摘要并缓存，直接同步注入避免竞态
+            cached_brief = cls._pop_cached_irrigation_brief(game, village_name)
+            if cached_brief:
+                advisor = Agent.objects.filter(game=game, role='ADVISOR').first()
+                try:
+                    DialogueMessage.objects.create(
+                        game=game,
+                        agent=agent,
+                        role='advisor',
+                        content=cached_brief['brief'],
+                        season=game.current_season,
+                        metadata={
+                            'negotiation_id': session.id,
+                            'is_advisor_brief': True,
+                            'advisor_name': cached_brief.get('advisor_name') or (advisor.name if advisor else '师爷'),
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("Failed to inject cached irrigation brief: %s", e)
+            else:
+                # 缓存未命中（投资刚创建、预生成尚未完成），回退到异步生成
+                threading.Thread(
+                    target=cls._generate_advisor_brief, args=(game, session), daemon=True,
+                ).start()
+        elif event_type in _PLAYER_INITIATED_TYPES:
+            threading.Thread(
+                target=cls._generate_advisor_brief, args=(game, session), daemon=True,
+            ).start()
+
         return session, None
 
     @classmethod
@@ -141,8 +182,15 @@ class NegotiationService:
             cls._apply_village_req_tax_outcome(session, outcome)
         elif session.event_type == 'LANDLORD_DEMAND_FACILITY':
             cls._apply_landlord_demand_facility_outcome(session, outcome)
+        elif session.event_type == 'GENTRY_RELIEF_OFFER':
+            cls._apply_gentry_relief_offer_outcome(session, outcome)
         else:
             cls._apply_irrigation_outcome(session, outcome)
+
+        try:
+            cls._generate_session_summary(session)
+        except Exception as e:
+            logger.warning("Session summary generation failed (non-fatal): %s", e)
 
     # ------------------------------------------------------------------
     # Round Processing
@@ -220,6 +268,8 @@ class NegotiationService:
             result = cls._negotiate_village_req_tax(ctx, game, session)
         elif session.event_type == 'LANDLORD_DEMAND_FACILITY':
             result = cls._negotiate_landlord_demand_facility(ctx, game, session)
+        elif session.event_type == 'GENTRY_RELIEF_OFFER':
+            result = cls._negotiate_gentry_relief_offer(ctx, game, session)
         else:
             result = cls._negotiate_irrigation(ctx, game, session)
 
@@ -316,6 +366,11 @@ class NegotiationService:
             response['treasury'] = round(load_county_state(game, refresh=True).get('treasury', 0), 1)
             if session.event_type == 'IRRIGATION':
                 response['contribution_offer'] = result.get('contribution_offer', 0)
+            # Include generated summary (written by resolve_session → _generate_session_summary)
+            session.refresh_from_db()
+            summary = (session.outcome or {}).get('summary')
+            if summary:
+                response['summary'] = summary
 
         return response
 
@@ -759,6 +814,10 @@ class NegotiationService:
                 'willingness_to_declare': wtd,
                 'fallback': True,
             }
+        elif session.event_type in ('VILLAGE_REQ_SCHOOL', 'VILLAGE_REQ_TAX',
+                                    'LANDLORD_DEMAND_FACILITY', 'GENTRY_RELIEF_OFFER'):
+            # NPC 请愿类：超轮未决时默认拒绝
+            return {'final_decision': 'refuse', 'fallback': True}
         else:
             # IRRIGATION: use last contribution_offer
             offer = last_result.get('contribution_offer', 0)
@@ -898,9 +957,9 @@ class NegotiationService:
                     discovered = int(hidden * ratio)
                     # 强制清丈，百姓见官府为民做主：目标村民心+3
                     v['morale'] = max(0.0, min(100.0, float(v.get('morale', 50.0)) + 3))
-                    # Gentry affinity drops sharply on forced measurement
+                    # 强制清丈：地主好感下降（适度惩罚，与兼并停止-8拉开但不过重）
                     attrs = agent.attributes
-                    attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - 20)
+                    attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - 10)
                     agent.attributes = attrs
                     agent.save(update_fields=['attributes'])
 
@@ -1086,9 +1145,10 @@ class NegotiationService:
 
     @classmethod
     def _apply_village_req_school_outcome(cls, session, outcome):
-        """村塾请愿结算：仅民心微调；真正建塾承诺由 PromiseService 提取。"""
+        """村塾请愿结算：民心微调；答应则直接生成 BUILD_SCHOOL 承诺。"""
         from .state import load_county_state, save_player_state
         from .settlement_metrics import MetricsMixin
+        from ..models import Promise
         game = session.game
         county = load_county_state(game)
         decision = outcome.get('final_decision')
@@ -1112,6 +1172,41 @@ class NegotiationService:
             description=f'{village_name}建塾请愿：{"县令应允" if decision == "accept" else "县令婉拒"}',
             data={'village_name': village_name, 'decision': decision},
         )
+
+        # 答应请愿 → 直接创建 BUILD_SCHOOL 承诺（不依赖 LLM 提取）
+        if decision == 'accept':
+            already_exists = Promise.objects.filter(
+                game=game,
+                promise_type='BUILD_SCHOOL',
+                status='PENDING',
+                context__target_village=village_name,
+            ).exists()
+            if not already_exists:
+                deadline_season = game.current_season + 8  # 宽限8个月；建设中不计违约
+                Promise.objects.create(
+                    game=game,
+                    agent=session.agent,
+                    negotiation=session,
+                    promise_type='BUILD_SCHOOL',
+                    description=f'为{village_name}兴建村塾',
+                    status='PENDING',
+                    season_made=game.current_season,
+                    deadline_season=deadline_season,
+                    context={'target_village': village_name},
+                )
+                EventLog.objects.create(
+                    game=game,
+                    season=game.current_season,
+                    event_type='promise_made',
+                    category='PROMISE',
+                    description=f'县令向{session.agent.name}承诺：为{village_name}兴建村塾（截止第{deadline_season}月）',
+                    data={
+                        'promise_type': 'BUILD_SCHOOL',
+                        'agent_name': session.agent.name,
+                        'village_name': village_name,
+                        'deadline_season': deadline_season,
+                    },
+                )
 
     # ------------------------------------------------------------------
     # 村民请愿·减税（VILLAGE_REQ_TAX）
@@ -1229,6 +1324,139 @@ class NegotiationService:
         )
 
     # ------------------------------------------------------------------
+    # G3: 地主主动救济·开仓放粮（GENTRY_RELIEF_OFFER）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _negotiate_gentry_relief_offer(cls, ctx, game, session):
+        """地主主动提出开仓救济——LLM对话。"""
+        cd = session.context_data
+        ctx['disaster_type'] = cd.get('disaster_type', '灾情')
+        ctx['grain_surplus'] = cd.get('grain_surplus', 0.0)
+        ctx['relief_estimate'] = cd.get('relief_estimate', 0.0)
+
+        system_prompt, user_prompt = PromptRegistry.render('npc_gentry_relief_offer', **ctx)
+        messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
+
+        try:
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.80, max_tokens=384)
+        except Exception as e:
+            logger.warning("GENTRY_RELIEF_OFFER LLM failed: %s", e)
+            result = {
+                'dialogue': f'{session.agent.name}捻须静候，等待知县大人回应。',
+                'attitude_change': 0,
+                'final_decision': None,
+                'new_memory': '',
+            }
+        return cls._normalize_npc_request_response(result)
+
+    @classmethod
+    def _apply_gentry_relief_offer_outcome(cls, session, outcome):
+        """G3结算：
+        accept — 地主affinity+5；按grain_surplus 15-25%释放余粮入民仓；
+                  本县所有VILLAGER agent追加memory记录 + affinity+3；
+                  写EventLog。
+        refuse — 地主affinity-3；无粮食变化；写EventLog。
+        """
+        from .ledger import refresh_village_grain_ledgers
+        game = session.game
+        county = load_county_state(game)
+        agent = session.agent
+        decision = outcome.get('final_decision')
+        village_name = session.context_data.get('village_name', '')
+        cd = session.context_data
+
+        if decision == 'accept':
+            # ── 释放余粮 ──
+            grain_surplus = cd.get('grain_surplus', 0.0)
+            ratio = random.uniform(0.15, 0.25)
+            released = round(grain_surplus * ratio, 1)
+
+            # 从地主账本扣除，加入村民粮仓
+            for v in county.get('villages', []):
+                if v['name'] == village_name:
+                    gentry_ledger = v.setdefault('gentry_ledger', {})
+                    current_surplus = float(gentry_ledger.get('grain_surplus', 0.0))
+                    gentry_ledger['grain_surplus'] = max(0.0, round(current_surplus - released, 1))
+                    break
+
+            county['peasant_grain_reserve'] = round(
+                float(county.get('peasant_grain_reserve', 0.0)) + released, 1
+            )
+            refresh_village_grain_ledgers(county, current_season=game.current_season, seed_gentry_if_needed=False)
+
+            # ── 地主 affinity +5 ──
+            attrs = dict(agent.attributes or {})
+            old_affinity = float(attrs.get('player_affinity', 50.0))
+            attrs['player_affinity'] = min(99.0, old_affinity + 5.0)
+            memory = list(attrs.get('memory', []))
+            memory.append(f'主动开仓放粮{round(released)}斤，知县当场嘉奖并记录在案')
+            attrs['memory'] = memory[-20:]
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
+
+            # ── 本县所有 VILLAGER agent：追加 memory + affinity+3 ──
+            villager_agents = list(Agent.objects.filter(game=game, role='VILLAGER'))
+            for va in villager_agents:
+                va_attrs = dict(va.attributes or {})
+                va_affinity = float(va_attrs.get('player_affinity', 50.0))
+                va_attrs['player_affinity'] = min(99.0, va_affinity + 3.0)
+                va_memory = list(va_attrs.get('memory', []))
+                va_memory.append(
+                    f'{village_name}地主{agent.name}开仓放粮{round(released)}斤救济乡里，'
+                    f'知县嘉奖有加，乡邻感念此义举'
+                )
+                va_attrs['memory'] = va_memory[-20:]
+                va.attributes = va_attrs
+            if villager_agents:
+                Agent.objects.bulk_update(villager_agents, ['attributes'])
+
+            save_player_state(game, county)
+
+            desc = (
+                f'{village_name}地主{agent.name}主动开仓放粮{round(released)}斤，'
+                f'知县予以当面嘉奖并记录善举'
+            )
+            EventLog.objects.create(
+                game=game,
+                season=game.current_season,
+                event_type='gentry_relief_offer_accepted',
+                category='SOCIAL',
+                description=desc,
+                data={
+                    'agent_name': agent.name,
+                    'village_name': village_name,
+                    'released': released,
+                    'grain_surplus_before': grain_surplus,
+                    'decision': decision,
+                },
+            )
+        else:
+            # ── 拒绝：地主 affinity -3 ──
+            attrs = dict(agent.attributes or {})
+            old_affinity = float(attrs.get('player_affinity', 50.0))
+            attrs['player_affinity'] = max(-99.0, old_affinity - 3.0)
+            memory = list(attrs.get('memory', []))
+            memory.append('本欲开仓救济乡里，知县态度冷漠，此事作罢')
+            attrs['memory'] = memory[-20:]
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
+
+            EventLog.objects.create(
+                game=game,
+                season=game.current_season,
+                event_type='gentry_relief_offer_refused',
+                category='SOCIAL',
+                description=f'{village_name}地主{agent.name}主动提出开仓救济，县令未予接纳',
+                data={
+                    'agent_name': agent.name,
+                    'village_name': village_name,
+                    'decision': decision,
+                },
+            )
+
+    # ------------------------------------------------------------------
     # 辅助：NPC请愿类响应归一化
     # ------------------------------------------------------------------
 
@@ -1258,7 +1486,7 @@ class NegotiationService:
 
     @classmethod
     def get_negotiation_history(cls, session):
-        """Return negotiation dialogue history."""
+        """Return negotiation dialogue history including advisor briefs and NPC opening."""
         messages = DialogueMessage.objects.filter(
             game=session.game,
             agent=session.agent,
@@ -1271,8 +1499,309 @@ class NegotiationService:
                 'content': m.content,
                 'speaker_role': (m.metadata or {}).get('speaker_role', 'PLAYER'),
                 'speaker_name': (m.metadata or {}).get('speaker_name', ''),
+                'advisor_name': (m.metadata or {}).get('advisor_name', ''),
+                'is_opening': (m.metadata or {}).get('is_opening', False),
+                'is_advisor_brief': (m.metadata or {}).get('is_advisor_brief', False),
                 'season': m.season,
                 'created_at': m.created_at.isoformat(),
             }
             for m in messages
         ]
+
+    # ------------------------------------------------------------------
+    # Opening Messages & Advisor Brief
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _generate_npc_opening(cls, game, session):
+        """NPC 主动发起型：在会话开始时异步生成 NPC 的开场陈情，保存为第一条 agent 消息。"""
+        try:
+            event_type = session.event_type
+            cd = session.context_data or {}
+            agent = session.agent
+
+            ctx = AgentService.build_system_context(agent, game)
+            ctx['current_round'] = 1
+            ctx['max_rounds'] = session.max_rounds
+            ctx['round_pressure'] = ''
+
+            if event_type == 'VILLAGE_REQ_SCHOOL':
+                ctx['schools_elsewhere'] = cd.get('schools_elsewhere', 0)
+                system_prompt, _ = PromptRegistry.render('npc_request_school', **ctx)
+            elif event_type == 'VILLAGE_REQ_TAX':
+                ctx['agri_suitability_pct'] = round(cd.get('agri_suitability', 0.5) * 100)
+                ctx['current_tax_pct'] = round(cd.get('current_tax_rate', 0.12) * 100, 1)
+                system_prompt, _ = PromptRegistry.render('npc_request_tax', **ctx)
+            elif event_type == 'LANDLORD_DEMAND_FACILITY':
+                ctx['low_facilities'] = cd.get('low_facilities', '相关设施')
+                system_prompt, _ = PromptRegistry.render('npc_demand_facility', **ctx)
+            elif event_type == 'GENTRY_RELIEF_OFFER':
+                ctx['disaster_type'] = cd.get('disaster_type', '灾情')
+                ctx['grain_surplus'] = cd.get('grain_surplus', 0.0)
+                ctx['relief_estimate'] = cd.get('relief_estimate', 0.0)
+                system_prompt, _ = PromptRegistry.render('npc_gentry_relief_offer', **ctx)
+            else:
+                return
+
+            opening_user = (
+                '你刚刚来到县衙，正在觐见知县大人。这是初次觐见，请主动开口，'
+                '以你的身份陈述此番来意（古风口吻，60-80字，语气须符合你的性格特征）。\n\n'
+                '（以JSON格式回复，仅包含 dialogue 字段，不要有JSON之外的任何文字）'
+            )
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': opening_user},
+            ]
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.85, max_tokens=200)
+            dialogue = (result.get('dialogue') or '').strip()
+            if not dialogue:
+                dialogue = f'草民{agent.name}拜见大人，有要事禀报。'
+        except Exception as e:
+            logger.warning("NPC opening generation failed: %s", e)
+            dialogue = f'草民{session.agent.name}拜见大人，有要事禀报。'
+
+        try:
+            DialogueMessage.objects.create(
+                game=game,
+                agent=session.agent,
+                role='agent',
+                content=dialogue,
+                season=game.current_season,
+                metadata={
+                    'negotiation_id': session.id,
+                    'is_opening': True,
+                },
+            )
+            # G3 专属：NPC 开场后注入一条师爷提示，提醒玩家正确应对策略
+            if event_type == 'GENTRY_RELIEF_OFFER':
+                advisor = Agent.objects.filter(game=game, role='ADVISOR').first()
+                advisor_name = advisor.name if advisor else '师爷'
+                steward_hint = (
+                    f'【{advisor_name}提示】此地主好意难得，大人宜先当面嘉奖，'
+                    '以示体察民情之志；接受其善举后，日后可酌情荐举其族中子弟或减其徭役，'
+                    '方为驭人之道，切不可冷漠推辞。'
+                )
+                DialogueMessage.objects.create(
+                    game=game,
+                    agent=session.agent,
+                    role='advisor',
+                    content=steward_hint,
+                    season=game.current_season,
+                    metadata={
+                        'negotiation_id': session.id,
+                        'is_advisor_brief': True,
+                        'advisor_name': advisor_name,
+                    },
+                )
+        except Exception as e:
+            logger.warning("Failed to save NPC opening message: %s", e)
+
+    @classmethod
+    def prefetch_irrigation_briefs(cls, game, county):
+        """兴建水利投资创建时调用：异步为所有村庄预生成师爷摘要，缓存到 county_data['irrigation_advisor_briefs']。"""
+        villages = [v for v in county.get('villages', []) if v.get('name')]
+
+        def _run():
+            advisor = Agent.objects.filter(game=game, role='ADVISOR').first()
+            advisor_name = advisor.name if advisor else '师爷'
+            for village in villages:
+                village_name = village['name']
+                try:
+                    gentry = Agent.objects.filter(
+                        game=game, role='GENTRY', attributes__village_name=village_name,
+                    ).first()
+                    if not gentry:
+                        continue
+                    max_c = max(1, min(
+                        int(village.get('farmland', 0) * village.get('gentry_land_pct', 0.3) * 0.0075), 40,
+                    ))
+                    situation = (
+                        f'县衙正筹建水利，{village_name}地主{gentry.name}经估算最多可出资{max_c}两。'
+                        f'水利建成后其田产浇灌亦将受益，大人需邀其出资共建。'
+                    )
+                    goal = f'争取{gentry.name}出资，金额越高越好，上限{max_c}两。'
+                    chips = '晓以利害（水利受益直接惠及其田产）；可给予象征性回报；可言明知府亦关注此事。'
+                    system = (
+                        f'你是{advisor_name}，随大人赴任此地的师爷，熟谙官场事务，处事老练。'
+                        f'请以师爷身份，用古风口吻向大人简要分析此次交涉形势，给出建议。'
+                    )
+                    user = (
+                        f'【此次交涉概况】{situation}\n【目标】{goal}\n【可用筹码】{chips}\n\n'
+                        f'请向大人简要陈述分析与建议，不超过120字，古风口吻。\n'
+                        '（以JSON格式回复：{"brief": "师爷的分析与建议"}）'
+                    )
+                    client = LLMClient()
+                    result = client.chat_json(
+                        [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
+                        temperature=0.7, max_tokens=256,
+                    )
+                    brief = (result.get('brief') or '').strip() or f'大人，此番与{gentry.name}交涉，还请从容应对，把握分寸。'
+                except Exception as e:
+                    logger.warning("Prefetch irrigation brief failed for %s: %s", village_name, e)
+                    brief = '大人，请注意此番交涉的目标，从容应对。'
+                try:
+                    cd = load_county_state(game)
+                    cd.setdefault('irrigation_advisor_briefs', {})[village_name] = {
+                        'brief': brief, 'advisor_name': advisor_name,
+                    }
+                    save_player_state(game, cd)
+                except Exception as e:
+                    logger.warning("Failed to cache irrigation brief for %s: %s", village_name, e)
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    @classmethod
+    def _pop_cached_irrigation_brief(cls, game, village_name):
+        """取出并删除缓存的水利师爷摘要（一次性使用）。返回 {'brief': ..., 'advisor_name': ...} 或 None。"""
+        try:
+            cd = load_county_state(game)
+            briefs = cd.get('irrigation_advisor_briefs') or {}
+            cached = briefs.pop(village_name, None)
+            if cached:
+                save_player_state(game, cd)
+            return cached
+        except Exception as e:
+            logger.warning("Failed to pop cached irrigation brief for %s: %s", village_name, e)
+            return None
+
+    @classmethod
+    def _generate_advisor_brief(cls, game, session):
+        """玩家发起型：在会话开始时异步生成师爷提示，保存为 role='advisor' 消息。"""
+        try:
+            event_type = session.event_type
+            cd = session.context_data or {}
+            agent = session.agent
+            village_name = agent.attributes.get('village_name', '') or cd.get('village_name', '')
+            agent_name = agent.name
+
+            advisor = Agent.objects.filter(game=game, role='ADVISOR').first()
+            advisor_name = advisor.name if advisor else '师爷'
+
+            if event_type == 'ANNEXATION':
+                cur = cd.get('current_pct', 0.35)
+                inc = cd.get('proposed_pct_increase', 0.05)
+                situation = (
+                    f'{village_name}地主{agent_name}趁民心低迷大量收购村民田产，'
+                    f'其占地比已达{cur:.0%}，拟再增{inc:.0%}至{cur + inc:.0%}。大人须出面交涉令其停止。'
+                )
+                goal = '说服地主停止兼并，保护村民田产。'
+                chips = '可晓以法度（兼并过甚官府有权干预）；若威名高可隐然施压；可允小利换大局。'
+            elif event_type == 'IRRIGATION':
+                max_c = cd.get('max_contribution', 20)
+                situation = (
+                    f'县衙正筹建水利，{village_name}地主{agent_name}经估算最多可出资{max_c}两。'
+                    f'水利建成后其田产浇灌亦将受益，大人需邀其出资共建。'
+                )
+                goal = f'争取{agent_name}出资，金额越高越好，上限{max_c}两。'
+                chips = '晓以利害（水利受益直接惠及其田产）；可给予象征性回报；可言明知府亦关注此事。'
+            elif event_type == 'HIDDEN_LAND':
+                hidden = cd.get('hidden_land', 0)
+                situation = (
+                    f'本衙核查地籍，发现{village_name}地主{agent_name}藏匿了约{hidden}亩田产未申报。'
+                    f'大人需其主动申报，否则官府将强制清丈。'
+                )
+                goal = '使地主主动申报全部隐田，减少对抗，维护官府权威。'
+                chips = '明告主动申报可保体面免追查；警告拒绝则强制清丈并损名声；可给数日宽限期。'
+            else:
+                return
+
+            system = (
+                f'你是{advisor_name}，随大人赴任此地的师爷，熟谙官场事务，处事老练。'
+                f'请以师爷身份，用古风口吻向大人简要分析此次交涉形势，给出建议。'
+            )
+            user = (
+                f'【此次交涉概况】{situation}\n'
+                f'【目标】{goal}\n'
+                f'【可用筹码】{chips}\n\n'
+                f'请向大人简要陈述分析与建议，不超过120字，古风口吻。\n'
+                '（以JSON格式回复：{"brief": "师爷的分析与建议"}）'
+            )
+            messages = [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': user},
+            ]
+            client = LLMClient()
+            result = client.chat_json(messages, temperature=0.7, max_tokens=256)
+            brief = (result.get('brief') or '').strip()
+            if not brief:
+                brief = f'大人，此番与{agent_name}交涉，还请从容应对，把握分寸。'
+        except Exception as e:
+            logger.warning("Advisor brief generation failed: %s", e)
+            brief = f'大人，请注意此番交涉的目标，从容应对。'
+            advisor_name = '师爷'
+
+        try:
+            DialogueMessage.objects.create(
+                game=game,
+                agent=session.agent,
+                role='advisor',
+                content=brief,
+                season=game.current_season,
+                metadata={
+                    'negotiation_id': session.id,
+                    'is_advisor_brief': True,
+                    'advisor_name': advisor_name,
+                },
+            )
+        except Exception as e:
+            logger.warning("Failed to save advisor brief message: %s", e)
+
+    @classmethod
+    def _generate_session_summary(cls, session):
+        """谈判结束后同步生成结构化摘要，存入 session.outcome['summary']。"""
+        game = session.game
+        event_type_name = dict(NegotiationSession.EVENT_TYPES).get(session.event_type, session.event_type)
+        final_decision = (session.outcome or {}).get('final_decision', '')
+
+        # 取对话正文（排除开场白和师爷提示，避免干扰分析）
+        msgs = list(
+            DialogueMessage.objects.filter(
+                game=game,
+                agent=session.agent,
+                metadata__negotiation_id=session.id,
+            )
+            .exclude(role='advisor')
+            .exclude(metadata__is_opening=True)
+            .order_by('created_at')[:14]
+        )
+        if not msgs:
+            return
+
+        lines = []
+        for m in msgs:
+            speaker = '县令' if m.role == 'player' else session.agent.name
+            lines.append(f'{speaker}：{m.content}')
+        conv_text = '\n'.join(lines)
+
+        system_prompt = (
+            '你是一个谈判记录分析专家。请分析以下谈判对话，提取关键信息。\n'
+            '以JSON格式回复，包含以下字段：\n'
+            '{"conclusion": "一句话（25字以内）总结谈判结果", '
+            '"player_promises": ["县令在谈判中明确给出的承诺，若无则为空数组"], '
+            '"npc_concessions": ["对方明确做出的让步或承诺，若无则为空数组"], '
+            '"key_moment": "影响谈判走向的关键转折（25字以内），若无则为空字符串"}'
+        )
+        user_prompt = (
+            f'【谈判类型】{event_type_name}\n'
+            f'【最终结果】{final_decision}\n\n'
+            f'【对话记录】\n{conv_text}\n\n'
+            '请分析并返回JSON摘要。（仅返回JSON，不要有其他文字）'
+        )
+        messages_llm = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt},
+        ]
+
+        client = LLMClient()
+        result = client.chat_json(messages_llm, temperature=0.2, max_tokens=400)
+        summary = {
+            'conclusion': (result.get('conclusion') or '').strip()[:60],
+            'player_promises': [str(p) for p in (result.get('player_promises') or []) if p][:5],
+            'npc_concessions': [str(p) for p in (result.get('npc_concessions') or []) if p][:5],
+            'key_moment': (result.get('key_moment') or '').strip()[:80],
+        }
+        outcome = session.outcome or {}
+        outcome['summary'] = summary
+        session.outcome = outcome
+        session.save(update_fields=['outcome'])
