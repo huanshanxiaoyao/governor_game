@@ -218,14 +218,17 @@ class JudicialCaseflowService:
         magistrate_rounds = list(instance.magistrate_rounds or [])
         status = instance.status
 
+        case_category = instance.local_payload.get('category', '')
+
         if status == "PENDING_MAGISTRATE_ROUND_1":
             if action == "判决":
                 result = cls._apply_player_verdict(instance, magistrate_rounds, round_no=1, season=season, verdict_code=verdict_code)
                 if "error" in result:
                     return result
-                cls._apply_verdict_effects(game, result["selected_option"])
+                cls._apply_verdict_effects(game, result["selected_option"], case_category=case_category)
                 applied_effects = cls._clamp_verdict_effects(
-                    result["selected_option"].get("immediate_effects") or {}
+                    result["selected_option"].get("immediate_effects") or {},
+                    case_category=case_category,
                 )
                 instance.status = "SUBMITTED_TO_PREFECT"
                 instance.submitted_to_prefect = True
@@ -244,9 +247,10 @@ class JudicialCaseflowService:
                 result = cls._apply_player_verdict(instance, magistrate_rounds, round_no=2, season=season, verdict_code=verdict_code)
                 if "error" in result:
                     return result
-                cls._apply_verdict_effects(game, result["selected_option"])
+                cls._apply_verdict_effects(game, result["selected_option"], case_category=case_category)
                 applied_effects = cls._clamp_verdict_effects(
-                    result["selected_option"].get("immediate_effects") or {}
+                    result["selected_option"].get("immediate_effects") or {},
+                    case_category=case_category,
                 )
                 instance.submitted_to_prefect = True
                 instance.submitted_season = season
@@ -306,14 +310,32 @@ class JudicialCaseflowService:
         })
         return {"selected_option": selected}
 
-    @staticmethod
-    def _clamp_verdict_effects(effects: dict) -> dict:
-        """返回实际落地的效果值（已按上限截断，与 _apply_verdict_effects_to_unit 保持一致）。"""
+    # 各案件大类的民心/治安 正向上限（负向统一 -2）
+    _CATEGORY_CLAMPS = {
+        '冤狱平反类': {'morale': 2, 'security': 0},
+        '吏治贪腐类': {'morale': 2, 'security': 0},
+        '民事纠纷类': {'morale': 0, 'security': 0},
+        '刑事重案类': {'morale': 2, 'security': 2},
+        '统筹治理类': {'morale': 1, 'security': 1},
+    }
+    _DEFAULT_CLAMPS = {'morale': 2, 'security': 2}
+
+    @classmethod
+    def _clamp_morale_security(cls, field: str, delta: int, case_category: str = '') -> int:
+        """按案件大类对 morale/security delta 进行截断。"""
+        caps = cls._CATEGORY_CLAMPS.get(case_category, cls._DEFAULT_CLAMPS)
+        pos_cap = caps.get(field, 2)
+        neg_cap = -2
+        return max(neg_cap, min(pos_cap, delta))
+
+    @classmethod
+    def _clamp_verdict_effects(cls, effects: dict, case_category: str = '') -> dict:
+        """返回实际落地的效果值（已按类别上限截断，与 _apply_verdict_effects_to_unit 保持一致）。"""
         clamped = {}
         for field in ("morale", "security"):
             delta = effects.get(field, 0)
             if delta:
-                clamped[field] = max(-2, min(2, delta))
+                clamped[field] = cls._clamp_morale_security(field, delta, case_category)
         for field in ("gentry_favor", "commercial", "education"):
             delta = effects.get(field, 0)
             if delta:
@@ -323,18 +345,19 @@ class JudicialCaseflowService:
         return clamped
 
     @classmethod
-    def _apply_verdict_effects_to_unit(cls, unit, verdict_option: dict) -> None:
+    def _apply_verdict_effects_to_unit(cls, unit, verdict_option: dict, case_category: str = '') -> None:
         """将判决效果写入 AdminUnit.unit_data（玩家县和AI县共用）。"""
         effects = verdict_option.get("immediate_effects") or {}
         if not effects:
             return
         data = dict(unit.unit_data or {})
-        # 民心、治安：上限 ±2，同步更新各村庄数值，防止县级与村级数值不一致
+        # 民心、治安：按案件大类限定上限，同步更新各村庄数值
         for field in ("morale", "security"):
             delta = effects.get(field, 0)
             if delta:
-                delta = max(-2, min(2, delta))
-                MetricsMixin.apply_county_stat_delta(data, field, delta)
+                delta = cls._clamp_morale_security(field, delta, case_category)
+                if delta:
+                    MetricsMixin.apply_county_stat_delta(data, field, delta)
         # 其他字段：上限 ±5，直接写入
         for field in ("gentry_favor", "commercial", "education"):
             delta = effects.get(field, 0)
@@ -348,11 +371,11 @@ class JudicialCaseflowService:
         unit.save(update_fields=["unit_data"])
 
     @classmethod
-    def _apply_verdict_effects(cls, game, verdict_option: dict) -> None:
+    def _apply_verdict_effects(cls, game, verdict_option: dict, case_category: str = '') -> None:
         """玩家路径：将判决效果写入县域 unit_data。"""
         if not game.player_unit_id:
             return
-        cls._apply_verdict_effects_to_unit(game.player_unit, verdict_option)
+        cls._apply_verdict_effects_to_unit(game.player_unit, verdict_option, case_category=case_category)
 
     @classmethod
     def _log_player_case_action(
@@ -1275,7 +1298,8 @@ class JudicialCaseflowService:
 
         # 判决效果（改判或上裁时需写入县数据）
         if overturned or is_deferred:
-            cls._apply_verdict_effects_to_county_dict(county, selected_option)
+            case_category = instance.local_payload.get('category', '') if instance.local_payload else ''
+            cls._apply_verdict_effects_to_county_dict(county, selected_option, case_category=case_category)
 
         # 知府好感度 + 评价笔记
         prefect_attrs = prefect_agent.attributes
@@ -1494,7 +1518,7 @@ class JudicialCaseflowService:
         return verdict_options[0].get('verdict_code')
 
     @classmethod
-    def _apply_verdict_effects_to_county_dict(cls, county: dict, verdict_option: dict) -> None:
+    def _apply_verdict_effects_to_county_dict(cls, county: dict, verdict_option: dict, case_category: str = '') -> None:
         """将判决效果写入县域 dict（知府改判/上裁路径，不触达 AdminUnit）。"""
         effects = verdict_option.get('immediate_effects') or {}
         for field in ('gentry_favor', 'commercial', 'education'):
@@ -1504,8 +1528,9 @@ class JudicialCaseflowService:
         for field in ('morale', 'security'):
             delta = effects.get(field, 0)
             if delta:
-                delta = max(-2, min(2, delta))  # 单案判决上限 ±2
-                MetricsMixin.apply_county_stat_delta(county, field, delta)
+                delta = cls._clamp_morale_security(field, delta, case_category)
+                if delta:
+                    MetricsMixin.apply_county_stat_delta(county, field, delta)
         treasury_delta = effects.get('treasury', 0)
         if treasury_delta:
             county['treasury'] = max(0, round(float(county.get('treasury', 0)) + treasury_delta, 2))
