@@ -332,9 +332,31 @@
     <div class="social-subtab-bar">
       <button class="social-subtab-btn active" data-subtab="social-local-panel">本县人物</button>
       <button class="social-subtab-btn" data-subtab="social-upper-panel">上位</button>
+      <button class="social-subtab-btn" data-subtab="social-promise-panel">承诺<span id="promise-tab-badge" class="promise-tab-badge hidden"></span></button>
     </div>
     <div id="relationships-list">
       <p class="hint">加载中...</p>
+    </div>
+    <!-- 承诺 Tab 面板 -->
+    <div id="social-promise-panel" class="hidden">
+      <div class="promise-filter-bar">
+        <button class="promise-filter-btn active" data-status="">全部</button>
+        <button class="promise-filter-btn" data-status="PENDING">待履行</button>
+        <button class="promise-filter-btn" data-status="FULFILLED">已履行</button>
+        <button class="promise-filter-btn" data-status="BROKEN">已违约</button>
+      </div>
+      <div id="promise-list-container"><p class="hint">加载中...</p></div>
+    </div>
+  </div>
+
+  <!-- 承诺详情 Modal -->
+  <div id="promise-detail-modal" class="modal-overlay hidden">
+    <div class="modal-box modal-box-sm">
+      <div class="modal-header">
+        <span id="promise-detail-title" class="modal-title"></span>
+        <button class="modal-close" id="promise-detail-close">&times;</button>
+      </div>
+      <div id="promise-detail-body" class="modal-body"></div>
     </div>
   </div>
 
@@ -404,6 +426,8 @@
         <option value="BRIBERY">行贿</option>
         <option value="PROFILE">声望</option>
         <option value="DISASTER">灾害</option>
+        <option value="EMERGENCY">应急</option>
+        <option value="HIDDEN_LAND">隐田</option>
         <option value="SETTLEMENT">结算</option>
         <option value="ANNEXATION">兼并</option>
         <option value="PROMISE">承诺</option>

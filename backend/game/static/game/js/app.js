@@ -227,7 +227,7 @@
       if (pd.letter) {
         html += '<div class="prefect-review-letter">"' + pd.letter + '"</div>';
       }
-      if (overturned && pd.affinity_delta) {
+      if (pd.affinity_delta) {
         var affinitySign = pd.affinity_delta > 0 ? '+' : '';
         html += '<div class="prefect-review-affinity hint">与知府关系：' + affinitySign + pd.affinity_delta + '</div>';
       }
@@ -1896,7 +1896,7 @@
 
     npcReqs.forEach(function (req) {
       // 只展示需要玩家响应的简单类（非谈判类）
-      if (req.type !== "VILLAGE_RELIEF" && req.type !== "GENTRY_FUND_SCHOOL") return;
+      if (req.type !== "VILLAGE_RELIEF" && req.type !== "GENTRY_FUND_SCHOOL" && req.type !== "GENTRY_TRADE_ROUTE") return;
 
       var card = document.createElement("div");
       card.className = "npc-request-card";
@@ -2443,6 +2443,35 @@
     });
   });
 
+  // 承诺过滤器按钮
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".promise-filter-btn");
+    if (!btn) return;
+    document.querySelectorAll(".promise-filter-btn").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    components.renderPromiseList(Game.state.promises || [], btn.dataset.status || "", null);
+  });
+
+  // 人物卡片承诺 badge「查看」按钮
+  document.getElementById("relationships-list").addEventListener("click", function (e) {
+    var viewBtn = e.target.closest(".btn-promise-view");
+    if (!viewBtn) return;
+    var badge = viewBtn.closest(".promise-agent-badge");
+    if (!badge) return;
+    var agentId = parseInt(badge.dataset.agentId, 10);
+    showSocialSubtab("social-promise-panel", { focusAgentId: agentId });
+  });
+
+  // 承诺详情 modal 关闭
+  (function () {
+    var closeBtn = document.getElementById("promise-detail-close");
+    var overlay  = document.getElementById("promise-detail-modal");
+    if (closeBtn) closeBtn.addEventListener("click", function () { overlay.classList.add("hidden"); });
+    if (overlay) overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) overlay.classList.add("hidden");
+    });
+  }());
+
   // 宗族举贤提示条：跳转至社交Tab宗族后生区块
   (function () {
     var gotoBtn = document.getElementById("btn-goto-clan-youth");
@@ -2965,14 +2994,23 @@
       .catch(function () {});
   }
 
-  function showSocialSubtab(subtabId) {
-    ["social-local-panel", "social-upper-panel"].forEach(function (id) {
+  function showSocialSubtab(subtabId, opts) {
+    ["social-local-panel", "social-upper-panel", "social-promise-panel"].forEach(function (id) {
       var panel = document.getElementById(id);
       if (panel) panel.classList.toggle("hidden", id !== subtabId);
     });
     document.querySelectorAll(".social-subtab-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.subtab === subtabId);
     });
+    if (subtabId === "social-promise-panel") {
+      var focusAgentId = (opts && opts.focusAgentId) || null;
+      var filterStatus = (opts && opts.filterStatus) || "";
+      // 同步过滤器按钮状态
+      document.querySelectorAll(".promise-filter-btn").forEach(function (btn) {
+        btn.classList.toggle("active", btn.dataset.status === filterStatus);
+      });
+      components.renderPromiseList(Game.state.promises || [], filterStatus, focusAgentId);
+    }
   }
 
   function _renderSocialNpcPending(g) {
@@ -2981,7 +3019,7 @@
     if (!section || !cardsEl) return;
     var reqs = (g.county_data && g.county_data.npc_pending_requests) || [];
     var simple = reqs.filter(function (r) {
-      return r.type === "VILLAGE_RELIEF" || r.type === "GENTRY_FUND_SCHOOL";
+      return r.type === "VILLAGE_RELIEF" || r.type === "GENTRY_FUND_SCHOOL" || r.type === "GENTRY_TRADE_ROUTE";
     });
     if (!simple.length) {
       section.classList.add("hidden");
@@ -3017,15 +3055,38 @@
 
     _renderSocialNpcPending(g);
 
-    api.getAgents(g.id)
-      .then(function (agents) {
-        components.renderRelationships(agents);
-        // 恢复/默认显示本县人物子 Tab
+    Promise.all([api.getAgents(g.id), api.getPromises(g.id)])
+      .then(function (results) {
+        var agents = results[0];
+        var promises = results[1];
+        Game.state.promises = promises;
+        _updatePromiseTabBadge(promises);
+
+        // 构建 agent_id → promises[] 映射
+        var promisesByAgentId = {};
+        promises.forEach(function (p) {
+          if (!promisesByAgentId[p.agent_id]) promisesByAgentId[p.agent_id] = [];
+          promisesByAgentId[p.agent_id].push(p);
+        });
+
+        components.renderRelationships(agents, promisesByAgentId);
         showSocialSubtab("social-local-panel");
       })
       .catch(function () {
         container.innerHTML = '<p class="hint">加载失败</p>';
       });
+  }
+
+  function _updatePromiseTabBadge(promises) {
+    var badge = document.getElementById("promise-tab-badge");
+    if (!badge) return;
+    var pending = (promises || []).filter(function (p) { return p.status === "PENDING"; }).length;
+    if (pending > 0) {
+      badge.textContent = pending;
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
   }
 
   // ==================== Staff (幕僚) ====================

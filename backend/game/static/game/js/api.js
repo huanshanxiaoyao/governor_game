@@ -196,8 +196,11 @@
       return request("GET", "/api/games/" + gameId + "/agents/" + agentId + "/chat/");
     },
     // Promises
-    getPromises: function (gameId, promiseStatus) {
-      var qs = promiseStatus ? "?status=" + encodeURIComponent(promiseStatus) : "";
+    getPromises: function (gameId, promiseStatus, agentId) {
+      var params = [];
+      if (promiseStatus) params.push("status=" + encodeURIComponent(promiseStatus));
+      if (agentId) params.push("agent_id=" + encodeURIComponent(agentId));
+      var qs = params.length ? "?" + params.join("&") : "";
       return request("GET", "/api/games/" + gameId + "/promises/" + qs);
     },
     // Prefecture overview (知县视角)

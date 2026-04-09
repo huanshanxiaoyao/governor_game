@@ -1021,7 +1021,7 @@
         '<td class="' + gentryTierCls + '">' + gentryPct + '%' + gentryDelta + '</td>' +
         '<td class="' + _villageTierCls(morale) + '">' + morale + moraleDelta + '</td>' +
         '<td class="' + _villageTierCls(security) + '">' + security + securityDelta + '</td>' +
-        '<td class="vt-center">' + (v.has_school ? '✓' : '') + '</td>' +
+        '<td class="vt-center">' + (v.has_school ? '✓' : '<span class="vt-none">✗</span>') + '</td>' +
         '<td>' + escapeHtml(gentryName) + '</td>' +
         '<td>' + escapeHtml(repName) + '</td>';
 

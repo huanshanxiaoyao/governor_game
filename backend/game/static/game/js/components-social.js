@@ -177,9 +177,21 @@
         renderNegotiationMessages(data.messages || []);
         if (data.session) {
           Game.state.activeNegotiation = data.session;
-          el("nego-subtitle").textContent =
-            data.session.agent_name + "（" + data.session.agent_role_title + "） " +
+          var subtitle = data.session.agent_name + "（" + data.session.agent_role_title + "） " +
             "第" + data.session.current_round + "/" + data.session.max_rounds + "轮";
+          if (data.session.status === 'resolved') {
+            subtitle += " [已结束]";
+          }
+          el("nego-subtitle").textContent = subtitle;
+
+          // For resolved sessions: update the resolved panel with outcome + summary
+          if (data.session.status === 'resolved') {
+            var outcome = data.session.outcome || {};
+            var summary = outcome.summary;
+            var summaryHtml = summary ? _renderSummaryHtml(summary) : '';
+            resolvedDiv.innerHTML =
+              '<div class="nego-outcome">谈判已结束</div>' + summaryHtml;
+          }
         }
       })
       .catch(function () {
@@ -187,22 +199,58 @@
       });
   }
 
+  function _renderSummaryHtml(summary) {
+    if (!summary) return '';
+    var html = '<div class="nego-summary">';
+    if (summary.conclusion) {
+      html += '<div class="ns-conclusion">' + escapeHtml(summary.conclusion) + '</div>';
+    }
+    if (summary.player_promises && summary.player_promises.length) {
+      html += '<div class="ns-section"><span class="ns-label">县令承诺：</span>';
+      summary.player_promises.forEach(function (p) {
+        html += '<span class="ns-item">' + escapeHtml(p) + '</span>';
+      });
+      html += '</div>';
+    }
+    if (summary.npc_concessions && summary.npc_concessions.length) {
+      html += '<div class="ns-section"><span class="ns-label">对方承诺：</span>';
+      summary.npc_concessions.forEach(function (p) {
+        html += '<span class="ns-item ns-item-npc">' + escapeHtml(p) + '</span>';
+      });
+      html += '</div>';
+    }
+    if (summary.key_moment) {
+      html += '<div class="ns-key-moment">' + escapeHtml(summary.key_moment) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function renderNegotiationMessages(messages) {
     var container = el("nego-messages");
     container.innerHTML = "";
 
-    if (messages.length === 0) {
+    // Only show hint if there are no non-advisor messages yet
+    var hasConversation = messages.some(function (m) { return m.role !== 'advisor'; });
+    if (messages.length === 0 || !hasConversation) {
       container.innerHTML = '<p class="hint" style="text-align:center;padding:20px;">开始与对方交涉吧</p>';
-      return;
+      if (messages.length === 0) return;
     }
 
     messages.forEach(function (msg) {
-      var cls = msg.role === "player" ? "nego-msg nego-msg-player" : "nego-msg nego-msg-agent";
-      var label = msg.role === "player"
-        ? getNegotiationPlayerLabel(msg.speaker_role, msg.speaker_name)
-        : "";
+      var cls, label;
+      if (msg.role === 'advisor') {
+        cls = 'nego-msg nego-msg-advisor';
+        label = (msg.advisor_name || '师爷') + ' 提示';
+      } else if (msg.role === 'player') {
+        cls = 'nego-msg nego-msg-player';
+        label = getNegotiationPlayerLabel(msg.speaker_role, msg.speaker_name);
+      } else {
+        cls = 'nego-msg nego-msg-agent';
+        label = '';
+      }
       var tsHtml = msg.created_at ? '<span class="nego-msg-ts">' + formatMsgTime(msg.created_at) + '</span>' : '';
-      var div = h("div", cls,
+      var div = h('div', cls,
         (label ? '<span class="nego-msg-label">' + label + '</span>' : '') +
         '<div class="nego-msg-content">' + escapeHtml(msg.content) + '</div>' +
         tsHtml);
@@ -245,14 +293,21 @@
     var decisionText = {
       "stop_annexation": "地主同意停止兼并",
       "proceed_annexation": "地主执意继续兼并",
-      "accept": "地主同意出资",
-      "refuse": "地主拒绝出资",
+      "accept": "请求已被接受",
+      "refuse": "请求被拒绝",
       "declare_all": "地主主动申报全部隐田",
+      "auto_close": "谈判超时自动关闭",
     }[decision] || decision;
 
-    // For HIDDEN_LAND refuse, override with forced survey text
+    // Event-type specific overrides
     if (result.event_type === "HIDDEN_LAND" && decision === "refuse") {
       decisionText = "地主拒绝申报，官府强制清丈";
+    }
+    if (result.event_type === "IRRIGATION" && decision === "accept") {
+      decisionText = "地主同意出资";
+    }
+    if (result.event_type === "IRRIGATION" && decision === "refuse") {
+      decisionText = "地主拒绝出资";
     }
 
     var extraHtml = "";
@@ -265,11 +320,14 @@
       }
     }
 
+    var summaryHtml = result.summary ? _renderSummaryHtml(result.summary) : '';
+
     resolvedDiv.innerHTML =
       '<div class="nego-outcome">' +
         '<strong>谈判结束</strong><br>' +
         decisionText + extraHtml +
-      '</div>';
+      '</div>' +
+      summaryHtml;
 
     el("nego-subtitle").textContent += " [已结束]";
   }
@@ -391,7 +449,7 @@
     {}, { EMPEROR: true }, CHAIN_ROLES, CENTRAL_ROLES, OTHER_LOCAL_ROLES
   );
 
-  function _buildRelCard(a, negoByAgent, isLocal) {
+  function _buildRelCard(a, negoByAgent, isLocal, promisesByAgentId) {
     var aff = a.affinity;
     var affClass = aff < 30 ? "affinity-low" : (aff < 60 ? "affinity-mid" : "affinity-high");
     var barColor = aff < 30 ? "#c0392b" : (aff < 60 ? "#d4a017" : "#27ae60");
@@ -462,6 +520,8 @@
       });
       html += '</div>';
     }
+
+    html += _buildPromiseBadgeHtml(a.id, promisesByAgentId);
 
     var card = document.createElement("div");
     card.className = "relationship-card";
@@ -616,7 +676,7 @@
     container.appendChild(grid);
   }
 
-  function renderRelationships(agents) {
+  function renderRelationships(agents, promisesByAgentId) {
     var container = el("relationships-list");
     container.innerHTML = "";
 
@@ -662,7 +722,7 @@
       panelEl.appendChild(subHd);
       var grid = document.createElement("div");
       grid.className = "social-section-grid";
-      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, isLocal)); });
+      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, isLocal, promisesByAgentId)); });
       panelEl.appendChild(grid);
     }
 
@@ -694,7 +754,7 @@
       panelEl.appendChild(hd);
       var grid = document.createElement("div");
       grid.className = "social-section-grid";
-      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, false)); });
+      list.forEach(function (a) { grid.appendChild(_buildRelCard(a, negoByAgent, false, promisesByAgentId)); });
       panelEl.appendChild(grid);
     }
 
@@ -716,6 +776,10 @@
             btn.textContent = nominated ? '取消举荐' : '举荐应试';
             btn.disabled = false;
             Game.components.showToast(res.message || (nominated ? '已举荐应试' : '已取消举荐'), 'success');
+            // 同步内存中的 clan_youth_pending，避免推进月份时仍弹旧提示
+            if (g.county_data && res.clan_youth_pending !== undefined) {
+              g.county_data.clan_youth_pending = res.clan_youth_pending;
+            }
           })
           .catch(function (err) {
             btn.disabled = false;
@@ -1040,6 +1104,121 @@
     container.scrollTop = container.scrollHeight;
   }
 
+  // ── 承诺渲染 ──────────────────────────────────────────────────────────────
+
+  var PROMISE_STATUS_CONF = {
+    PENDING:   { label: '待履行', color: '#c0a030', cls: 'promise-status-pending' },
+    FULFILLED: { label: '已履行', color: '#27ae60', cls: 'promise-status-fulfilled' },
+    BROKEN:    { label: '已违约', color: '#c0392b', cls: 'promise-status-broken' },
+  };
+
+  function _promiseDeadlineText(p, currentSeason) {
+    var diff = p.deadline_season - (currentSeason || 0);
+    if (p.status !== 'PENDING') return '';
+    if (diff < 0)  return '（已逾期）';
+    if (diff === 0) return '（本月到期）';
+    return '（还剩 ' + diff + ' 月）';
+  }
+
+  function renderPromiseList(promises, filterStatus, focusAgentId) {
+    var container = document.getElementById('promise-list-container');
+    if (!container) return;
+
+    var g = Game.state.currentGame;
+    var currentSeason = g ? g.current_season : 0;
+
+    var list = promises || [];
+    if (filterStatus) list = list.filter(function (p) { return p.status === filterStatus; });
+    if (focusAgentId) list = list.filter(function (p) { return p.agent_id === focusAgentId; });
+
+    if (!list.length) {
+      container.innerHTML = '<p class="hint">' + (focusAgentId ? '该人物暂无承诺记录' : '暂无承诺记录') + '</p>';
+      return;
+    }
+
+    // 排序：待履行在前，按截止月升序；其余按时间倒序
+    var pending = list.filter(function (p) { return p.status === 'PENDING'; })
+      .sort(function (a, b) { return a.deadline_season - b.deadline_season; });
+    var others = list.filter(function (p) { return p.status !== 'PENDING'; })
+      .sort(function (a, b) { return b.season_made - a.season_made; });
+    var sorted = pending.concat(others);
+
+    var html = '';
+    // 若有 focusAgentId，显示人物名标题
+    if (focusAgentId && list.length > 0) {
+      html += '<div class="promise-agent-focus-hd">与 ' + escapeHtml(list[0].agent_name) + ' 的承诺</div>';
+    }
+
+    sorted.forEach(function (p) {
+      var conf = PROMISE_STATUS_CONF[p.status] || { label: p.status, color: '#888', cls: '' };
+      var deadlineText = _promiseDeadlineText(p, currentSeason);
+      var overdue = p.status === 'PENDING' && p.deadline_season < currentSeason;
+      html +=
+        '<div class="promise-card' + (overdue ? ' promise-card-overdue' : '') + '" data-promise-id="' + p.id + '">' +
+          '<div class="promise-card-bar" style="background:' + conf.color + ';"></div>' +
+          '<div class="promise-card-body">' +
+            '<div class="promise-card-top">' +
+              '<span class="promise-type-tag">' + escapeHtml(p.promise_type_display) + '</span>' +
+              '<span class="promise-status-tag ' + conf.cls + '">' + conf.label + '</span>' +
+            '</div>' +
+            '<div class="promise-card-desc">' + escapeHtml(p.description) + '</div>' +
+            '<div class="promise-card-meta">' +
+              '<span class="promise-agent-name">对象：' + escapeHtml(p.agent_name) + '</span>' +
+              '<span class="promise-deadline">截止第 ' + p.deadline_season + ' 月' + escapeHtml(deadlineText) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    });
+    container.innerHTML = html;
+
+    // 点击查看详情
+    container.querySelectorAll('.promise-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var pid = parseInt(card.dataset.promiseId, 10);
+        var p = (Game.state.promises || []).find(function (x) { return x.id === pid; });
+        if (p) openPromiseDetail(p);
+      });
+    });
+  }
+
+  function openPromiseDetail(p) {
+    var modal = document.getElementById('promise-detail-modal');
+    var title = document.getElementById('promise-detail-title');
+    var body  = document.getElementById('promise-detail-body');
+    if (!modal || !title || !body) return;
+
+    var conf = PROMISE_STATUS_CONF[p.status] || { label: p.status, color: '#888' };
+    title.textContent = p.promise_type_display + '——' + p.agent_name;
+
+    var g = Game.state.currentGame;
+    var currentSeason = g ? g.current_season : 0;
+    var deadlineText = _promiseDeadlineText(p, currentSeason);
+    var overdue = p.status === 'PENDING' && p.deadline_season < currentSeason;
+
+    body.innerHTML =
+      '<div class="promise-detail-status" style="color:' + conf.color + ';">' + conf.label + (overdue ? '（已逾期）' : '') + '</div>' +
+      '<div class="promise-detail-row"><span class="pdl">承诺内容</span><span>' + escapeHtml(p.description) + '</span></div>' +
+      '<div class="promise-detail-row"><span class="pdl">承诺对象</span><span>' + escapeHtml(p.agent_name) + '</span></div>' +
+      '<div class="promise-detail-row"><span class="pdl">承诺时间</span><span>第 ' + p.season_made + ' 月</span></div>' +
+      '<div class="promise-detail-row"><span class="pdl">截止时间</span><span>第 ' + p.deadline_season + ' 月' + escapeHtml(deadlineText) + '</span></div>';
+
+    modal.classList.remove('hidden');
+  }
+
+  // 人物卡片上的承诺 badge（pending 数量）
+  function _buildPromiseBadgeHtml(agentId, promisesByAgentId) {
+    var list = (promisesByAgentId || {})[agentId] || [];
+    var pending = list.filter(function (p) { return p.status === 'PENDING'; });
+    if (!pending.length) return '';
+    return (
+      '<div class="promise-agent-badge" data-agent-id="' + agentId + '">' +
+        '<span class="promise-agent-badge-icon">⚑</span>' +
+        '<span>' + pending.length + ' 项待履行承诺</span>' +
+        '<button class="btn-promise-view btn btn-small">查看</button>' +
+      '</div>'
+    );
+  }
+
   // Export
   C.checkActiveNegotiation = checkActiveNegotiation;
   C.renderNegotiationBanner = renderNegotiationBanner;
@@ -1050,6 +1229,8 @@
   C.showNegotiationResolved = showNegotiationResolved;
   C.renderEventLogs = renderEventLogs;
   C.renderRelationships = renderRelationships;
+  C.renderPromiseList = renderPromiseList;
+  C.openPromiseDetail = openPromiseDetail;
   C.renderClanOverview = _renderClanOverview;
   C.openAgentProfile = openAgentProfile;
   C.renderStaffTab = renderStaffTab;

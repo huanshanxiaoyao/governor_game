@@ -477,12 +477,12 @@ body {
   padding: 12px 17px 10px;
   color: rgba(255,255,255,0.9);
 }
-.hero-grain          .hero-detail { background: rgba(30,70,48,0.92); }
-.hero-grain-danger   .hero-detail { background: rgba(88,10,10,0.92); }
-.hero-quota-ok       .hero-detail { background: rgba(28,60,88,0.92); }
-.hero-quota-warn     .hero-detail { background: rgba(80,46,8,0.92);  }
-.hero-quota-danger   .hero-detail { background: rgba(88,10,10,0.92); }
-.hero-quota-critical .hero-detail { background: rgba(60,0,0,0.95);   }
+.hero-grain          ~ .hero-detail { background: rgba(20,55,35,0.97); }
+.hero-grain-danger   ~ .hero-detail { background: rgba(70,8,8,0.97); }
+.hero-quota-ok       ~ .hero-detail { background: rgba(18,48,72,0.97); }
+.hero-quota-warn     ~ .hero-detail { background: rgba(65,36,5,0.97);  }
+.hero-quota-danger   ~ .hero-detail { background: rgba(70,8,8,0.97); }
+.hero-quota-critical ~ .hero-detail { background: rgba(50,0,0,0.98);  }
 .hd-row {
   display: flex;
   justify-content: space-between;
@@ -493,7 +493,7 @@ body {
 }
 .hd-row:last-child { border-bottom: none; }
 .hd-row-warn .hd-value { color: #ffcc80; }
-.hd-label { opacity: 0.72; }
+.hd-label { opacity: 0.88; }
 .hd-value { font-weight: 600; color: #fff; }
 .hd-divider { border: none; border-top: 1px solid rgba(255,255,255,0.15); margin: 4px 0; }
 .hd-mini-bar-wrap  { display: inline-block; width: 60px; height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; vertical-align: middle; margin-right: 5px; overflow: hidden; }
@@ -920,6 +920,7 @@ body {
 .village-tr:hover td { background-color: #f5f0e4 !important; }
 .vt-name { font-size: 0.9em; }
 .vt-center { text-align: center; }
+.vt-none { color: rgba(255,255,255,0.3); font-size: 0.85em; }
 .occ-ok     { font-size: 0.8em; color: #4a6018; }
 .occ-warn   { font-size: 0.8em; color: #7a4a08; font-weight: 600; }
 .occ-danger { font-size: 0.8em; color: #8b2020; font-weight: 600; }
@@ -1982,6 +1983,10 @@ body {
 .nego-msg-agent {
   margin-right: auto;
 }
+.nego-msg-advisor {
+  margin-right: auto;
+  max-width: 90%;
+}
 .nego-msg-label {
   display: block;
   font-size: 0.75em;
@@ -2004,6 +2009,17 @@ body {
 .nego-msg-agent .nego-msg-content {
   background: #fffdf7;
   border: 1px solid #d5ceb8;
+}
+.nego-msg-advisor .nego-msg-content {
+  background: #fdf6e0;
+  border: 1px solid #c9a84c;
+  color: #4a3410;
+  font-style: italic;
+  border-bottom-left-radius: 2px;
+}
+.nego-msg-advisor .nego-msg-label {
+  color: #8b6400;
+}
   color: #3a3428;
   border-bottom-left-radius: 2px;
 }
@@ -2053,6 +2069,49 @@ body {
   color: #5c4a2a;
 }
 .nego-outcome strong { display: block; margin-bottom: 4px; }
+.nego-summary {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #f8f4ec;
+  border: 1px solid #d5ceb8;
+  border-radius: 4px;
+  font-size: 0.88em;
+  text-align: left;
+}
+.ns-conclusion {
+  font-weight: 600;
+  color: #3a2e14;
+  margin-bottom: 7px;
+}
+.ns-section {
+  margin-bottom: 5px;
+  color: #5c4a2a;
+  line-height: 1.6;
+}
+.ns-label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.ns-item {
+  display: inline-block;
+  background: rgba(107,143,74,0.12);
+  border: 1px solid rgba(107,143,74,0.3);
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin: 2px 3px 0 0;
+  font-size: 0.95em;
+}
+.ns-item-npc {
+  background: rgba(180,130,60,0.12);
+  border-color: rgba(180,130,60,0.3);
+}
+.ns-key-moment {
+  margin-top: 7px;
+  color: #6b5d45;
+  font-style: italic;
+  border-top: 1px solid #e0d8c4;
+  padding-top: 6px;
+}
 .nego-promise-hint {
   margin: 0 20px 8px;
   padding: 8px 12px;
@@ -2475,6 +2534,176 @@ body {
   color: #fff;
   border-color: #8b5e1a;
 }
+
+/* ── 承诺 Tab badge ── */
+.promise-tab-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 11px;
+  border-radius: 8px;
+  line-height: 16px;
+  vertical-align: middle;
+}
+
+/* ── 承诺过滤器 ── */
+.promise-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 0 8px;
+  flex-wrap: wrap;
+}
+.promise-filter-btn {
+  padding: 3px 12px;
+  border: 1px solid #c9a84c;
+  border-radius: 12px;
+  background: #fff;
+  color: #6b5d45;
+  font-size: 13px;
+  cursor: pointer;
+}
+.promise-filter-btn.active {
+  background: #8b5e1a;
+  color: #fff;
+  border-color: #8b5e1a;
+}
+
+/* ── 承诺卡片 ── */
+.promise-card {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #e0d5b0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: #fdf9f0;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  overflow: hidden;
+}
+.promise-card:hover { border-color: #a87a3a; background: #fffbf0; }
+.promise-card-overdue { border-color: #c0392b; background: #fff5f5; }
+.promise-card-bar { width: 5px; flex-shrink: 0; }
+.promise-card-body { flex: 1; padding: 10px 12px; }
+.promise-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.promise-type-tag {
+  font-size: 12px;
+  padding: 1px 7px;
+  background: #e8dfc0;
+  border-radius: 4px;
+  color: #5a4a2a;
+}
+.promise-status-tag {
+  font-size: 12px;
+  font-weight: bold;
+}
+.promise-status-pending  { color: #c0a030; }
+.promise-status-fulfilled { color: #27ae60; }
+.promise-status-broken   { color: #c0392b; }
+.promise-card-desc { font-size: 14px; color: #3a2e1a; margin-bottom: 6px; }
+.promise-card-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #8a7a5a;
+}
+.promise-agent-focus-hd {
+  font-size: 13px;
+  color: #6b5d45;
+  font-weight: bold;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid #e0d5b0;
+  margin-bottom: 10px;
+}
+
+/* ── 人物卡片内承诺 badge ── */
+.promise-agent-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  background: #fdf6e0;
+  border: 1px solid #c9a84c;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #6b5d45;
+}
+.promise-agent-badge-icon { color: #c0a030; font-size: 14px; }
+.btn-promise-view {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* ── 通用 modal-overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+.modal-overlay.hidden { display: none !important; }
+.modal-box {
+  background: #fdf9f0;
+  border: 1px solid #c9a84c;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+}
+.modal-box-sm { max-width: 420px; }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0d5b0;
+}
+.modal-title { font-size: 15px; font-weight: bold; color: #5a3a0a; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #8a7a5a;
+  line-height: 1;
+  padding: 0 4px;
+}
+.modal-close:hover { color: #c0392b; }
+.modal-body { padding: 14px 16px; }
+
+/* ── 承诺详情 modal ── */
+.promise-detail-status {
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+.promise-detail-row {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+  color: #3a2e1a;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.pdl {
+  min-width: 72px;
+  color: #8a7a5a;
+  flex-shrink: 0;
+}
+
 .clan-overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
