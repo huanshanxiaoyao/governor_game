@@ -151,17 +151,17 @@ class PromiseService:
                 if cls._is_in_construction(promise, game):
                     events.append(f'承诺延期：{promise.description}（项目建设中，暂不计为违约）')
                 else:
-                    # UPGRADE_FACILITY 超期3个月才真正违约，并施加额外民心/好感惩罚
-                    grace = 3 if promise.promise_type == 'UPGRADE_FACILITY' else 0
-                    if game.current_season < promise.deadline_season + grace:
-                        events.append(f'承诺延期警告：{promise.description}（尚在{grace}月宽限期内）')
-                    else:
-                        cls._resolve_promise(promise, game, 'BROKEN')
-                        if promise.promise_type == 'UPGRADE_FACILITY':
-                            cls._apply_upgrade_facility_broken_penalty(promise, game)
-                            events.append(f'承诺严重违约：{promise.description}（清名-5，民心/好感大幅下降）')
-                        else:
-                            events.append(f'承诺已违约：{promise.description}（清名-5）')
+                    cls._resolve_promise(promise, game, 'BROKEN')
+                    cls._apply_breach_penalty(promise, game)
+                    penalty = cls._BREACH_PENALTY_TABLE.get(
+                        promise.promise_type, cls._BREACH_PENALTY_TABLE['OTHER'])
+                    parts = [f'承诺已违约：{promise.description}（清名-5']
+                    if penalty['morale']:
+                        parts.append(f'，民心{penalty["morale"]}')
+                    if penalty['affinity']:
+                        parts.append(f'，好感{penalty["affinity"]}')
+                    parts.append('）')
+                    events.append(''.join(parts))
 
         return events
 
@@ -276,20 +276,59 @@ class PromiseService:
         # OTHER: cannot auto-validate
         return False
 
+    # ── 统一违约惩罚框架 ──
+    # integrity 一律 -5（在 _resolve_promise 中处理）
+    # 额外 morale / affinity 惩罚按承诺类型查表：
+    #   scope="village" → 村级 morale delta（通过 village_delta 参数）
+    #   scope="county"  → 全县 morale delta
+    #   affinity_delta  → 相关 NPC 好感变化（有请愿人时生效）
+    _BREACH_PENALTY_TABLE = {
+        'BUILD_SCHOOL':      {'scope': 'village', 'morale': -5,  'affinity': -8},
+        'LOWER_TAX':         {'scope': 'county',  'morale': -8,  'affinity': -10},
+        'RELIEF':            {'scope': 'county',  'morale': -8,  'affinity': 0},
+        'RECLAIM_LAND':      {'scope': 'village', 'morale': -5,  'affinity': -8},
+        'BUILD_IRRIGATION':  {'scope': 'county',  'morale': -5,  'affinity': 0},
+        'HIRE_BAILIFFS':     {'scope': 'county',  'morale': -5,  'affinity': 0},
+        'UPGRADE_FACILITY':  {'scope': 'county',  'morale': -8,  'affinity': -10},
+        'REPAIR_ROADS':      {'scope': 'county',  'morale': -5,  'affinity': 0},
+        'BUILD_GRANARY':     {'scope': 'county',  'morale': -5,  'affinity': 0},
+        'BUILD_MEDICAL':     {'scope': 'county',  'morale': -5,  'affinity': 0},
+        'OTHER':             {'scope': None,       'morale': 0,   'affinity': 0},
+    }
+
     @classmethod
-    def _apply_upgrade_facility_broken_penalty(cls, promise, game):
-        """UPGRADE_FACILITY 违约额外惩罚：民心和地主好感大幅下降。"""
+    def _apply_breach_penalty(cls, promise, game):
+        """统一违约惩罚：根据承诺类型查表施加 morale 和 affinity 惩罚。"""
         from .state import load_county_state, save_player_state
         from .settlement_metrics import MetricsMixin
-        from ..models import Agent
-        county = load_county_state(game)
-        MetricsMixin.apply_county_stat_delta(county, 'morale', -15)
-        save_player_state(game, county)
-        # 地主好感 -15
-        agent = promise.agent
-        if agent:
+
+        penalty = cls._BREACH_PENALTY_TABLE.get(
+            promise.promise_type, cls._BREACH_PENALTY_TABLE['OTHER'])
+        morale_delta = penalty['morale']
+        affinity_delta = penalty['affinity']
+
+        if morale_delta != 0:
+            county = load_county_state(game)
+            target_village = (promise.context or {}).get('target_village')
+
+            if penalty['scope'] == 'village' and target_village:
+                # 单村惩罚：仅影响目标村，县级通过聚合更新
+                for v in county.get('villages', []):
+                    if v['name'] == target_village:
+                        v['morale'] = max(0.0, min(100.0,
+                            float(v.get('morale', 50.0)) + morale_delta))
+                        break
+                MetricsMixin._sync_county_from_villages(county, 'morale')
+            else:
+                MetricsMixin.apply_county_stat_delta(county, 'morale', morale_delta)
+
+            save_player_state(game, county)
+
+        if affinity_delta != 0 and promise.agent:
+            agent = promise.agent
             attrs = agent.attributes or {}
-            attrs['player_affinity'] = max(-99, int(attrs.get('player_affinity', 50)) - 15)
+            attrs['player_affinity'] = max(-99, min(99,
+                int(attrs.get('player_affinity', 50)) + affinity_delta))
             agent.attributes = attrs
             agent.save(update_fields=['attributes'])
 
