@@ -60,7 +60,7 @@ class InvestmentService:
         },
         "hire_bailiffs": {
             "cost": 40,
-            "delay_months": 0,  # immediate
+            "delay_months": 1,  # 1个月后生效（募集训练）
             "requires_village": False,
             "description": "增设衙役",
         },
@@ -478,8 +478,11 @@ class InvestmentService:
             if current_level >= INFRA_MAX_LEVEL:
                 return False, f"已达最高等级({INFRA_MAX_LEVEL})"
 
-        if action == "hire_bailiffs" and county.get("bailiff_level", 0) >= 3:
-            return False, "衙役已达最高等级(3)"
+        if action == "hire_bailiffs":
+            if county.get("bailiff_level", 0) >= 3:
+                return False, "衙役已达最高等级(3)"
+            if action in active_actions:
+                return False, "衙役募集训练中"
         if action == "build_granary" and county.get("has_granary", False):
             return False, "义仓已建成"
 
@@ -564,18 +567,21 @@ class InvestmentService:
 
         # Apply immediate or delayed effects
         if action == "hire_bailiffs":
-            county["bailiff_level"] += 1
-            actual_security_gain = MetricsMixin.apply_county_stat_delta(
-                county, "security", 8,
-            )
-            admin_increase = round(40 * price_index)
-            county["admin_cost"] += admin_increase
-            if "admin_cost_detail" in county:
-                county["admin_cost_detail"]["bailiff_cost"] += admin_increase
-            msg = (
-                f"衙役等级提升至{county['bailiff_level']}，全县治安+{actual_security_gain:.1f}，"
-                f"年行政开支+{admin_increase}两"
-            )
+            # 延迟1个月生效（募集训练），效果递减(8/7/6)
+            target_level = county.get("bailiff_level", 0) + 1
+            completion = season + 1
+            investment = {
+                "action": action,
+                "started_season": season,
+                "completion_season": completion,
+                "description": spec["description"],
+                "target_bailiff_level": target_level,
+            }
+            county["active_investments"].append(investment)
+            if completion > MAX_MONTH:
+                msg = f"增设衙役已启动（花费{actual_cost}两），但将在任期结束后才完成"
+            else:
+                msg = f"增设衙役已启动（花费{actual_cost}两），预计{month_name(completion)}完成"
             return actual_cost, msg
 
         if action == "build_granary":

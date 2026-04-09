@@ -94,6 +94,21 @@ class SeasonalMixin:
                     break
             sync_county_gentry_land_ratio(county)
 
+        elif action == "hire_bailiffs":
+            county["bailiff_level"] = min(3, county.get("bailiff_level", 0) + 1)
+            new_level = county["bailiff_level"]
+            # 治安增益递减：L1→+8, L2→+7, L3→+6
+            security_gain = 9 - new_level  # 8, 7, 6
+            actual_gain = cls.apply_county_stat_delta(county, "security", security_gain)
+            price_index = county.get("price_index", 1.0)
+            admin_increase = round(40 * price_index)
+            county["admin_cost"] += admin_increase
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["bailiff_cost"] += admin_increase
+            report["events"].append(
+                f"衙役募集训练完成，等级提升至{new_level}，"
+                f"治安+{actual_gain:.1f}（递减），年行政开支+{admin_increase}两")
+
         elif action == "build_irrigation":
             county["irrigation_level"] = min(INFRA_MAX_LEVEL, county.get("irrigation_level", 0) + 1)
             new_maint = calculate_infra_maint("irrigation", county["irrigation_level"], county)

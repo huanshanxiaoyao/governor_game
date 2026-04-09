@@ -218,15 +218,12 @@ class MetricsMixin:
         # 基础衰减：-1.0/月（分区乘数调整）
         delta = -1.0 * cls._zone_multiplier(old_county)
 
-        # 文教贡献：文教>40时才有加成，(edu-40)/60
-        if county["education"] > 40:
-            delta += (county["education"] - 40) / 60
+        # 文教贡献：文教>30时加成，连续渐变 (edu-30)/40（文教80→+1.25）
+        if county["education"] > 30:
+            delta += (county["education"] - 30) / 40
 
-        # 治安联动
-        if county["security"] > 60:
-            delta += 0.5
-        elif county["security"] < 30:
-            delta -= 0.5
+        # 治安联动：连续渐变 (security-50)/40（治安75→+0.625，治安30→-0.5）
+        delta += (county["security"] - 50) / 40
 
         # 重税惩罚
         if county["tax_rate"] >= 0.15:
@@ -281,15 +278,19 @@ class MetricsMixin:
 
     @classmethod
     def _update_education(cls, county, report):
-        """月度文教结算：自然衰减 + 学校等级减免 + 分区乘数。
+        """月度文教结算：自然衰减 + 学校等级减免 + 村塾减免 + 分区乘数。
         文教为县级独立指标（无村级分布），直接更新 county["education"]。
+        零衰减需 L3县学+3村塾 或 L2县学+6村塾。
         """
         old_edu = float(county.get("education", 0.0))
 
-        # 基础衰减：-0.3/月；学校每级减免 0.15（最多3级 → 减免0.45，净衰减≈0.05）
+        # 基础衰减：-0.6/月；县学每级减免0.15，每个村塾减免0.05
         school_level = county.get("school_level", 0)
-        school_reduction = school_level * 0.15
-        net_decay = max(0.0, 0.3 - school_reduction) * cls._zone_multiplier(old_edu)
+        village_school_count = sum(
+            1 for v in county.get("villages", []) if v.get("has_school")
+        )
+        school_reduction = school_level * 0.15 + village_school_count * 0.05
+        net_decay = max(0.0, 0.6 - school_reduction) * cls._zone_multiplier(old_edu)
 
         county["education"] = round(max(0.0, min(100.0, old_edu - net_decay)), 1)
 

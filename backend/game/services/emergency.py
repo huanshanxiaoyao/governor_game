@@ -218,6 +218,17 @@ class EmergencyService:
         grant = min(grant, grant_cap)
         grant = round(grant, 1)
 
+        # ── 根据府库/义仓实际容量修正可拨粮额 ──
+        ps = county.get('prefecture_state', {})
+        pref_granary_stock = ps.get('granary_stock', 0.0) if ps.get('granary') else 0.0
+        pref_treasury = float(ps.get('treasury', 0.0))
+        # 府库保留50两底线，剩余最多动用25%
+        pref_treasury_grain_cap = max(0.0, min(pref_treasury - 50.0, pref_treasury * 0.25)) * GRAIN_PER_LIANG
+        pref_max_grant = round(pref_granary_stock + pref_treasury_grain_cap, 1)
+        if pref_max_grant < grant:
+            grant = max(0.0, pref_max_grant)
+            grant = round(grant, 1)
+
         if grant <= 0:
             status = "DENIED"
             message = "知府驳回拨粮请求，本月未获拨粮"
@@ -227,6 +238,40 @@ class EmergencyService:
         else:
             status = "APPROVED"
             message = f"知府批准拨粮{round(grant)}斤，准予先行赈济"
+
+        # ── 从 prefecture_state 扣除对应资源（义仓优先，不足再动府库）──
+        grain_from_granary = 0.0
+        silver_cost = 0.0
+        if grant > 0:
+            grain_remaining = grant
+            if pref_granary_stock > 0:
+                grain_from_granary = min(grain_remaining, pref_granary_stock)
+                ps['granary_stock'] = round(pref_granary_stock - grain_from_granary, 1)
+                grain_remaining -= grain_from_granary
+            if grain_remaining > 0:
+                silver_cost = round(grain_remaining / GRAIN_PER_LIANG, 1)
+                ps['treasury'] = round(pref_treasury - silver_cost, 1)
+            # 府志记录（保留最近20条）
+            county_name = county.get('county_name', '本县')
+            log_desc = f"第{game.current_season}月，{county_name}上报粮荒，拨粮{round(grant)}斤"
+            if grain_from_granary > 0:
+                log_desc += f"（义仓{round(grain_from_granary)}斤"
+                if silver_cost > 0:
+                    log_desc += f"，府库{silver_cost}两"
+                log_desc += "）"
+            elif silver_cost > 0:
+                log_desc += f"（府库拨银{silver_cost}两）"
+            relief_log = ps.get('relief_log', [])
+            relief_log.append({
+                'season': game.current_season,
+                'county': county_name,
+                'grant': round(grant, 1),
+                'grain_from_granary': round(grain_from_granary, 1),
+                'silver_cost': silver_cost,
+                'desc': log_desc,
+            })
+            ps['relief_log'] = relief_log[-20:]
+            county['prefecture_state'] = ps
 
         county["peasant_grain_reserve"] = reserve_before + grant
         if grant > 0:
@@ -246,14 +291,18 @@ class EmergencyService:
             game=game,
             season=game.current_season,
             event_type="prefecture_relief_request",
-            category="SYSTEM",
+            category="PREFECT",
             description=message,
             data={
                 "status": status,
                 "grant": grant,
+                "grain_from_granary": round(grain_from_granary, 1),
+                "silver_cost": silver_cost,
                 "support_score": round(support, 3),
                 "reserve_before": round(reserve_before, 1),
                 "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
+                "pref_treasury_after": round(ps.get('treasury', pref_treasury), 1),
+                "pref_granary_after": round(ps.get('granary_stock', pref_granary_stock), 1),
             },
         )
 
@@ -261,8 +310,11 @@ class EmergencyService:
             "success": True,
             "status": status,
             "grant": grant,
+            "grain_from_granary": round(grain_from_granary, 1),
+            "silver_cost": silver_cost,
             "support_score": round(support, 3),
             "reserve_after": round(county.get("peasant_grain_reserve", 0.0), 1),
+            "pref_treasury_after": round(ps.get('treasury', pref_treasury), 1),
             "message": message,
         }
 
@@ -655,8 +707,8 @@ class EmergencyService:
             attrs = dict(agent.attributes or {})
             personality = attrs.get("personality", {}) or {}
             agree = max(0.0, min(1.0, float(personality.get("agreeableness", 0.5))))
-            base_loss = 16.0 + share * 26.0
-            loss = max(4.0, base_loss * (1.0 - agree * 0.55))
+            # 好感损失：-10基础 + 按征粮份额最多再-10（范围-10到-20）
+            loss = 10.0 + share * 10.0
             old = float(attrs.get("player_affinity", 50.0))
             attrs["player_affinity"] = max(-99.0, old - loss)
             memory = list(attrs.get("memory", []))

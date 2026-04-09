@@ -835,14 +835,12 @@ class AgentService:
 
     @staticmethod
     def _apply_chat_effects(agent, result):
-        """更新Agent的好感度和记忆"""
+        """更新Agent的记忆（好感度仅由结局决定，对话轮不直接改affinity）"""
         attrs = agent.attributes
 
-        # 好感度变化
-        change = result.get('attitude_change', 0)
-        if change:
-            old = attrs.get('player_affinity', 50)
-            attrs['player_affinity'] = max(-99, min(99, old + change))
+        # 对话轮 attitude_change 不再写入 player_affinity，
+        # 仅用于影响LLM下一轮的语气和willingness参数。
+        # 好感度由谈判结局硬编码决定（见 negotiation.py 各 _apply_*_outcome）。
 
         # 追加记忆
         new_mem = result.get('new_memory', '')
