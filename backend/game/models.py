@@ -283,6 +283,7 @@ class NegotiationSession(models.Model):
         ('VILLAGE_REQ_SCHOOL', '村民请愿·建村塾'),
         ('VILLAGE_REQ_TAX', '村民请愿·减税'),
         ('LANDLORD_DEMAND_FACILITY', '地主要求·升级公共设施'),
+        ('GENTRY_RELIEF_OFFER', '地主主动救济·开仓放粮'),
     ]
     STATUS_CHOICES = [
         ('active', '进行中'),

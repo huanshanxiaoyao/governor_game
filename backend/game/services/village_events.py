@@ -6,7 +6,7 @@
               → 创建 NegotiationSession，走谈判/承诺提取流程
   简单类   — V2 村民请愿赈灾 / G1 地主出资建村塾
               → 存入 county_data['npc_pending_requests']，玩家点击接受/拒绝
-  自动类   — G2 引荐商路（自动效果）/ D1 宗族举贤（自动生成 CLAN_YOUTH NPC）
+  自动类   — D1 宗族举贤（自动生成 CLAN_YOUTH NPC）
               → 无需玩家操作，直接写入 report['events']
 """
 import logging
@@ -66,9 +66,10 @@ class VillageEventService:
         # ── 简单类 ──
         cls._check_v2_relief(game, county, history, villagers, report)
         cls._check_g1_fund_school(game, county, history, gentry, report)
+        cls._check_g2_trade_route(game, county, history, gentry, report)
+        cls._check_g3_gentry_relief(game, county, history, gentry, report)
 
         # ── 自动类 ──
-        cls._check_g2_trade_route(game, county, history, gentry, report)
         if moy == 5:
             cls._check_d1_clan_youth(game, county, history, gentry, report, yoy)
 
@@ -420,45 +421,129 @@ class VillageEventService:
             break  # 每月至多一个
 
     # ────────────────────────────────────────────────
-    # G2: 引荐商路（自动效果）
+    # G2: 地主引荐商路（简单请愿类，玩家接受/拒绝）
     # ────────────────────────────────────────────────
 
     @classmethod
     def _check_g2_trade_route(cls, game, county, history, gentry_map, report):
-        """触发条件：security≥60 + commercial<50 + affinity≥45；自动效果，每村每年至多一次。"""
+        """触发条件：security≥60 + commercial<60 + affinity≥50；每村每年至多一次。
+        改为简单请愿类：地主提出引荐商路，换取知县承诺明年举荐其宗族后生。"""
         security = county.get('security', 0)
         commercial = county.get('commercial', 100)
-        if security < 60 or commercial >= 50:
+        if security < 60 or commercial >= 60:
             return
 
         yoy = year_of(game.current_season)
         g2_hist = history.setdefault('g2_trade', {})
 
-        from .settlement_metrics import MetricsMixin
-
-        triggered = False
         for vname, gentry_agent in gentry_map.items():
             if g2_hist.get(vname) == yoy:
                 continue
             affinity = (gentry_agent.attributes or {}).get('player_affinity', 0)
-            if affinity < 45:
+            if affinity < 50:
                 continue
-            if random.random() > 0.4:  # 40% 月触发概率
+            if random.random() > 0.35:  # 35% 月触发概率
                 continue
 
             g2_hist[vname] = yoy
-            gain = MetricsMixin.apply_county_stat_delta(county, 'commercial', 5)
-            report['events'].append(
-                f'【商路引荐】{vname}地主{gentry_agent.name}引荐商贾，商业+{gain:.1f}。'
-            )
-            log_game_event(
-                game,
-                event_type='gentry_trade_route',
-                category='SOCIAL',
-                description=f'{vname}地主{gentry_agent.name}引荐商路，商业+{gain:.1f}',
-                data={'village_name': vname, 'agent_name': gentry_agent.name, 'commercial_gain': gain},
-            )
-            triggered = True
-            break  # 每月至多一条商路
 
-        return triggered
+            # 商业为县级独立指标，直接按县级估算增益
+            est_gain = min(8, int(100 - county.get('commercial', 50)))  # 最多+8
+
+            _safe_add_pending_req(county, {
+                'id': str(uuid.uuid4()),
+                'type': 'GENTRY_TRADE_ROUTE',
+                'village_name': vname,
+                'agent_id': gentry_agent.id,
+                'agent_name': gentry_agent.name,
+                'est_gain': est_gain,
+                'message': (
+                    f'【商路引荐】{vname}地主{gentry_agent.name}愿引荐商贾进驻本村，'
+                    f'可带动商业约+{est_gain}。'
+                    f'作为交换，望知县明年举荐其族中后生参加府试。'
+                ),
+            })
+            report['events'].append(
+                f'【商路引荐】{vname}地主{gentry_agent.name}请求引荐商路，'
+                f'商业约+{est_gain}，以宗族举荐为换。请于本月内回复。'
+            )
+            break  # 每月至多一条
+
+    # ────────────────────────────────────────────────
+    # G3: 地主主动救济·开仓放粮
+    # ────────────────────────────────────────────────
+
+    @classmethod
+    def _check_g3_gentry_relief(cls, game, county, history, gentry_map, report):
+        """触发条件：粮食危机激活 + 地主好感度>50 + 魅力>=6；每村每次危机冷却6个月。
+
+        开启地主主动对话（GENTRY_RELIEF_OFFER），地主提出开仓救济本村农民。
+        """
+        from .negotiation import NegotiationService
+
+        emergency = county.get('emergency', {})
+        if not emergency.get('active'):
+            return
+
+        disaster = county.get('disaster_this_year') or {}
+        disaster_type = disaster.get('type', '灾情')
+
+        g3_hist = history.setdefault('g3_relief', {})
+
+        for vname, gentry_agent in gentry_map.items():
+            # 冷却：同村6个月内不重复触发
+            last_triggered = g3_hist.get(vname, 0)
+            if game.current_season - last_triggered < 6:
+                continue
+
+            attrs = gentry_agent.attributes or {}
+            affinity = float(attrs.get('player_affinity', 0))
+            charisma = int(attrs.get('charisma', 0))
+
+            if affinity <= 50:
+                continue
+            if charisma < 6:
+                continue
+
+            # 检查地主是否有可动用余粮
+            grain_surplus = 0.0
+            for v in county.get('villages', []):
+                if v['name'] == vname:
+                    grain_surplus = float(v.get('gentry_ledger', {}).get('grain_surplus', 0.0))
+                    break
+            if grain_surplus <= 0:
+                continue
+
+            relief_estimate = round(grain_surplus * 0.20, 1)  # 展示估算（取20%中位值）
+
+            context_data = {
+                'village_name': vname,
+                'disaster_type': disaster_type,
+                'grain_surplus': grain_surplus,
+                'relief_estimate': relief_estimate,
+                'event_subtype': 'G3',
+            }
+            session, err = NegotiationService.start_negotiation(
+                game, gentry_agent, 'GENTRY_RELIEF_OFFER', context_data,
+            )
+            if err:
+                continue
+
+            g3_hist[vname] = game.current_season
+            report['events'].append(
+                f'【地主义举】{vname}地主{gentry_agent.name}主动请见，'
+                f'愿开仓放粮约{round(relief_estimate)}斤救济本村灾民，请前往回应。'
+            )
+            if not isinstance(game.pending_events, list):
+                game.pending_events = []
+            game.pending_events.append({
+                'type': 'GENTRY_RELIEF_OFFER',
+                'message': (
+                    f'{vname}地主{gentry_agent.name}主动提出开仓放粮'
+                    f'约{round(relief_estimate)}斤救济本村灾民'
+                ),
+                'negotiation_id': session.id,
+                'village_name': vname,
+                'agent_name': gentry_agent.name,
+            })
+            break  # 每月至多触发一个村
