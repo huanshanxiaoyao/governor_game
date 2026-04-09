@@ -503,7 +503,7 @@ class PrefectureService:
         }
 
         # ── AI 县应急拨粮/借粮（结算前执行，使本月结算能感知到粮食补充）──
-        cls._process_ai_emergency_relief(subordinates, pdata, season)
+        cls._process_ai_emergency_relief(subordinates, pdata, season, game)
 
         # ── 物理结算 ──
         _t_settle_start = _time.monotonic()
@@ -811,11 +811,12 @@ class PrefectureService:
         return results
 
     @classmethod
-    def _process_ai_emergency_relief(cls, subordinates, pdata, season):
+    def _process_ai_emergency_relief(cls, subordinates, pdata, season, game=None):
         """结算前：为缺粮紧急的AI县执行知府拨粮和邻县借粮。
 
         由 AIGovernorService._ai_set_emergency_grain_flags() 在 make_decisions 时写入请求标志，
         此处统一执行实际粮食转移（操作真实 unit_data，在物理结算之前完成）。
+        拨粮顺序：优先从义仓拨粮，义仓不足时从府库拨银购粮。
         """
         from .constants import GRAIN_PER_LIANG
         prefecture_treasury = pdata.get('treasury', 0.0)
@@ -832,26 +833,62 @@ class PrefectureService:
                 shortage = max(0.0, baseline - reserve)
 
                 if shortage > 10 and baseline > 0:
-                    # 最多拨出府库10%且不超过300两等值粮
-                    max_cost = min(prefecture_treasury * 0.10, 300.0)
-                    max_grant = max_cost * GRAIN_PER_LIANG
+                    # 可拨上限：义仓全部可用量 + 府库最多10%且不超过300两等值
+                    granary_stock = pdata.get('granary_stock', 0.0) if pdata.get('granary') else 0.0
+                    max_treasury_cost = min(prefecture_treasury * 0.10, 300.0)
+                    max_grant = granary_stock + max_treasury_cost * GRAIN_PER_LIANG
                     grant = round(min(shortage * 1.5, max_grant), 1)
-                    cost = round(grant / GRAIN_PER_LIANG, 1)
+
+                    # 义仓优先拨粮
+                    grain_from_granary = min(grant, granary_stock)
+                    grain_from_treasury = grant - grain_from_granary
+                    cost = round(grain_from_treasury / GRAIN_PER_LIANG, 1)
 
                     if grant > 10 and cost <= prefecture_treasury - 50:
                         county['peasant_grain_reserve'] = round(reserve + grant, 1)
-                        pdata['treasury'] = round(prefecture_treasury - cost, 1)
-                        prefecture_treasury = pdata['treasury']
+                        # 义仓扣减
+                        if grain_from_granary > 0:
+                            pdata['granary_stock'] = round(granary_stock - grain_from_granary, 1)
+                        # 府库扣减
+                        if cost > 0:
+                            pdata['treasury'] = round(prefecture_treasury - cost, 1)
+                            prefecture_treasury = pdata['treasury']
                         county_name = county.get('county_name', '本县')
                         governor_name = county.get('governor_meta', {}).get('name', '知县')
                         logger.info(
-                            "AI county %s received prefecture grain grant %.0f jin (cost %.1f liang)",
-                            county_name, grant, cost,
+                            "AI county %s received prefecture grain grant %.0f jin "
+                            "(granary=%.0f jin, cost=%.1f liang)",
+                            county_name, grant, grain_from_granary, cost,
                         )
-                        # 记入本月事件，供汇报月摘要使用
+                        # 记入县本月事件，供月摘要使用
+                        source_detail = ""
+                        if grain_from_granary > 0:
+                            source_detail += f"义仓{round(grain_from_granary)}斤"
+                        if cost > 0:
+                            source_detail += f"{'，' if source_detail else ''}府库{cost}两"
                         county.setdefault('_emergency_events', []).append(
-                            f"【知府拨粮】{governor_name}上书告急，府库划拨{round(grant)}斤粮以解燃眉之急"
+                            f"【知府拨粮】{governor_name}上书告急，拨粮{round(grant)}斤（{source_detail}）以解燃眉之急"
                         )
+                        # 府志记录
+                        if game is not None:
+                            EventLog.objects.create(
+                                game=game,
+                                season=season,
+                                event_type='prefecture_relief_grant',
+                                category='PREFECTURE',
+                                description=(
+                                    f"【应急拨粮】{county_name}{governor_name}上书告急，"
+                                    f"拨粮{round(grant)}斤（{source_detail}）"
+                                ),
+                                data={
+                                    'county_name': county_name,
+                                    'grant': round(grant, 1),
+                                    'grain_from_granary': round(grain_from_granary, 1),
+                                    'silver_cost': cost,
+                                    'pref_treasury_after': round(pdata.get('treasury', 0), 1),
+                                    'pref_granary_after': round(pdata.get('granary_stock', 0), 1),
+                                },
+                            )
 
             # ── 从邻县借粮 ──
             if county.pop('_ai_borrow_neighbor_grain', False):
