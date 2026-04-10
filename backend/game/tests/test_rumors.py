@@ -23,9 +23,10 @@ def test_peasant_rumors_use_current_surplus_snapshot_fields():
         "consumption_multiplier": 2.0,
     }
     game = GameState.objects.create(user=user, current_season=15, county_data=county)
+    village_names = [v["name"] for v in county.get("villages", [])]
 
     with patch("game.services.rumors.random.choice", side_effect=lambda seq: seq[0]):
-        rumors = RumorsService._get_peasant_surplus_rumors(game)
+        rumors = RumorsService._get_peasant_surplus_rumors(county, 15, village_names)
 
     texts = [item["text"] for item in rumors]
     assert "今年风调雨顺，村里的粮仓都快堆不下了，连老鼠都胖了一圈！" in texts
@@ -46,9 +47,10 @@ def test_peasant_rumors_fall_back_to_legacy_surplus_fields():
         "monthly_consumption": 200000,
     }
     game = GameState.objects.create(user=user, current_season=1, county_data=county)
+    village_names = [v["name"] for v in county.get("villages", [])]
 
     with patch("game.services.rumors.random.choice", side_effect=lambda seq: seq[0]):
-        rumors = RumorsService._get_peasant_surplus_rumors(game)
+        rumors = RumorsService._get_peasant_surplus_rumors(county, 1, village_names)
 
     texts = [item["text"] for item in rumors]
     assert "今年风调雨顺，村里的粮仓都快堆不下了，连老鼠都胖了一圈！" in texts
