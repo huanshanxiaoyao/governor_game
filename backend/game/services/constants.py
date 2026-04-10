@@ -2,6 +2,30 @@
 
 import random as _random
 
+# ===== 指标档位映射 (0-100 → 8档描述) =====
+# 使用半开区间 [lo, hi)，区间之间无空洞，覆盖 [0, 100]。
+# 注意：上限用 101 是为了让 100 也能匹配"优秀"。
+TIER_THRESHOLDS = [
+    (0,  13,  "极差"),
+    (13, 25,  "差"),
+    (25, 38,  "稍差"),
+    (38, 50,  "勉强"),
+    (50, 63,  "及格"),
+    (63, 75,  "稍好"),
+    (75, 88,  "良好"),
+    (88, 101, "优秀"),
+]
+
+
+def score_to_tier(score: float) -> str:
+    """将 0–100 数值转换为 8 档状况描述 (民心/治安/商业/文教 通用)."""
+    v = max(0.0, min(100.0, float(score)))
+    for lo, hi, label in TIER_THRESHOLDS:
+        if lo <= v < hi:
+            return label
+    return "优秀"
+
+
 # ===== 时间系统 =====
 MONTHS_PER_YEAR = 12
 MAX_MONTH = 36  # 3年任期 = 36个月

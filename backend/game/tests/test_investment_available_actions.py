@@ -1,9 +1,11 @@
-from django.test import SimpleTestCase
+from django.test import TestCase
 
 from game.services.investment import InvestmentService
 
 
-class InvestmentAvailableActionsTests(SimpleTestCase):
+class InvestmentAvailableActionsTests(TestCase):
+    # get_available_actions 会查询 StandardPolicy/ProposedPolicy（DB），
+    # 故用 TestCase 而非 SimpleTestCase。
     @staticmethod
     def _build_county(has_school_flags):
         villages = []

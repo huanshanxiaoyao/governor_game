@@ -6,6 +6,7 @@ Layer 3: 结算路径（无DB）— 宗族影响秋季税收 / 月度治安
 """
 
 import copy
+import random
 
 from django.test import SimpleTestCase
 
@@ -79,28 +80,28 @@ class TestClanSecurityDelta(SimpleTestCase):
         self.assertEqual(get_county_security_delta({}), 0.0)
 
     def test_cooperative_clan_positive_delta(self):
-        # power=80 = REF_POWER → factor=1.0, base=+2.0
+        # power=80 = REF_POWER → factor=1.0, base=+1.5
         county = {'clans': {'A氏': {'clan_affinity': 70, 'power': 80, 'members': []}}}
-        self.assertAlmostEqual(get_county_security_delta(county), 2.0)
+        self.assertAlmostEqual(get_county_security_delta(county), 1.5)
 
     def test_hostile_clan_negative_delta(self):
-        # affinity < 5 → base=-6.0, power=80 → factor=1.0
+        # affinity < 5 → base=-4.0, power=80 → factor=1.0
         county = {'clans': {'A氏': {'clan_affinity': 3, 'power': 80, 'members': []}}}
-        self.assertAlmostEqual(get_county_security_delta(county), -6.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -4.0)
 
     def test_large_clan_amplifies_delta(self):
-        # power=160 = 2×REF → factor=2.0 (cap), base=-6.0 → -12, per-clan cap=-8
+        # power=160 = 2×REF → factor=2.0 (cap), base=-4.0 → -8, per-clan cap=-5
         county = {'clans': {'A氏': {'clan_affinity': 3, 'power': 160, 'members': []}}}
-        self.assertAlmostEqual(get_county_security_delta(county), -8.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -5.0)
 
     def test_total_cap_applied(self):
-        # 3 hostile large clans, each would produce -8, total would be -24 → capped at -15
+        # 3 hostile large clans, each would produce -5, total would be -15 → capped at -10
         county = {'clans': {
             'A氏': {'clan_affinity': 3, 'power': 200, 'members': []},
             'B氏': {'clan_affinity': 3, 'power': 200, 'members': []},
             'C氏': {'clan_affinity': 3, 'power': 200, 'members': []},
         }}
-        self.assertAlmostEqual(get_county_security_delta(county), -15.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -10.0)
 
     def test_neutral_affinity_no_delta(self):
         county = {'clans': {'A氏': {'clan_affinity': 50, 'power': 100, 'members': []}}}
@@ -157,7 +158,10 @@ def _make_county_with_clans(clan_affinity: int, gentry_ratio: float = 0.4) -> di
 class TestClanTaxEffect(SimpleTestCase):
     """宗族亲密度影响秋季农业税收"""
 
-    def _run_to_autumn(self, county):
+    def _run_to_autumn(self, county, *, seed=1234):
+        # Seed random so baseline vs variant share the same disaster/yield
+        # rolls regardless of prior-test pollution of the global RNG.
+        random.seed(seed)
         for month in range(1, 10):
             report = {'season': month, 'events': []}
             SettlementService.settle_county(county, month, report)
@@ -281,3 +285,25 @@ class TestClanSecurityEffect(SimpleTestCase):
         _, report = self._run_to_month(county, month=3)
         events = ' '.join(report.get('events', []))
         self.assertIn('宗族修正', events, "治安事件应包含宗族修正说明")
+
+    def test_bailiff_level_three_can_offset_hostile_clan_drag(self):
+        """满级衙役应能实质压住中等规模敌对宗族的月度治安拖拽。"""
+        county = CountyService.create_initial_county('fiscal_core')
+        county['security'] = 8
+        county['morale'] = 70
+        county['bailiff_level'] = 3
+        for v in county['villages']:
+            v['security'] = 8
+            v['morale'] = 70
+        county['clans'] = {
+            '测试府张氏': {'clan_affinity': 3, 'power': 80, 'members': []}
+        }
+
+        report = {'season': 1, 'events': []}
+        SettlementService._update_security(county, report)
+
+        self.assertGreater(
+            county['security'],
+            8.0,
+            "满级衙役应能缓冲敌对宗族造成的治安下滑",
+        )

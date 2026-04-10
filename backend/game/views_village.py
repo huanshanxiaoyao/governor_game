@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 
 from .models import Agent, GameState, Promise
+from .services.clan_youth import ClanYouthService
 from .services.constants import year_of
 from .services.state import load_county_state, save_player_state
 from .services.settlement_metrics import MetricsMixin
@@ -204,10 +205,11 @@ class ClanYouthListView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=404)
 
+        ClanYouthService.normalize_game_nominations(game)
         youths = Agent.objects.filter(game=game, role='CLAN_YOUTH').order_by('created_at')
         result = []
         for y in youths:
-            attrs = y.attributes or {}
+            attrs, _ = ClanYouthService.normalize_attrs(y.attributes or {}, game.current_season)
             si = attrs.get('social_identity', {})
             result.append({
                 'id': y.id,
@@ -217,7 +219,8 @@ class ClanYouthListView(APIView):
                 'clan_id': si.get('clan_id', ''),
                 'native_place': si.get('native_place', ''),
                 'bio': attrs.get('bio', ''),
-                'exam_eligible': attrs.get('exam_eligible', False),
+                'exam_eligible': ClanYouthService.is_active_nomination(attrs, game.current_season),
+                'can_nominate': ClanYouthService.is_current_year_youth(attrs, game.current_season),
                 'generated_season': attrs.get('generated_season', 0),
             })
         return Response({'youths': result, 'count': len(result)})
@@ -236,6 +239,7 @@ class ClanYouthNominateView(APIView):
         except GameState.DoesNotExist:
             return Response({"error": "游戏不存在"}, status=404)
 
+        ClanYouthService.normalize_game_nominations(game)
         try:
             agent = Agent.objects.get(id=agent_id, game=game, role='CLAN_YOUTH')
         except Agent.DoesNotExist:
@@ -243,24 +247,39 @@ class ClanYouthNominateView(APIView):
 
         import random as _random
 
-        attrs = agent.attributes or {}
-        currently_eligible = attrs.get('exam_eligible', False)
+        attrs, changed = ClanYouthService.normalize_attrs(agent.attributes or {}, game.current_season)
+        if changed:
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
+
+        if not ClanYouthService.is_current_year_youth(attrs, game.current_season):
+            return Response(
+                {"error": "仅可举荐本年度新推举的宗族后生"},
+                status=400,
+            )
+
+        currently_eligible = ClanYouthService.is_active_nomination(attrs, game.current_season)
         nominating = not currently_eligible  # True = 举荐操作，False = 取消举荐
 
-        # ── 每年最多举荐 2 人：举荐前检查已有名额 ──
+        # ── 举荐一经确认不可撤销 ──
+        if not nominating:
+            return Response(
+                {"error": "举荐一经确认，不可取消。如需更换候选，请直接举荐其他后生（自动替换）。"},
+                status=400,
+            )
+
+        # ── 每年最多举荐 2 人：举荐前检查已有名额（超额则自动替换最早举荐的那位） ──
         MAX_PER_YEAR = 2
-        if nominating:
-            current_year = year_of(game.current_season)
-            # 统计本局当前已举荐（exam_eligible=True）的宗族后生数，排除自身
-            eligible_others = [
-                a for a in Agent.objects.filter(game=game, role='CLAN_YOUTH').exclude(id=agent_id)
-                if (a.attributes or {}).get('exam_eligible', False)
-            ]
-            if len(eligible_others) >= MAX_PER_YEAR:
-                return Response(
-                    {"error": f"本年度举荐名额已满（最多{MAX_PER_YEAR}人），如需更换请先取消已有举荐"},
-                    status=400,
-                )
+        # 统计本年度当前已举荐的宗族后生数，排除自身
+        eligible_others = [
+            a for a in Agent.objects.filter(game=game, role='CLAN_YOUTH').exclude(id=agent_id)
+            if ClanYouthService.is_active_nomination(a.attributes or {}, game.current_season)
+        ]
+        if len(eligible_others) >= MAX_PER_YEAR:
+            return Response(
+                {"error": f"本年度举荐名额已满（最多{MAX_PER_YEAR}人），举荐已确认无法更换。"},
+                status=400,
+            )
 
         # ── 更新 exam_eligible ──
         attrs['exam_eligible'] = nominating
@@ -309,12 +328,16 @@ class ClanYouthNominateView(APIView):
             # ── 兑现关联承诺：若举荐人有对应的待兑现「举荐后生」承诺，标记为已兑现 ──
             if sponsor_id:
                 from django.utils import timezone
+                from django.db.models import Q
                 fulfilled = Promise.objects.filter(
                     game=game,
                     agent_id=sponsor_id,
-                    promise_type='OTHER',
                     status='PENDING',
-                ).filter(description__contains='宗族后生')
+                ).filter(
+                    Q(promise_type='RECOMMEND_TALENT') |
+                    Q(promise_type='OTHER', description__icontains='宗族后生') |
+                    Q(promise_type='OTHER', description__icontains='举荐')
+                )
                 fulfilled.update(status='FULFILLED', resolved_at=timezone.now())
 
             msg = f'已举荐{agent.name}为府试候选{affinity_msg}'
@@ -325,13 +348,16 @@ class ClanYouthNominateView(APIView):
         county = load_county_state(game)
         new_eligible_count = sum(
             1 for a in Agent.objects.filter(game=game, role='CLAN_YOUTH')
-            if (a.attributes or {}).get('exam_eligible', False)
+            if ClanYouthService.is_active_nomination(a.attributes or {}, game.current_season)
         )
         if new_eligible_count >= 1:
             county['clan_youth_pending'] = False
         else:
-            # 无人举荐时，若本月有宗族后生可选，恢复待操作提示
-            has_youths = Agent.objects.filter(game=game, role='CLAN_YOUTH').exists()
+            # 无人举荐时，若本年度有宗族后生可选，恢复待操作提示
+            has_youths = any(
+                ClanYouthService.is_current_year_youth(a.attributes or {}, game.current_season)
+                for a in Agent.objects.filter(game=game, role='CLAN_YOUTH').only('attributes')
+            )
             county['clan_youth_pending'] = has_youths
         save_player_state(game, county)
 

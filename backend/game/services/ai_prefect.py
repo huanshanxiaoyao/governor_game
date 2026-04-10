@@ -10,27 +10,19 @@ import time
 
 from llm.client import LLMClient
 from llm.prompts import PromptRegistry
-from .constants import month_of_year, month_name, year_of
+from .constants import month_of_year, month_name, year_of, score_to_tier
+from . import fiscal
 
 logger = logging.getLogger('game')
-
-# 模糊等级阈值（与知府游戏汇报保持一致）
-_TIER_THRESHOLDS = [
-    (0, 13, "极差"), (13, 25, "差"), (25, 38, "稍差"), (38, 50, "勉强"),
-    (50, 63, "及格"), (63, 75, "稍好"), (75, 88, "良好"), (88, 101, "优秀"),
-]
 
 _MAX_EVAL_NOTES = 12   # 每年最多保留12条评价笔记
 _MAX_DIRECTIVES = 5    # county_data 中最多保留5条历史指令
 _MAX_MEMORY = 8
 
 
-def _tier_label(v: float) -> str:
-    v = float(v)
-    for lo, hi, label in _TIER_THRESHOLDS:
-        if lo <= v < hi:
-            return label
-    return "优秀"
+# 向后兼容别名：历史上 judicial_caseflow 等模块曾 from .ai_prefect import _tier_label。
+# 新代码请使用 constants.score_to_tier。
+_tier_label = score_to_tier
 
 
 class PrefectAIService:
@@ -218,39 +210,16 @@ class PrefectAIService:
 
     @staticmethod
     def _build_quota_summary(county: dict, moy: int) -> str:
-        quota = county.get('annual_quota', {})
-        total_quota = quota.get('total', 0)
-        if not total_quota:
+        progress = fiscal.get_quota_progress(county)
+        effective_quota = progress['quota_total']
+        if not effective_quota:
             return '年度配额尚未下达'
-
-        fy = county.get('fiscal_year', {})
-        agri_remitted = fy.get('agri_remitted', 0)
-        agri_quota = quota.get('agri', total_quota * 0.7)
-
-        pct = min(100, agri_remitted / agri_quota * 100) if agri_quota > 0 else 0
-
-        # 明代赋税征收节奏：夏税五~六月，秋税九~十月
-        # 正月至四月完成率接近零属正常，不应据此催科
-        _TAX_CALENDAR = {
-            1: 0, 2: 0, 3: 0, 4: 5,
-            5: 15, 6: 32,       # 夏税征收期（约占年赋40%）
-            7: 38, 8: 42,       # 夏税尾期，秋收前
-            9: 62, 10: 88,      # 秋税征收旺季（约占年赋60%）
-            11: 93, 12: 100,
-        }
-        expected_by_now = _TAX_CALENDAR.get(moy, 0)
-        gap = pct - expected_by_now
-
-        status = '进度正常'
-        if gap < -20:
-            status = '严重滞后'
-        elif gap < -10:
-            status = '略有滞后'
-        elif gap > 10:
-            status = '进度超前'
-
+        pct = min(100.0, progress['completion_pct'])
+        actual_remitted = progress['remitted']
+        expected_by_now = fiscal.expected_progress_by_month(moy)
+        status = fiscal.quota_gap_status(pct, moy)
         return (
-            f'年度农赋指标: {agri_quota:.0f}两，已入库: {agri_remitted:.0f}两\n'
+            f'年度赋税配额（农赋+徭役）: {effective_quota:.0f}两，已上缴: {actual_remitted:.0f}两\n'
             f'完成率: {pct:.0f}%，{moy}月按时令应达进度: {expected_by_now}%（{status}）'
         )
 
@@ -354,9 +323,9 @@ class PrefectAIService:
 
     # 各指标基础警戒线（无省级重点时使用）
     _DIRECTIVE_BASE_THRESHOLDS = {
-        'morale':    35,
-        'security':  35,
-        'education': 35,
+        'morale':    40,
+        'security':  40,
+        'education': 40,
         # commercial 不单独触发，仅省级重点下才检查
     }
 
@@ -415,15 +384,15 @@ class PrefectAIService:
         security  = county.get('security', 50)
         education = county.get('education', 30)
         affinity  = county.get('prefect_affinity', 50)
-        aq = county.get('annual_quota', {})
-        quota_total = aq.get('total', 0) if isinstance(aq, dict) else 0
-        fy = county.get('fiscal_year', {})
-        ytd = (fy.get('agri_remitted', 0)
-               + fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
-               + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
-        from .constants import month_of_year as _moy
-        expected_progress = _moy(season) / 12.0
-        quota_ok = (quota_total <= 0) or (ytd / quota_total >= expected_progress * 0.85)
+        # 鼓励条件：配额进度（agri+corvee，不含商税）—— 与 performance_warning 保持口径一致
+        _enc_prog = fiscal.get_quota_progress(county)
+        if _enc_prog['source'] == 'authoritative':
+            quota_ok = (_enc_prog['quota_total'] <= 0) or (_enc_prog['completion_pct'] >= 85.0)
+        else:
+            from .constants import month_of_year as _moy
+            expected_progress = _moy(season) / 12.0
+            _qt = _enc_prog['quota_total']
+            quota_ok = (_qt <= 0) or (_enc_prog['remitted'] / _qt >= expected_progress * 0.85)
         if morale >= 60 and security >= 60 and education >= 55 and quota_ok and affinity >= 50:
             return 'encouragement', {
                 'morale': round(morale, 1),
@@ -501,18 +470,9 @@ class PrefectAIService:
         complaints = county.get('prefect_complaints', 0)
         morale = county.get('morale', 50)
 
-        quota = county.get('annual_quota', {})
-        fy = county.get('fiscal_year', {})
-        agri_quota = quota.get('agri', 0)
-        agri_done = fy.get('agri_remitted', 0)
-        quota_pct = (agri_done / agri_quota * 100) if agri_quota > 0 else 100
-        # 明代赋税时令预期（夏税五~六月，秋税九~十月）
-        _TAX_CAL = {
-            1: 0, 2: 0, 3: 0, 4: 5,
-            5: 15, 6: 32, 7: 38, 8: 42,
-            9: 62, 10: 88, 11: 93, 12: 100,
-        }
-        season_expected = _TAX_CAL.get(moy, 0)
+        _fb_prog = fiscal.get_quota_progress(county)
+        quota_pct = _fb_prog['completion_pct'] if _fb_prog['quota_total'] > 0 else 100
+        season_expected = fiscal.expected_progress_by_month(moy)
 
         # 正月：年度纲要
         if moy == 1:
@@ -549,8 +509,8 @@ class PrefectAIService:
                 'reasoning': 'fallback: complaints>=2',
             }
 
-        # 配额严重滞后（秋税征收期后方可催科，正月至七月不催）
-        if moy >= 8 and quota_pct < season_expected - 20 and people_focus <= 0.5:
+        # 配额严重滞后（十月秋税上缴后方可催科；九月及以前农业税尚未入库，不应据此催科）
+        if moy >= 10 and quota_pct < season_expected - 20 and people_focus <= 0.5:
             return {
                 'action': {
                     'type': 'directive',
@@ -727,11 +687,11 @@ class PrefectAIService:
         morale_lbl = _tier_label(county.get('morale', 50))
         security_lbl = _tier_label(county.get('security', 50))
 
-        quota = county.get('annual_quota', {})
-        fy = county.get('fiscal_year', {})
-        agri_quota = quota.get('agri', 0)
-        agri_done = fy.get('agri_remitted', 0)
-        quota_str = f'配额进度{agri_done / agri_quota * 100:.0f}%' if agri_quota > 0 else '配额未定'
+        _q_prog = fiscal.get_quota_progress(county)
+        if _q_prog['quota_total'] > 0:
+            quota_str = f'配额进度{_q_prog["completion_pct"]:.0f}%'
+        else:
+            quota_str = '配额未定'
 
         directives = county.get('prefect_directives', [])
         recent_dir = directives[-1].get('directive_type', '') if directives else ''
@@ -786,17 +746,8 @@ class PrefectAIService:
         affinity = attrs.get('player_affinity', 50)
         complaints = county.get('prefect_complaints', 0)
 
-        # 优先使用结算系统已维护的全口径配额完成率（含农业税+徭役+商税）
-        quota_completion = county.get('quota_completion') or {}
-        if quota_completion.get('completion_rate') is not None:
-            quota_pct = float(quota_completion['completion_rate'])
-        else:
-            # 兜底：从 fiscal_year 计算（仅农业税，key 历史曾有误）
-            quota = county.get('annual_quota', {})
-            fy = county.get('fiscal_year', {})
-            agri_quota = float(quota.get('agricultural', quota.get('agri', 0)) or 0)
-            agri_done = float(fy.get('agri_remitted', 0) or 0)
-            quota_pct = (agri_done / agri_quota * 100) if agri_quota > 0 else 0
+        # 配额完成率（权威：agri+corvee，不含商税；扣减灾害减免后）
+        quota_pct = fiscal.get_quota_progress(county)['completion_pct']
 
         incident_note = ''
         if county.get('disaster_this_year'):
@@ -1037,9 +988,8 @@ class PrefectAIService:
         if quota_total <= 0:
             return 0
         fy = cd.get('fiscal_year', {})
-        ytd = (fy.get('agri_remitted', 0)
-               + fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
-               + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+        # 配额口径：仅农赋+徭役，不含商税
+        ytd = fiscal.ytd_quota_remitted(fy)
         # 期望进度：按月线性推进
         expected_ratio = min(moy / 12.0, 1.0)
         actual_ratio = ytd / quota_total if quota_total else 0.0

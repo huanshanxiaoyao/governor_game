@@ -400,21 +400,20 @@ class AIGovernorService:
         else:
             pledge_reminder = ""
 
-        # 年度配额与上缴进度
+        # 年度配额与上缴进度（走 fiscal 单一口径：农赋+徭役，不含商税）
+        from . import fiscal
         annual_quota = county.get('annual_quota', {})
-        fy = county.get('fiscal_year', {})
         if annual_quota:
             quota_total = annual_quota.get('total', 0)
-            corvee_remitted = fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
-            commercial_remitted = fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0)
-            ytd_remitted = corvee_remitted + commercial_remitted
-            prev_completion = county.get('quota_completion', {})
+            progress = fiscal.get_quota_progress(county)
+            ytd_remitted = progress['remitted']
             quota_lines = [
                 f"年度配额：{quota_total}两（农业{annual_quota.get('agricultural', 0)}两 + "
                 f"徭役{annual_quota.get('corvee', 0)}两）",
             ]
             if ytd_remitted > 0:
-                quota_lines.append(f"本年已缴（徭役+商税合计）：{round(ytd_remitted)}两")
+                quota_lines.append(f"本年已缴（农赋+徭役）：{round(ytd_remitted)}两（完成率{progress['completion_pct']:.0f}%）")
+            prev_completion = county.get('quota_completion', {})
             if prev_completion:
                 quota_lines.append(f"上年配额完成率：{prev_completion.get('completion_rate', 0)}%")
             current_stance = county.get('governor_stance', {}).get('quota', 'balance')
@@ -1049,14 +1048,13 @@ class AIGovernorService:
             elif morale < 40:
                 target -= 0.01
 
-        # fulfill_quota：下半年配额不足时额外加税
+        # fulfill_quota：下半年配额不足时额外加税（配额口径：农赋+徭役）
         if quota_stance == 'fulfill_quota':
             moy = month_of_year(season)
             annual_quota = county.get('annual_quota', {})
             if moy >= 6 and annual_quota:
-                fy = county.get('fiscal_year', {})
-                ytd = (fy.get('corvee_tax', 0) - fy.get('corvee_retained', 0)
-                       + fy.get('commercial_tax', 0) - fy.get('commercial_retained', 0))
+                from . import fiscal
+                ytd = fiscal.ytd_quota_remitted(county.get('fiscal_year', {}))
                 if ytd < annual_quota.get('total', 0) * 0.45:
                     target += 0.01
 

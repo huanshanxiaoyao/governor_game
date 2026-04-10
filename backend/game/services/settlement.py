@@ -133,7 +133,7 @@ class SettlementService(
             cls._process_october_agri_payment(county, month, report, game=game)
 
         # 9. Commercial update (monthly: grain deduction, surplus→GMV, monthly commercial tax)
-        cls._update_commercial(county, month, report, prefecture_ctx=prefecture_ctx)
+        cls._update_commercial(county, month, report, prefecture_ctx=prefecture_ctx, game=game)
         EmergencyService.finish_month(county, month, report, game=game)
 
         # 10. [腊月] Annual snapshot + clear disaster (年终)
@@ -238,8 +238,18 @@ class SettlementService(
         )
         logger.info("[推进 month=%d][年度过渡] %.2fs", month, time.time() - t0)
 
+        target_next_season = int(transition.get("next_season_override", next_season))
+        if year_of(target_next_season) != year_of(month):
+            try:
+                from .clan_youth import ClanYouthService
+                ClanYouthService.normalize_game_nominations(
+                    game, current_season=target_next_season,
+                )
+            except Exception as e:
+                logger.warning("宗族后生年度重置失败（非致命）: %s", e)
+
         # Advance month counter
-        game.current_season = int(transition.get("next_season_override", next_season))
+        game.current_season = target_next_season
         report["next_season"] = game.current_season
 
         # Game end check
@@ -260,6 +270,14 @@ class SettlementService(
             report["game_over"] = False
 
         cls.refresh_metric_report_lines(county, report)
+
+        # 流言板：规则生成 + 缓存（在 metric_deltas 就绪后、save 前）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .rumors import RumorsService
+                RumorsService.generate_and_cache(game, county, report)
+            except Exception as e:
+                logger.warning("流言板生成失败（非致命）: %s", e)
 
         # 审核待批自创施政申请（省布政使 LLM，fire-and-forget）
         if game.player_role == 'COUNTY_MAGISTRATE':
@@ -290,6 +308,17 @@ class SettlementService(
         save_player_state(game, county)
         logger.info("[推进 month=%d][总耗时 advance_season] %.2fs", month, time.time() - t_total)
         game.save(update_fields=["current_season", "pending_events", "updated_at"])
+
+        # LLM 流言生成（fire-and-forget，不阻塞主线程）
+        if game.player_role == 'COUNTY_MAGISTRATE':
+            try:
+                from .llm_rumors import LLMRumorsService, build_rumor_context
+                rumor_ctx = build_rumor_context(county, report, month)
+                village_names = [v["name"] for v in county.get("villages", [])]
+                LLMRumorsService.generate_monthly_async(game.id, rumor_ctx)
+                LLMRumorsService.generate_judicial_async(game.id, month, village_names)
+            except Exception as e:
+                logger.warning("LLM流言异步生成失败（非致命）: %s", e)
 
         # 将当月新增 npc_pending_requests 附加到 report，供前端立即提示
         report['npc_pending_requests'] = county.get('npc_pending_requests', [])

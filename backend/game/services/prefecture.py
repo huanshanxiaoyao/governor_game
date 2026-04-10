@@ -23,6 +23,8 @@ from .constants import (
     year_of,
     CORVEE_PER_CAPITA,
     QUOTA_BASE_COLLECTION_EFFICIENCY,
+    TIER_THRESHOLDS,
+    score_to_tier,
 )
 from .county import CountyService
 from .settlement import SettlementService
@@ -38,18 +40,7 @@ logger = logging.getLogger('game')
 # ===== 汇报月份 =====
 REPORT_MONTHS = {2, 5, 8, 11}
 
-# ===== 指标档位映射 =====
-TIER_THRESHOLDS = [
-    (0,  12,  "极差"),
-    (13, 24,  "差"),
-    (25, 37,  "稍差"),
-    (38, 49,  "勉强"),
-    (50, 62,  "及格"),
-    (63, 74,  "稍好"),
-    (75, 87,  "良好"),
-    (88, 99,  "优秀"),
-]
-
+# ===== 灾害类型标签 =====
 DISASTER_TYPE_LABELS = {
     "flood": "洪灾",
     "drought": "旱灾",
@@ -57,14 +48,8 @@ DISASTER_TYPE_LABELS = {
     "plague": "疫病",
 }
 
-
-def score_to_tier(score: float) -> str:
-    """将 0–99 数值转换为 8 档状况描述"""
-    s = max(0, min(99, int(score)))
-    for lo, hi, label in TIER_THRESHOLDS:
-        if lo <= s <= hi:
-            return label
-    return "及格"
+# TIER_THRESHOLDS / score_to_tier 已迁至 constants.py，此处从顶部 import 获取
+# 以保持向外部 (services/__init__.py 公开 API) 的向后兼容。
 
 
 def _clamp_meter(value: float, lo: float = 0.0, hi: float = 100.0) -> float:

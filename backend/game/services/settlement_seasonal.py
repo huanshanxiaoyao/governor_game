@@ -31,6 +31,113 @@ from .clan import get_county_tax_compliance
 class SeasonalMixin:
     """秋收结算、年终结算、投资完成效果"""
 
+    @staticmethod
+    def _apply_agent_affinity_and_memory(agent, *, delta=0, memory_text=''):
+        attrs = dict(agent.attributes or {})
+        changed = False
+
+        if delta:
+            old_affinity = int(attrs.get('player_affinity', 50))
+            new_affinity = max(-99, min(99, old_affinity + delta))
+            if new_affinity != old_affinity:
+                attrs['player_affinity'] = new_affinity
+                changed = True
+
+        if memory_text:
+            memory = list(attrs.get('memory', []))
+            memory.append(memory_text)
+            attrs['memory'] = memory[-20:]
+            changed = True
+
+        if changed:
+            agent.attributes = attrs
+            agent.save(update_fields=['attributes'])
+        return changed
+
+    @classmethod
+    def _apply_village_gentry_project_bonus(
+        cls,
+        county,
+        game,
+        village_name,
+        *,
+        delta,
+        memory_text,
+    ):
+        if game is None:
+            return False
+
+        gentry = Agent.objects.filter(
+            game=game,
+            role='GENTRY',
+            attributes__village_name=village_name,
+        ).first()
+        if gentry is None:
+            return False
+
+        changed = cls._apply_agent_affinity_and_memory(
+            gentry,
+            delta=delta,
+            memory_text=memory_text,
+        )
+        if changed:
+            from .clan import ClanService
+            ClanService._recompute_clan_affinities(game, county)
+        return changed
+
+    @classmethod
+    def _apply_irrigation_completion_bonus(cls, county, inv, game, report):
+        if game is None:
+            return
+
+        contributions = inv.get('gentry_contributions') or []
+        if not contributions:
+            return
+
+        contribution_ids = [
+            item.get('agent_id')
+            for item in contributions
+            if item.get('agent_id')
+        ]
+        agents_by_id = {
+            agent.id: agent
+            for agent in Agent.objects.filter(game=game, id__in=contribution_ids)
+        }
+
+        changed = False
+        rewarded_names = []
+        for item in contributions:
+            village_name = item.get('village_name', '')
+            amount = int(item.get('amount', 0) or 0)
+            agent = agents_by_id.get(item.get('agent_id'))
+            if agent is None and village_name:
+                agent = Agent.objects.filter(
+                    game=game,
+                    role='GENTRY',
+                    attributes__village_name=village_name,
+                ).first()
+            if agent is None:
+                continue
+
+            delta = 3 if amount >= 20 else 2
+            if cls._apply_agent_affinity_and_memory(
+                agent,
+                delta=delta,
+                memory_text=(
+                    f"{month_name(game.current_season)}，{village_name}水利完工，"
+                    f"此前出资{amount}两已见成效，对官府观感转好"
+                ),
+            ):
+                changed = True
+                rewarded_names.append(agent.name)
+
+        if changed:
+            from .clan import ClanService
+            ClanService._recompute_clan_affinities(game, county)
+            report['events'].append(
+                f"水利见效，先前出资的乡绅{ '、'.join(rewarded_names) }对官府观感回升"
+            )
+
     @classmethod
     def _apply_completed_investments(cls, county, season, report, game=None):
         """Apply effects of investments that complete this season.
@@ -91,6 +198,16 @@ class SeasonalMixin:
                             attrs['memory'] = memory
                             villager.attributes = attrs
                             villager.save(update_fields=['attributes'])
+                        cls._apply_village_gentry_project_bonus(
+                            county,
+                            game,
+                            village_name,
+                            delta=4,
+                            memory_text=(
+                                f"{month_name(game.current_season)}，知县组织开垦荒地，"
+                                f"{village_name}新增耕地，乡里对官府观感改善"
+                            ),
+                        )
                     break
             sync_county_gentry_land_ratio(county)
 
@@ -117,6 +234,7 @@ class SeasonalMixin:
             report["events"].append(
                 f"水利工程完工，水利等级提升至{county['irrigation_level']}，"
                 f"年维护费{new_maint}两")
+            cls._apply_irrigation_completion_bonus(county, inv, game, report)
 
         elif action == "expand_school":
             county["school_level"] = min(INFRA_MAX_LEVEL, county.get("school_level", 1) + 1)
@@ -145,6 +263,16 @@ class SeasonalMixin:
                         county["admin_cost_detail"]["school_cost"] += school_increase
                     report["events"].append(
                         f"{village_name}村塾建成，民心+5，年运营费+{school_increase}两")
+                    cls._apply_village_gentry_project_bonus(
+                        county,
+                        game,
+                        village_name,
+                        delta=3,
+                        memory_text=(
+                            f"{month_name(game.current_season)}，{village_name}村塾建成，"
+                            f"乡里教化有望，对官府观感转好"
+                        ),
+                    )
                     break
 
         elif action == "repair_roads":
@@ -254,12 +382,11 @@ class SeasonalMixin:
         if not annual_quota:
             return
 
+        from . import fiscal
         original_quota = annual_quota.get("total", 0)
         # 核减获批减免额度后的有效配额（知府已认可的豁免不计入缺口）
         effective_quota = max(0.0, original_quota - float(relief_deduction))
-        ytd_corvee = fy.get("corvee_tax", 0)
-        ytd_corvee_retained = fy.get("corvee_retained", 0)
-        corvee_remitted = ytd_corvee - ytd_corvee_retained
+        corvee_remitted = fiscal.corvee_net_remitted(fy)
         total_remitted_to_prefecture = agri_remitted + corvee_remitted
         completion_rate = round(
             total_remitted_to_prefecture / max(effective_quota, 1) * 100, 1)

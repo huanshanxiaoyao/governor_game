@@ -697,13 +697,12 @@ class AnnualReviewService:
 
     @classmethod
     def _build_objective_snapshot(cls, county: dict, season: int) -> dict:
-        fy = county.get("fiscal_year") or {}
-        quota = county.get("annual_quota") or {}
-        annual_quota = float(quota.get("total", 0) or 0)
-        annual_collected = float(fy.get("agri_remitted", 0) or 0)
-        annual_collected += max(0.0, float(fy.get("commercial_tax", 0) or 0) - float(fy.get("commercial_retained", 0) or 0))
-        annual_collected += max(0.0, float(fy.get("corvee_tax", 0) or 0) - float(fy.get("corvee_retained", 0) or 0))
-        quota_completion_pct = round((annual_collected / annual_quota) * 100, 1) if annual_quota > 0 else 0.0
+        # 配额口径（农赋+徭役，商税不纳入考核配额）—— 走 fiscal 单一口径
+        from . import fiscal
+        progress = fiscal.get_quota_progress(county)
+        annual_quota = float(progress["quota_total"])
+        annual_collected = float(progress["remitted"])
+        quota_completion_pct = round(progress["completion_pct"], 1) if annual_quota > 0 else 0.0
 
         morale = float(county.get("morale", 50) or 0)
         security = float(county.get("security", 50) or 0)

@@ -17,17 +17,17 @@ _COMPLIANCE_TABLE = [
 
 # ── 治安修正档位（月度，per clan） ───────────────────────────────────────────
 _SECURITY_TABLE = [
-    (65,  2.0),
-    (30,  0.0),
-    (20, -3.0),
-    (5,  -6.0),
-    (0,  -6.0),
+    (65,  1.5),
+    (45,  0.0),
+    (20, -1.5),
+    (5,  -3.0),
+    (0,  -4.0),
 ]
 
 # 单个宗族治安修正以此实力为"标准"（修正按 power/REF_POWER 等比缩放）
 _REF_POWER = 80
-_PER_CLAN_SECURITY_CAP = 8.0
-_TOTAL_SECURITY_CAP = 15.0
+_PER_CLAN_SECURITY_CAP = 5.0
+_TOTAL_SECURITY_CAP = 10.0
 
 # 连续低亲密度月数阈值，触发聚众抗粮事件
 _LOW_AFFINITY_STREAK_THRESHOLD = 2

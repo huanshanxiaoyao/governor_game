@@ -48,8 +48,8 @@ class TestAppendQuarterlyMemory:
         prefect = _FakePrefect()
         county['morale'] = 65
         county['security'] = 48
-        county['annual_quota'] = {'agri': 400}
-        county['fiscal_year'] = {'agri_remitted': 0}
+        county['annual_quota'] = {'agricultural': 350, 'corvee': 50, 'total': 400}
+        county['fiscal_year'] = {'agri_remitted': 0, 'corvee_tax': 0, 'corvee_retained': 0}
 
         # month=3 → moy=3 → Q1
         PrefectAIService._append_quarterly_memory(prefect, county, month=3)
@@ -63,8 +63,8 @@ class TestAppendQuarterlyMemory:
 
     def test_writes_entry_at_month_6(self, county):
         prefect = _FakePrefect()
-        county['annual_quota'] = {'agri': 300}
-        county['fiscal_year'] = {'agri_remitted': 150}
+        county['annual_quota'] = {'agricultural': 250, 'corvee': 50, 'total': 300}
+        county['fiscal_year'] = {'agri_remitted': 150, 'corvee_tax': 0, 'corvee_retained': 0}
 
         PrefectAIService._append_quarterly_memory(prefect, county, month=6)
 
@@ -226,11 +226,24 @@ class TestPickPrefectVerdictCode:
 
 @pytest.mark.django_db(databases=[])
 class TestApplyVerdictEffectsToCountyDict:
+    """morale/security 走 Model A（apply_county_stat_delta → 各村 → 聚合），
+    所以要在村级设置初值，不能直接改 county['morale']。
+    """
+
+    @staticmethod
+    def _set_all_village_field(county, field, value):
+        for v in county.get('villages', []):
+            v[field] = value
+        # 聚合回县级（简单平均足够，测试只关心 delta 方向/clamp）
+        county[field] = float(value)
+
     def test_applies_morale_delta(self, county):
-        county['morale'] = 50
+        # 司法判决对 morale 单次最大 ±2（见 _clamp_morale_security / _DEFAULT_CLAMPS），
+        # 故 +8 会被截断为 +2。
+        self._set_all_village_field(county, 'morale', 50)
         option = {'immediate_effects': {'morale': 8}}
         JudicialCaseflowService._apply_verdict_effects_to_county_dict(county, option)
-        assert county['morale'] == 58
+        assert county['morale'] == 52
 
     def test_applies_treasury_delta(self, county):
         county['treasury'] = 200
@@ -239,13 +252,13 @@ class TestApplyVerdictEffectsToCountyDict:
         assert county['treasury'] == 150
 
     def test_clamps_morale_at_100(self, county):
-        county['morale'] = 98
+        self._set_all_village_field(county, 'morale', 98)
         option = {'immediate_effects': {'morale': 10}}
         JudicialCaseflowService._apply_verdict_effects_to_county_dict(county, option)
         assert county['morale'] == 100
 
     def test_no_effects_no_change(self, county):
-        county['morale'] = 55
+        self._set_all_village_field(county, 'morale', 55)
         option = {}
         JudicialCaseflowService._apply_verdict_effects_to_county_dict(county, option)
         assert county['morale'] == 55

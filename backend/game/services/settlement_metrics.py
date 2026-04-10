@@ -180,10 +180,21 @@ class MetricsMixin:
 
     @classmethod
     def refresh_metric_report_lines(cls, county, report):
-        """Rewrite metric summary lines against final county values after all late-stage effects."""
+        """Rewrite metric summary lines against final county values after all late-stage effects.
+
+        Also stores metric_deltas in report for downstream consumers (e.g. rumor generation).
+        """
         metric_bases = report.pop("_metric_bases", None) or {}
         if not metric_bases:
             return
+
+        # 存储各指标本月变化量，供流言板等下游使用
+        metric_deltas = {}
+        for field in ("morale", "security", "commercial", "education"):
+            if field in metric_bases:
+                metric_deltas[field] = round(
+                    float(county.get(field, 50.0)) - float(metric_bases[field]), 1)
+        report["metric_deltas"] = metric_deltas
 
         labels = {
             "morale": "民心变化",
@@ -194,8 +205,8 @@ class MetricsMixin:
         for field, label in labels.items():
             if field not in metric_bases:
                 continue
+            actual_change = metric_deltas.get(field, 0)
             current = float(county.get(field, 50.0))
-            actual_change = round(current - float(metric_bases[field]), 1)
             line = (
                 f"{label}: {'+' if actual_change > 0 else ''}"
                 f"{actual_change:.1f} (当前: {current:.1f})"
@@ -259,8 +270,12 @@ class MetricsMixin:
             delta -= 0.67
 
         # 宗族关系影响治安（按实力加权，各宗族 power 越大影响越显著）
+        # 衙役等级越高，宗族负向拉扯越弱；满级衙役应能实质压制乡间失序。
         clan_delta = get_county_security_delta(county)
         if clan_delta != 0.0:
+            if clan_delta < 0:
+                bailiff_mitigation = max(0.25, 1.0 - county.get("bailiff_level", 0) * 0.25)
+                clan_delta = round(clan_delta * bailiff_mitigation, 2)
             delta += clan_delta
 
         # 直接更新各村，县级聚合
@@ -283,6 +298,7 @@ class MetricsMixin:
         零衰减需 L3县学+3村塾 或 L2县学+6村塾。
         """
         old_edu = float(county.get("education", 0.0))
+        report.setdefault("_metric_bases", {})["education"] = old_edu
 
         # 基础衰减：-0.6/月；县学每级减免0.15，每个村塾减免0.05
         school_level = county.get("school_level", 0)
@@ -356,12 +372,13 @@ class MetricsMixin:
         )
 
     @classmethod
-    def _update_commercial(cls, county, month, report, prefecture_ctx=None):
+    def _update_commercial(cls, county, month, report, prefecture_ctx=None, game=None):
         """月度商业更新：粮食消耗→扣后余粮→消费信心指数→GMV→商税
         prefecture_ctx: optional dict with road_level for inter-county commerce bonus.
         消费信心基于扣除本月消耗后的余粮，确保展示与计算口径一致。
         """
         ensure_county_ledgers(county)
+        report.setdefault("_metric_bases", {})["commercial"] = float(county.get("commercial", 0.0))
         total_pop = sum(
             v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
             for v in county["villages"]
@@ -456,15 +473,29 @@ class MetricsMixin:
                     return n
             return f"集市{len(county['markets']) + 1}"
 
+        def _log_market_created(game, market_name, desc_text):
+            """将新集市事件写入 EventLog 供流言板读取（非关键，失败静默）。"""
+            try:
+                from .eventlog import log_game_event
+                log_game_event(
+                    game,
+                    event_type='auto_market_created',
+                    category='ECONOMY',
+                    description=desc_text,
+                    data={'market_name': market_name},
+                )
+            except Exception:
+                pass
+
         # 条件A：集市不足2个且商业>45，补足至2个（每月最多+1，自然触发）
         if len(county["markets"]) < 2 and commercial > 45:
             name = _unique_market_name(["草市", "墟市", "小集", "新市"])
             new_market = {"name": name, "merchants": 8, "gmv": 0.0}
             county["markets"].append(new_market)
             existing_names.add(name)
-            report["events"].append(
-                f"商业回暖，草市自发形成：{name}（初始商贩{new_market['merchants']}人）"
-            )
+            desc = f"商业回暖，草市自发形成：{name}（初始商贩{new_market['merchants']}人）"
+            report["events"].append(desc)
+            _log_market_created(game, name, desc)
 
         # 条件B/C：商业≥60/80时各额外触发一次（独立于条件A的计数）
         if commercial >= 80:
@@ -480,9 +511,9 @@ class MetricsMixin:
             county["markets"].append(new_market)
             existing_names.add(name)
             county["auto_market_count"] = auto_market_count + 1
-            report["events"].append(
-                f"商业繁荣，新集市自发形成：{name}（初始商贩{new_market['merchants']}人）"
-            )
+            desc = f"商业繁荣，新集市自发形成：{name}（初始商贩{new_market['merchants']}人）"
+            report["events"].append(desc)
+            _log_market_created(game, name, desc)
 
     @staticmethod
     def _reset_fiscal_year(county, report):

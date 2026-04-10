@@ -19,23 +19,34 @@ class MoraleSecurityLinkTests(SimpleTestCase):
         }
 
     def _run_update(self, security):
+        """结算后读取村级 morale（Model A：村为真相源，县为聚合视图）。
+
+        当前公式（见 settlement_metrics._update_morale）：
+            delta = -1.0 * zone_multiplier(old_morale)
+                  + (edu - 30)/40 if edu > 30 else 0
+                  + (security - 50)/40
+                  - 1 if tax_rate >= 0.15 else 0
+        此测试里 old_morale=50 → zone_mult=1.0；edu=0；tax=0.12。
+        """
         county = self._build_county(security)
         report = {"events": []}
-        with patch.object(SettlementService, "_sync_county_from_villages", lambda *_args, **_kwargs: None):
-            SettlementService._update_morale(county, report)
-        return county["morale"]
+        SettlementService._update_morale(county, report)
+        return county["villages"][0]["morale"]
 
     def test_security_above_60_adds_morale(self):
+        # sec=61 → delta = -1.0 + (61-50)/40 = -1.0 + 0.275 = -0.725
         morale = self._run_update(61)
-        self.assertAlmostEqual(morale, 50.17, places=2)
+        self.assertAlmostEqual(morale, 49.275, places=3)
 
     def test_security_below_30_reduces_morale(self):
+        # sec=29 → delta = -1.0 + (29-50)/40 = -1.0 - 0.525 = -1.525
         morale = self._run_update(29)
-        self.assertAlmostEqual(morale, 49.17, places=2)
+        self.assertAlmostEqual(morale, 48.475, places=3)
 
     def test_mid_security_keeps_base_morale_decay(self):
+        # sec=45 → delta = -1.0 + (45-50)/40 = -1.0 - 0.125 = -1.125
         morale = self._run_update(45)
-        self.assertAlmostEqual(morale, 49.67, places=2)
+        self.assertAlmostEqual(morale, 48.875, places=3)
 
 
 class PopulationMigrationCompetitionTests(SimpleTestCase):

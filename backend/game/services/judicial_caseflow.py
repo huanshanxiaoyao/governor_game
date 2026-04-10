@@ -1397,9 +1397,9 @@ class JudicialCaseflowService:
             memory_desc += '\n近期批注：\n' + '\n'.join(note_lines)
 
         # 县情概要（模糊）
-        from .ai_prefect import _tier_label
-        morale_lbl = _tier_label(county.get('morale', 50))
-        security_lbl = _tier_label(county.get('security', 50))
+        from .constants import score_to_tier
+        morale_lbl = score_to_tier(county.get('morale', 50))
+        security_lbl = score_to_tier(county.get('security', 50))
         treasury = county.get('treasury', 0)
         treasury_lbl = '充裕' if treasury > 500 else ('尚可' if treasury > 200 else ('紧张' if treasury > 50 else '匮乏'))
         county_situation = f'民心{morale_lbl}·治安{security_lbl}·县库{treasury_lbl}'
