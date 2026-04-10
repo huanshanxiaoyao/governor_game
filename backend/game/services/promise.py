@@ -20,16 +20,21 @@ class PromiseService:
     # ------------------------------------------------------------------
 
     @classmethod
-    def extract_and_save(cls, game, agent, session, player_message):
+    def extract_and_save(cls, game, agent, session, player_message,
+                         context_type=None):
         """从玩家发言中提取承诺并保存。
 
+        context_type: '谈判'|'交谈'|'书信'，用于 LLM 上下文提示。
         Returns list of created Promise objects (may be empty).
         """
         village_name = agent.attributes.get('village_name', '')
-        event_type = session.get_event_type_display() if session else ''
+        if context_type is None:
+            # 向后兼容：有 session 则为谈判
+            event_type = session.get_event_type_display() if session else ''
+            context_type = event_type if event_type else '谈判'
 
         ctx = {
-            'event_type': event_type,
+            'context_type': context_type,
             'village_name': village_name,
             'agent_name': agent.name,
             'current_season': game.current_season,
@@ -61,6 +66,11 @@ class PromiseService:
             if promise_type not in valid_types:
                 promise_type = 'OTHER'
 
+            # Validate direction
+            direction = p.get('direction', 'PLAYER_TO_NPC')
+            if direction not in ('PLAYER_TO_NPC', 'NPC_TO_PLAYER'):
+                direction = 'PLAYER_TO_NPC'
+
             deadline_seasons = int(p.get('deadline_seasons', 4))
             deadline_season = game.current_season + deadline_seasons
 
@@ -77,6 +87,7 @@ class PromiseService:
                 agent=agent,
                 negotiation=session,
                 promise_type=promise_type,
+                direction=direction,
                 description=p.get('description', ''),
                 status='PENDING',
                 season_made=game.current_season,
@@ -86,15 +97,20 @@ class PromiseService:
             created.append(promise)
 
             # Log event
+            if direction == 'NPC_TO_PLAYER':
+                desc = f'{agent.name}向县令承诺：{promise.description}（截止第{deadline_season}月）'
+            else:
+                desc = f'县令向{agent.name}承诺：{promise.description}（截止第{deadline_season}月）'
             EventLog.objects.create(
                 game=game,
                 season=game.current_season,
                 event_type='promise_made',
                 category='PROMISE',
-                description=f'县令向{agent.name}承诺：{promise.description}（截止第{deadline_season}月）',
+                description=desc,
                 data={
                     'promise_id': promise.id,
                     'promise_type': promise_type,
+                    'direction': direction,
                     'agent_name': agent.name,
                     'deadline_season': deadline_season,
                 },
@@ -141,27 +157,35 @@ class PromiseService:
         events = []
 
         for promise in pending:
+            is_npc_promise = getattr(promise, 'direction', 'PLAYER_TO_NPC') == 'NPC_TO_PLAYER'
+
             # Check if fulfilled early
             fulfilled = cls._validate_promise(promise, game)
             if fulfilled:
                 cls._resolve_promise(promise, game, 'FULFILLED')
-                events.append(f'承诺已履行：{promise.description}（清名+3）')
+                if is_npc_promise:
+                    events.append(f'{promise.agent.name}的承诺已履行：{promise.description}（好感+5）')
+                else:
+                    events.append(f'承诺已履行：{promise.description}（清名+3）')
             elif game.current_season >= promise.deadline_season:
                 # Deadline reached — but defer if project is still under construction
-                if cls._is_in_construction(promise, game):
+                if not is_npc_promise and cls._is_in_construction(promise, game):
                     events.append(f'承诺延期：{promise.description}（项目建设中，暂不计为违约）')
                 else:
                     cls._resolve_promise(promise, game, 'BROKEN')
                     cls._apply_breach_penalty(promise, game)
-                    penalty = cls._BREACH_PENALTY_TABLE.get(
-                        promise.promise_type, cls._BREACH_PENALTY_TABLE['OTHER'])
-                    parts = [f'承诺已违约：{promise.description}（清名-5']
-                    if penalty['morale']:
-                        parts.append(f'，民心{penalty["morale"]}')
-                    if penalty['affinity']:
-                        parts.append(f'，好感{penalty["affinity"]}')
-                    parts.append('）')
-                    events.append(''.join(parts))
+                    if is_npc_promise:
+                        events.append(f'{promise.agent.name}违约：{promise.description}（好感-10）')
+                    else:
+                        penalty = cls._BREACH_PENALTY_TABLE.get(
+                            promise.promise_type, cls._BREACH_PENALTY_TABLE['OTHER'])
+                        parts = [f'承诺已违约：{promise.description}（清名-5']
+                        if penalty['morale']:
+                            parts.append(f'，民心{penalty["morale"]}')
+                        if penalty['affinity']:
+                            parts.append(f'，好感{penalty["affinity"]}')
+                        parts.append('）')
+                        events.append(''.join(parts))
 
         return events
 
@@ -298,7 +322,23 @@ class PromiseService:
 
     @classmethod
     def _apply_breach_penalty(cls, promise, game):
-        """统一违约惩罚：根据承诺类型查表施加 morale 和 affinity 惩罚。"""
+        """统一违约惩罚：根据承诺类型查表施加 morale 和 affinity 惩罚。
+
+        NPC_TO_PLAYER 方向的承诺违约：不扣玩家清名，改扣 NPC 好感度 -10。
+        """
+        is_npc_promise = getattr(promise, 'direction', 'PLAYER_TO_NPC') == 'NPC_TO_PLAYER'
+
+        if is_npc_promise:
+            # NPC 违约：仅扣好感度（玩家对该 NPC 信任下降）
+            if promise.agent:
+                agent = promise.agent
+                attrs = agent.attributes or {}
+                attrs['player_affinity'] = max(-99, min(99,
+                    int(attrs.get('player_affinity', 50)) - 10))
+                agent.attributes = attrs
+                agent.save(update_fields=['attributes'])
+            return
+
         from .state import load_county_state, save_player_state
         from .settlement_metrics import MetricsMixin
 
@@ -334,39 +374,62 @@ class PromiseService:
 
     @classmethod
     def _resolve_promise(cls, promise, game, new_status):
-        """Mark promise as fulfilled or broken, adjust integrity."""
+        """Mark promise as fulfilled or broken, adjust integrity.
+
+        NPC_TO_PLAYER 方向的承诺不影响玩家清名。
+        """
+        is_npc_promise = getattr(promise, 'direction', 'PLAYER_TO_NPC') == 'NPC_TO_PLAYER'
+
         promise.status = new_status
         promise.resolved_at = timezone.now()
         promise.save(update_fields=['status', 'resolved_at'])
 
-        # Adjust integrity
-        player = getattr(game, 'player', None)
-        if player is None:
-            try:
-                from ..models import PlayerProfile
-                player = PlayerProfile.objects.get(game=game)
-            except Exception:
-                return
+        integrity_change = 0
+        if not is_npc_promise:
+            # 玩家承诺：调整玩家清名
+            player = getattr(game, 'player', None)
+            if player is None:
+                try:
+                    from ..models import PlayerProfile
+                    player = PlayerProfile.objects.get(game=game)
+                except Exception:
+                    player = None
 
-        if new_status == 'FULFILLED':
-            player.integrity = min(100, player.integrity + 3)
-        elif new_status == 'BROKEN':
-            player.integrity = max(0, player.integrity - 5)
-        player.save(update_fields=['integrity'])
+            if player is not None:
+                if new_status == 'FULFILLED':
+                    player.integrity = min(100, player.integrity + 3)
+                    integrity_change = 3
+                elif new_status == 'BROKEN':
+                    player.integrity = max(0, player.integrity - 5)
+                    integrity_change = -5
+                player.save(update_fields=['integrity'])
+        else:
+            # NPC 承诺兑现：好感 +5
+            if new_status == 'FULFILLED' and promise.agent:
+                agent = promise.agent
+                attrs = agent.attributes or {}
+                attrs['player_affinity'] = min(99,
+                    int(attrs.get('player_affinity', 50)) + 5)
+                agent.attributes = attrs
+                agent.save(update_fields=['attributes'])
 
         # Log event
         status_text = '已履行' if new_status == 'FULFILLED' else '已违约'
-        integrity_change = '+3' if new_status == 'FULFILLED' else '-5'
+        if is_npc_promise:
+            desc = f'{promise.agent.name}的承诺{status_text}：{promise.description}'
+        else:
+            desc = f'承诺{status_text}：{promise.description}（清名{integrity_change:+d}）'
         EventLog.objects.create(
             game=game,
             season=game.current_season,
             event_type=f'promise_{new_status.lower()}',
             category='PROMISE',
-            description=f'承诺{status_text}：{promise.description}（清名{integrity_change}）',
+            description=desc,
             data={
                 'promise_id': promise.id,
                 'promise_type': promise.promise_type,
+                'direction': getattr(promise, 'direction', 'PLAYER_TO_NPC'),
                 'status': new_status,
-                'integrity_change': 3 if new_status == 'FULFILLED' else -5,
+                'integrity_change': integrity_change,
             },
         )

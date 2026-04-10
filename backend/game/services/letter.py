@@ -503,21 +503,16 @@ class LetterService:
         from llm.client import LLMClient
         from llm.prompts import PromptRegistry
         from ..models import Letter
+        from .agent import AgentService
 
         agent = original_letter.recipient_agent
-        attrs = agent.attributes or {}
-        personality = attrs.get('personality', '沉稳持重')
-        ideology = attrs.get('ideology', '务实')
 
-        ctx = {
-            "agent_name": agent.name,
-            "role_title": agent.role_title,
-            "personality": personality,
-            "ideology": ideology,
-            "current_month": current_month,
-            "original_subject": original_letter.subject,
-            "original_body": original_letter.body,
-        }
+        # 复用 AgentService 的完整上下文（bio/性格/关系/县情/村庄等）
+        ctx = AgentService.build_system_context(agent, game)
+        # 补充书信专属字段
+        ctx['current_month'] = current_month
+        ctx['original_subject'] = original_letter.subject
+        ctx['original_body'] = original_letter.body
 
         system, user = PromptRegistry.render('letter_npc_reply', **ctx)
         try:

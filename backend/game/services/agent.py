@@ -707,6 +707,22 @@ class AgentService:
             county['advisor_questions_used'] = county.get('advisor_questions_used', 0) + 1
             save_player_state(game, county)
 
+        # 5. 异步提取承诺（本县 NPC 角色）
+        if 'error' not in result and agent.role in ('ADVISOR', 'DEPUTY', 'GENTRY', 'VILLAGER'):
+            import threading
+            from .promise import PromiseService
+
+            def _extract_chat_promises():
+                try:
+                    PromiseService.extract_and_save(
+                        game, agent, None, player_message,
+                        context_type='交谈',
+                    )
+                except Exception as e:
+                    logger.warning("Chat promise extraction failed (non-fatal): %s", e)
+
+            threading.Thread(target=_extract_chat_promises, daemon=True).start()
+
         return result
 
     @classmethod
@@ -773,6 +789,26 @@ class AgentService:
         # 6. 更新好感度和记忆
         cls._apply_chat_effects(agent, result)
 
+        # 7. 记录 NPC 请求到 EventLog
+        for req in result.get('requests', []):
+            req_type = req.get('type', 'OTHER')
+            req_desc = req.get('description', '')
+            if req_desc:
+                from .eventlog import log_game_event
+                log_game_event(
+                    game,
+                    event_type='npc_request',
+                    category='SOCIAL',
+                    season=game.current_season,
+                    description=f'{agent.name}请求：{req_desc}',
+                    data={
+                        'agent_id': agent.id,
+                        'agent_name': agent.name,
+                        'request_type': req_type,
+                        'description': req_desc,
+                    },
+                )
+
         return result
 
     @classmethod
@@ -820,6 +856,7 @@ class AgentService:
             'reasoning': '',
             'attitude_change': 0,
             'new_memory': '',
+            'requests': [],
         }
         for key, default in defaults.items():
             if key not in result:
@@ -830,6 +867,10 @@ class AgentService:
             result['attitude_change'] = max(-5, min(5, int(result['attitude_change'])))
         except (ValueError, TypeError):
             result['attitude_change'] = 0
+
+        # Ensure requests is a list
+        if not isinstance(result.get('requests'), list):
+            result['requests'] = []
 
         return result
 
@@ -863,6 +904,9 @@ class AgentService:
     def get_agents_list(cls, game):
         """返回游戏中所有NPC的概要信息"""
         from django.db.models import Q
+        from .clan_youth import ClanYouthService
+
+        ClanYouthService.normalize_game_nominations(game)
         agent_qs = list(Agent.objects.filter(game=game).order_by('id'))
 
         # 批量查询关系，避免 N+1
@@ -887,6 +931,13 @@ class AgentService:
             memory = a.attributes.get('memory', [])
             recent_memory = memory[-3:] if memory else []
             attrs = a.attributes
+            youth_attrs = {}
+            if a.role == 'CLAN_YOUTH':
+                youth_attrs = {
+                    'exam_eligible': ClanYouthService.is_active_nomination(attrs, game.current_season),
+                    'generated_season': attrs.get('generated_season', 0),
+                    'can_nominate': ClanYouthService.is_current_year_youth(attrs, game.current_season),
+                }
             result.append({
                 'id': a.id,
                 'name': a.name,
@@ -914,7 +965,7 @@ class AgentService:
                 'social_identity': attrs.get('social_identity', {}),
                 'hometown_relation': attrs.get('hometown_relation', ''),
                 # 宗族后生专用
-                'attributes': {'exam_eligible': attrs.get('exam_eligible', False)} if a.role == 'CLAN_YOUTH' else {},
+                'attributes': youth_attrs,
             })
         return result
 

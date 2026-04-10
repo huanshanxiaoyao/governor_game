@@ -178,6 +178,9 @@ class ChatMessageSerializer(serializers.Serializer):
 class NegotiationChatSerializer(serializers.Serializer):
     message = serializers.CharField(
         max_length=500,
+        allow_blank=True,
+        required=False,
+        default="",
         help_text="玩家的谈判发言",
     )
     speaker_role = serializers.ChoiceField(

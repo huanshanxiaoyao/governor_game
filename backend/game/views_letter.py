@@ -1,5 +1,6 @@
 """书信系统视图"""
 import logging
+import threading
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -85,6 +86,19 @@ class LetterInboxView(APIView):
             subject=subject,
             body=body,
         )
+
+        # 异步提取书信中的承诺
+        def _extract_letter_promises():
+            try:
+                from .services.promise import PromiseService
+                PromiseService.extract_and_save(
+                    game, agent, None, body, context_type='书信',
+                )
+            except Exception as e:
+                logger.warning("Letter promise extraction failed (non-fatal): %s", e)
+
+        threading.Thread(target=_extract_letter_promises, daemon=True).start()
+
         return Response({
             "id": letter.id,
             "status": letter.status,
@@ -227,6 +241,21 @@ class LetterReplyView(APIView):
         )
         if not ok:
             return Response({"error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 异步提取回信中的承诺（仅自由文本回复）
+        if body and letter.sender_agent_id:
+            def _extract_reply_promises():
+                try:
+                    from .services.promise import PromiseService
+                    PromiseService.extract_and_save(
+                        game, letter.sender_agent, None, body,
+                        context_type='书信',
+                    )
+                except Exception as e:
+                    logger.warning("Reply promise extraction failed (non-fatal): %s", e)
+
+            threading.Thread(target=_extract_reply_promises, daemon=True).start()
+
         return Response({"status": "REPLIED", "message": msg})
 
 

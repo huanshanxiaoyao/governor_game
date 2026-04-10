@@ -26,6 +26,12 @@ NEGOTIATION_INACTIVE_SEASONS = 3
 # NPC 主动发起 vs 玩家发起的谈判类型
 _NPC_INITIATED_TYPES = frozenset({'VILLAGE_REQ_SCHOOL', 'VILLAGE_REQ_TAX', 'LANDLORD_DEMAND_FACILITY', 'GENTRY_RELIEF_OFFER'})
 _PLAYER_INITIATED_TYPES = frozenset({'ANNEXATION', 'IRRIGATION', 'HIDDEN_LAND'})
+_REQUEST_STYLE_DELEGATION_TYPES = frozenset({
+    'VILLAGE_REQ_SCHOOL',
+    'VILLAGE_REQ_TAX',
+    'LANDLORD_DEMAND_FACILITY',
+    'GENTRY_RELIEF_OFFER',
+})
 
 # Round-pressure text by progress
 _PRESSURE_EARLY = ''
@@ -212,6 +218,9 @@ class NegotiationService:
 
         speaker_role = cls._normalize_speaker_role(speaker_role)
         delegate_agent = cls._get_delegate_agent(game, speaker_role)
+        player_message = (player_message or '').strip()
+        if speaker_role != 'PLAYER' and not player_message:
+            player_message = cls._build_delegate_message(session, speaker_role, delegate_agent)
         llm_player_message = cls._format_player_message(player_message, speaker_role, delegate_agent)
 
         # 1. Increment round
@@ -679,11 +688,34 @@ class NegotiationService:
         return '县丞交涉未果，请大人亲自定夺。'
 
     @classmethod
+    def _build_delegate_message(cls, session, speaker_role, delegate_agent=None):
+        if speaker_role == 'PLAYER':
+            return ''
+
+        title = delegate_agent.name if delegate_agent else ('师爷' if speaker_role == 'ADVISOR' else '县丞')
+        village_name = session.context_data.get('village_name') or session.agent.attributes.get('village_name', '')
+        village_prefix = f'{village_name}一事' if village_name else '此事'
+
+        templates = {
+            'VILLAGE_REQ_SCHOOL': f'{title}奉县令之命前来听取{village_prefix}的建塾请愿，请把本村诉求直说。',
+            'VILLAGE_REQ_TAX': f'{title}奉县令之命前来核实{village_prefix}的减税请愿，请陈明缘由。',
+            'LANDLORD_DEMAND_FACILITY': f'{title}奉县令之命前来商议{village_prefix}的设施诉求，请把要求与顾虑明说。',
+            'GENTRY_RELIEF_OFFER': f'{title}奉县令之命前来答复{village_prefix}的放粮提议，请把可行数目与条件说明。',
+        }
+        return templates.get(session.event_type, f'{title}奉县令之命前来会商，请直陈此事。')
+
+    @classmethod
     def _evaluate_delegate_attempt(cls, session, result, speaker_role, delegate_agent):
         """Delegate handles one automatic attempt: success resolves, failure hands off."""
         event_type = session.event_type
         role_bonus = cls._delegate_role_bonus(speaker_role, event_type)
         trait_bonus = cls._delegate_trait_bonus(delegate_agent)
+
+        if event_type in _REQUEST_STYLE_DELEGATION_TYPES:
+            decision = result.get('final_decision')
+            if decision in ('accept', 'refuse'):
+                return {'success': True, 'final_decision': decision}
+            return {'success': False, 'handoff_message': cls._delegate_handoff_message(speaker_role)}
 
         if event_type == 'ANNEXATION':
             willingness = max(0.0, min(1.0, cls._safe_float(result.get('willingness_to_stop', 0.3), 0.3)))
@@ -1029,6 +1061,7 @@ class NegotiationService:
                 if inv.get('action') == 'build_irrigation':
                     inv.setdefault('gentry_contributions', [])
                     inv['gentry_contributions'].append({
+                        'agent_id': agent.id,
                         'agent_name': agent.name,
                         'village_name': village_name,
                         'amount': contribution,
@@ -1038,7 +1071,8 @@ class NegotiationService:
             # Gentry affinity decreases proportional to contribution extracted
             max_contrib = session.context_data.get('max_contribution', 20)
             if max_contrib > 0:
-                affinity_loss = int(8 * (contribution / max_contrib))
+                # schoolbook round-half-up (avoid Python banker's rounding: round(2.5)==2)
+                affinity_loss = max(1, int(5 * contribution / max_contrib + 0.5))
                 attrs = agent.attributes
                 attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - affinity_loss)
                 agent.attributes = attrs

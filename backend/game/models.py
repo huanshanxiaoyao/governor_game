@@ -348,7 +348,7 @@ class DialogueMessage(models.Model):
 
 
 class Promise(models.Model):
-    """玩家承诺追踪"""
+    """承诺追踪（玩家承诺 & NPC承诺）"""
     PROMISE_TYPES = [
         ('LOWER_TAX', '降低税率'),
         ('BUILD_SCHOOL', '资助村塾'),
@@ -359,12 +359,19 @@ class Promise(models.Model):
         ('REPAIR_ROADS', '修缮道路'),
         ('BUILD_GRANARY', '开设义仓'),
         ('UPGRADE_FACILITY', '升级公共设施'),
+        ('RECOMMEND_TALENT', '举荐人才'),
+        ('DONATE_FUNDS', '捐助资金'),
+        ('PROVIDE_LABOR', '提供劳力'),
         ('OTHER', '其他'),
     ]
     STATUS_CHOICES = [
         ('PENDING', '待履行'),
         ('FULFILLED', '已履行'),
         ('BROKEN', '已违约'),
+    ]
+    DIRECTION_CHOICES = [
+        ('PLAYER_TO_NPC', '玩家向NPC承诺'),
+        ('NPC_TO_PLAYER', 'NPC向玩家承诺'),
     ]
 
     game = models.ForeignKey(GameState, on_delete=models.CASCADE, related_name='promises')
@@ -374,6 +381,10 @@ class Promise(models.Model):
         null=True, blank=True, related_name='promises',
     )
     promise_type = models.CharField(max_length=20, choices=PROMISE_TYPES, help_text='承诺类型')
+    direction = models.CharField(
+        max_length=15, choices=DIRECTION_CHOICES,
+        default='PLAYER_TO_NPC', help_text='承诺方向',
+    )
     description = models.TextField(help_text='人类可读描述')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     season_made = models.IntegerField(help_text='承诺时的月份')
