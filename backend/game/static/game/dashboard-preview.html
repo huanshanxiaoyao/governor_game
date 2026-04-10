@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>县情总览 — 设计预览 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  --paper:        #f7f2e8;
+  --paper-warm:   #ede5d0;
+  --paper-dark:   #e0d5bc;
+  --ink:          #2a2218;
+  --ink-mid:      #4a3f30;
+  --ink-light:    #7a6e5a;
+  --ink-faint:    #b0a48c;
+  --cinnabar:     #c0392b;
+  --cinnabar-lt:  #e8c5bf;
+  --cinnabar-bg:  #fdf3f1;
+  --amber:        #c97a10;
+  --amber-lt:     #f5e0b0;
+  --amber-bg:     #fdf8ed;
+  --jade:         #3d7a52;
+  --jade-lt:      #b8d9c5;
+  --jade-bg:      #f0f7f3;
+  --seal-red:     #a81c1c;
+  --border:       #c8b98a;
+  --border-lt:    #ddd5bd;
+  --shadow:       0 2px 12px rgba(60,40,10,0.10);
+  --shadow-sm:    0 1px 4px rgba(60,40,10,0.07);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.65;
+  min-height: 100vh;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+}
+
+.page-wrap {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 20px 48px;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 0 14px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 4px;
+}
+.game-header-left { display: flex; align-items: baseline; gap: 16px; }
+.game-title {
+  font-family: "Noto Serif SC", serif;
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--ink-mid);
+  letter-spacing: 0.04em;
+}
+.game-meta { font-size: 0.9em; color: var(--ink-light); display: flex; gap: 16px; }
+.game-meta strong { color: var(--ink-mid); }
+.game-header-right { display: flex; align-items: center; gap: 10px; }
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.tab-nav {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 20px;
+}
+.tab-btn {
+  padding: 9px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.92em;
+  color: var(--ink-light);
+  transition: color 0.15s;
+}
+.tab-btn:hover { color: var(--ink-mid); }
+.tab-btn.active { color: var(--ink-mid); border-bottom-color: var(--jade); font-weight: 500; }
+
+/* ── Two-column layout ──────────────────────────────────────── */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 1fr 272px;
+  gap: 24px;
+  align-items: start;
+}
+.dashboard-main { min-width: 0; }
+.dashboard-sidebar {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Section title ───────────────────────────────────────────── */
+.section-title {
+  font-family: "Noto Serif SC", serif;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--ink-light);
+  letter-spacing: 0.12em;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-lt);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 12px;
+  background: var(--seal-red);
+  border-radius: 2px;
+}
+
+/* ── Disaster banner ────────────────────────────────────────── */
+.disaster-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--cinnabar-bg);
+  border: 1px solid var(--cinnabar-lt);
+  border-left: 4px solid var(--cinnabar);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  animation: slideDown 0.3s ease;
+  font-size: 0.9em;
+}
+.disaster-banner strong { color: var(--cinnabar); }
+.disaster-banner-sub { color: var(--ink-mid); margin-top: 2px; font-size: 0.88em; }
+
+/* ── 4 Stat cards ────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid var(--border-lt);
+  border-radius: 8px;
+  padding: 13px 14px 11px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  animation: cardIn 0.4s ease both;
+  transition: box-shadow 0.2s, transform 0.2s;
+  cursor: default;
+}
+.stat-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.stat-card:nth-child(1) { animation-delay: 0.04s; }
+.stat-card:nth-child(2) { animation-delay: 0.08s; }
+.stat-card:nth-child(3) { animation-delay: 0.12s; }
+.stat-card:nth-child(4) { animation-delay: 0.16s; }
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--stripe, var(--border));
+  border-radius: 8px 8px 0 0;
+}
+.stat-card.tier-red    { --stripe: #b03030; }
+.stat-card.tier-amber  { --stripe: #c97a10; }
+.stat-card.tier-olive  { --stripe: #7a9a30; }
+.stat-card.tier-jade   { --stripe: #3d8050; }
+.stat-label { font-size: 0.76em; color: var(--ink-light); letter-spacing: 0.08em; margin-bottom: 5px; }
+.stat-value {
+  font-family: "Noto Serif SC", serif;
+  font-size: 2.1em; font-weight: 700; line-height: 1;
+  color: var(--ink); margin-bottom: 7px;
+}
+.stat-tier-row {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 6px;
+}
+.stat-tier-label {
+  font-size: 0.74em; font-weight: 600;
+  padding: 1px 6px; border-radius: 9px; letter-spacing: 0.04em;
+}
+.tier-red   .stat-tier-label { background: #f5dada; color: #8b2020; }
+.tier-amber .stat-tier-label { background: #f8e8c0; color: #7a4a08; }
+.tier-olive .stat-tier-label { background: #e5eece; color: #4a6018; }
+.tier-jade  .stat-tier-label { background: #c8e8d4; color: #1d5c35; }
+.stat-delta { font-size: 0.74em; color: var(--ink-faint); }
+.stat-delta.up   { color: var(--jade); }
+.stat-delta.down { color: var(--cinnabar); }
+.stat-bar-wrap { height: 3px; background: var(--paper-warm); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.stat-bar-fill { height: 100%; border-radius: 2px; background: var(--stripe, var(--border)); }
+
+/* ── Hero metrics ────────────────────────────────────────────── */
+.hero-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.hero-card {
+  border-radius: 8px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-sm);
+  animation: cardIn 0.45s ease both;
+  animation-delay: 0.2s;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.15s;
+}
+.hero-card:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.hero-card::after {
+  /* decorative corner mark */
+  content: '';
+  position: absolute;
+  bottom: -12px; right: -12px;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+}
+/* expand chevron */
+.hero-chevron {
+  position: absolute;
+  bottom: 10px; right: 14px;
+  font-size: 0.78em;
+  opacity: 0.55;
+  transition: transform 0.25s;
+  pointer-events: none;
+}
+.hero-card.expanded .hero-chevron { transform: rotate(180deg); }
+
+/* expandable detail panel — lives BELOW the hero-row, not inside the card */
+.hero-detail {
+  display: none;
+  background: rgba(0,0,0,0.18);
+  border-radius: 0 0 8px 8px;
+  padding: 14px 18px 12px;
+  margin-top: -6px;
+  animation: expandIn 0.22s ease;
+}
+.hero-detail.open { display: block; }
+.hero-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.83em;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.85);
+}
+.hero-detail-row:last-child { border-bottom: none; }
+.hero-detail-label { opacity: 0.75; }
+.hero-detail-value { font-weight: 600; color: #fff; }
+.hero-detail-bar-track {
+  height: 5px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+.hero-detail-bar-fill {
+  height: 100%;
+  background: rgba(255,255,255,0.6);
+  border-radius: 3px;
+}
+.hero-detail-divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.18);
+  margin: 6px 0;
+}
+
+/* wrapper keeps card + detail visually linked */
+.hero-card-wrap {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  animation: cardIn 0.45s ease both;
+  animation-delay: 0.2s;
+}
+/* re-scope shadow to wrapper, not card */
+.hero-card-wrap .hero-card { box-shadow: none; border-radius: 0; animation: none; }
+.hero-card-wrap .hero-card:first-child { border-radius: 8px 8px 0 0; }
+.hero-card-wrap .hero-card.closed { border-radius: 8px; }
+.hero-detail { border-radius: 0 0 8px 8px; margin-top: 0; }
+.hero-card.grain {
+  background: linear-gradient(135deg, #2d6040 0%, #4a9a68 100%);
+  color: #fff;
+}
+.hero-card.quota-ok {
+  background: linear-gradient(135deg, #2a5a80 0%, #4a88b8 100%);
+  color: #fff;
+}
+.hero-card.quota-warn {
+  background: linear-gradient(135deg, #7a4a08 0%, #c97a10 100%);
+  color: #fff;
+}
+.hero-card.quota-danger {
+  background: linear-gradient(135deg, #8b1010 0%, #c0392b 100%);
+  color: #fff;
+}
+.hero-label {
+  font-size: 0.76em;
+  letter-spacing: 0.1em;
+  opacity: 0.8;
+  font-weight: 500;
+}
+.hero-num {
+  font-family: "Noto Serif SC", serif;
+  font-size: 2.6em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.hero-unit { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 3px; }
+.hero-sub {
+  font-size: 0.8em;
+  opacity: 0.75;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hero-sub-tag {
+  background: rgba(255,255,255,0.2);
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 0.88em;
+}
+.hero-bar-wrap {
+  height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.hero-bar-fill {
+  height: 100%;
+  background: rgba(255,255,255,0.7);
+  border-radius: 2px;
+}
+
+/* ── Infra + misc compact row ───────────────────────────────── */
+.compact-card {
+  background: #fff;
+  border: 1px solid var(--border-lt);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+}
+.infra-pips-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.infra-item { display: flex; flex-direction: column; gap: 4px; }
+.infra-label { font-size: 0.76em; color: var(--ink-light); }
+.infra-pips { display: flex; gap: 4px; align-items: center; }
+.pip {
+  width: 10px; height: 10px; border-radius: 2px;
+  background: var(--paper-dark);
+}
+.pip.filled { background: var(--jade); }
+.pip.none   { background: var(--cinnabar); opacity: 0.35; }
+.infra-text { font-size: 0.74em; color: var(--ink-faint); margin-left: 3px; }
+
+/* Compact fiscal items, inline */
+.compact-fiscal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.85em;
+  color: var(--ink-mid);
+  border-top: 1px dashed var(--border-lt);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.cf-item { color: var(--ink-light); }
+.cf-item span { color: var(--ink-mid); font-weight: 500; }
+.cf-item.warn span { color: var(--amber); }
+.cf-item a { color: var(--ink-light); cursor: pointer; text-decoration: none; }
+.cf-item a:hover { color: var(--ink-mid); }
+
+/* quota styles now live inside .hero-detail */
+.quota-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.quota-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.quota-detail-label { font-size: 0.83em; opacity: 0.8; }
+.quota-detail-nums  { font-size: 0.8em; opacity: 0.75; }
+.quota-detail-nums strong { color: #fff; opacity: 1; }
+.quota-detail-bar-track {
+  height: 5px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.quota-detail-bar-fill { height: 100%; border-radius: 3px; }
+.quota-detail-bar-fill.ok     { background: rgba(180,255,200,0.7); }
+.quota-detail-bar-fill.warn   { background: rgba(255,220,120,0.7); }
+.quota-detail-bar-fill.danger { background: rgba(255,160,140,0.7); }
+.quota-detail-bar-fill.proj   { background: rgba(180,210,255,0.5); }
+
+/* ── 流言板 (PROMINENT) ──────────────────────────────────────── */
+.rumors-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+  position: relative;
+}
+/* decorative stamp in top-right */
+.rumors-card::after {
+  content: '告';
+  position: absolute;
+  top: 14px; right: 16px;
+  font-family: "Noto Serif SC", serif;
+  font-size: 1.8em;
+  font-weight: 700;
+  color: var(--seal-red);
+  opacity: 0.10;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+.rumor-list { display: flex; flex-direction: column; gap: 0; }
+.rumor-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px dashed var(--border-lt);
+  animation: cardIn 0.5s ease both;
+}
+.rumor-item:last-child { border-bottom: none; padding-bottom: 0; }
+.rumor-item:nth-child(1) { animation-delay: 0.25s; }
+.rumor-item:nth-child(2) { animation-delay: 0.32s; }
+.rumor-item:nth-child(3) { animation-delay: 0.39s; }
+.rumor-index {
+  font-family: "Noto Serif SC", serif;
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--seal-red);
+  opacity: 0.35;
+  line-height: 1;
+  min-width: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.rumor-body { flex: 1; }
+.rumor-text {
+  font-size: 0.93em;
+  color: var(--ink-mid);
+  line-height: 1.65;
+}
+.rumor-tag {
+  display: inline-block;
+  font-size: 0.72em;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-right: 6px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.rumor-tag.folk   { background: #e8e0d4; color: #5a4a30; }
+.rumor-tag.warn   { background: var(--amber-lt); color: #7a4a08; }
+.rumor-tag.threat { background: var(--cinnabar-lt); color: #8b2020; }
+
+/* ── Active investments (compact) ───────────────────────────── */
+.invest-compact { display: flex; flex-direction: column; gap: 6px; }
+.invest-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.86em;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--border-lt);
+}
+.invest-row:last-child { border-bottom: none; }
+.invest-name { color: var(--ink-mid); }
+.invest-eta {
+  font-size: 0.8em; color: var(--ink-light);
+  background: var(--paper-warm); padding: 1px 7px; border-radius: 9px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn {
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--paper-warm);
+  color: var(--ink-mid);
+  cursor: pointer;
+  font-size: 0.88em;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--paper-dark); }
+.btn-primary { background: var(--jade); color: #fff; border-color: #2d6040; }
+.btn-primary:hover { background: #2d6040; }
+.btn-sm { padding: 5px 12px; font-size: 0.82em; }
+
+/* ── Advance bar ─────────────────────────────────────────────── */
+.advance-section {
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border-lt);
+  margin-top: 6px;
+  display: flex; align-items: center; gap: 14px;
+}
+.advance-hint { font-size: 0.84em; color: var(--ink-light); }
+
+/* ══════════════════════════════════════════════════════════════
+   SIDEBAR
+   ══════════════════════════════════════════════════════════════ */
+.sidebar-card {
+  background: #fff;
+  border: 1px solid var(--border-lt);
+  border-radius: 8px;
+  padding: 14px 15px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Archive */
+.archive-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 11px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-lt);
+}
+.archive-seal {
+  width: 34px; height: 34px; border-radius: 5px;
+  background: var(--seal-red);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: "Noto Serif SC", serif; font-size: 1.05em; font-weight: 700;
+  flex-shrink: 0;
+}
+.archive-name { font-family: "Noto Serif SC", serif; font-size: 0.92em; font-weight: 600; color: var(--ink-mid); }
+.archive-role { font-size: 0.76em; color: var(--ink-light); }
+.archive-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 4px;
+}
+.astat { display: flex; flex-direction: column; }
+.astat-label { font-size: 0.7em; color: var(--ink-faint); letter-spacing: 0.04em; }
+.astat-value { font-size: 0.87em; color: var(--ink-mid); font-weight: 500; }
+
+/* Directive in sidebar */
+.sidebar-directive {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-lt);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  padding: 11px 13px;
+  font-size: 0.85em;
+}
+.directive-label {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--amber);
+  margin-bottom: 5px;
+  display: flex; justify-content: space-between;
+}
+.directive-age { color: var(--ink-faint); font-weight: 400; }
+.directive-text { color: var(--ink-mid); line-height: 1.6; }
+
+/* Environment */
+.env-items { display: flex; flex-direction: column; gap: 8px; }
+.env-row {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 10px;
+  font-size: 0.83em;
+}
+.env-label { color: var(--ink-light); flex-shrink: 0; }
+.env-right { display: flex; align-items: center; gap: 7px; }
+.env-bar { width: 56px; height: 5px; background: var(--paper-warm); border-radius: 3px; overflow: hidden; }
+.env-fill { height: 100%; border-radius: 3px; }
+.env-fill.good { background: var(--jade); }
+.env-fill.warn { background: var(--amber); }
+.env-fill.risk { background: var(--cinnabar); }
+.env-val { font-size: 0.82em; color: var(--ink-mid); font-weight: 500; min-width: 28px; text-align: right; }
+
+/* Markets sidebar (simplified) */
+.mkt-items { display: flex; flex-direction: column; gap: 7px; }
+.mkt-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.84em;
+}
+.mkt-name { color: var(--ink-mid); font-weight: 500; }
+.mkt-gmv  { color: var(--ink-light); }
+.mkt-gmv span { color: #8b6914; font-weight: 600; }
+
+/* ── Animations ──────────────────────────────────────────────── */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fillGrow { from { width: 0 !important; } }
+@keyframes expandIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.stat-bar-fill,
+.quota-bar-fill,
+.hero-bar-fill,
+.env-fill { animation: fillGrow 1s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (max-width: 740px) {
+  .dashboard-layout { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-row { grid-template-columns: 1fr; }
+  .infra-pips-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- Header -->
+  <header class="game-header">
+    <div class="game-header-left">
+      <span class="game-title">清平县</span>
+      <div class="game-meta">
+        <span>崇祯三年 <strong>七月</strong></span>
+        <span>第 <strong>3</strong> 年</span>
+        <span>县库：<strong>342 两</strong></span>
+      </div>
+    </div>
+    <div class="game-header-right">
+      <button class="btn btn-sm">月报</button>
+      <button class="btn btn-primary btn-sm">推进至下月</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tab-nav">
+    <button class="tab-btn active">县情总览</button>
+    <button class="tab-btn">施政</button>
+    <button class="tab-btn">司法</button>
+    <button class="tab-btn">社交</button>
+    <button class="tab-btn">村庄</button>
+    <button class="tab-btn">邻县</button>
+    <button class="tab-btn">官场</button>
+    <button class="tab-btn">县志</button>
+    <button class="tab-btn">信箱</button>
+  </nav>
+
+  <div class="dashboard-layout">
+    <!-- ═══════════ MAIN ═══════════ -->
+    <div class="dashboard-main">
+
+      <!-- Disaster alert -->
+      <div class="disaster-banner">
+        <div>
+          <strong>旱灾警报</strong> — 严重程度 64%，尚未赈灾
+          <div class="disaster-banner-sub">九月可向知府申请减免 · 开设义仓可降低秋收人口损失</div>
+        </div>
+      </div>
+
+      <!-- ① 4 stat cards -->
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <!-- ② Hero metrics: grain + quota gap (each expandable) -->
+      <div class="hero-row" id="hero-row"></div>
+
+      <!-- ③ Infra pips + compact fiscal (folded) -->
+      <div class="compact-card">
+        <div class="section-title">基础设施</div>
+        <div class="infra-pips-row" id="infra-grid"></div>
+        <div class="compact-fiscal">
+          <span class="cf-item">义仓：<span style="color:var(--cinnabar)">耗尽待重建</span></span>
+          <span class="cf-item">行政开支：<span>220 两/年</span>
+            <a id="admin-toggle" style="margin-left:4px">▾ 明细</a>
+          </span>
+        </div>
+        <div id="admin-detail" style="display:none; margin-top:8px; padding:8px 0 2px; border-top:1px dashed var(--border-lt);">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:0.82em;color:var(--ink-light)">
+            <div style="display:flex;justify-content:space-between"><span>官员俸禄</span><span>60 两</span></div>
+            <div style="display:flex;justify-content:space-between"><span>县丞俸禄</span><span>40 两</span></div>
+            <div style="display:flex;justify-content:space-between"><span>衙役饷银</span><span>40 两</span></div>
+            <div style="display:flex;justify-content:space-between"><span>师爷束脩</span><span>30 两</span></div>
+            <div style="display:flex;justify-content:space-between"><span>六房书办</span><span>20 两</span></div>
+            <div style="display:flex;justify-content:space-between"><span>衙署杂费</span><span>30 两</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑤ 流言板 (prominent) -->
+      <div class="rumors-card">
+        <div class="section-title">坊间流言</div>
+        <div class="rumor-list" id="rumor-list"></div>
+      </div>
+
+      <!-- ⑥ Active investments (if any) -->
+      <div class="compact-card">
+        <div class="section-title">进行中的投资</div>
+        <div class="invest-compact">
+          <div class="invest-row">
+            <span class="invest-name">修建水利</span>
+            <span class="invest-eta">预计八月完成</span>
+          </div>
+          <div class="invest-row">
+            <span class="invest-name">资助村塾（东庄）</span>
+            <span class="invest-eta">预计九月完成</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="advance-section">
+        <button class="btn btn-primary">推进至下月</button>
+        <span class="advance-hint">崇祯三年七月 · 秋收还有 2 月</span>
+      </div>
+    </div>
+
+    <!-- ═══════════ SIDEBAR ═══════════ -->
+    <div class="dashboard-sidebar">
+
+      <!-- Player archive -->
+      <div class="sidebar-card">
+        <div class="archive-header">
+          <div class="archive-seal">林</div>
+          <div>
+            <div class="archive-name">林士远</div>
+            <div class="archive-role">清平县知县 · 从七品</div>
+          </div>
+        </div>
+        <div class="archive-stats">
+          <div class="astat"><span class="astat-label">任期年份</span><span class="astat-value">第 3 年</span></div>
+          <div class="astat"><span class="astat-label">当前月份</span><span class="astat-value">七月</span></div>
+          <div class="astat"><span class="astat-label">仕途声望</span><span class="astat-value" style="color:var(--jade)">42 · 良</span></div>
+          <div class="astat"><span class="astat-label">廉洁评级</span><span class="astat-value">清廉</span></div>
+          <div class="astat"><span class="astat-label">赋税完成率</span><span class="astat-value" style="color:var(--amber)">71%</span></div>
+          <div class="astat"><span class="astat-label">案件积压</span><span class="astat-value">3 件</span></div>
+        </div>
+      </div>
+
+      <!-- 知府来文 (moved from main) -->
+      <div class="sidebar-directive">
+        <div class="directive-label">
+          <span>知府来文</span>
+          <span class="directive-age">本月</span>
+        </div>
+        <div class="directive-text">
+          本府命尔等切实整顿治安，近月匪患频报，若再无改观，本府将亲临查验……
+        </div>
+      </div>
+
+      <!-- Environment -->
+      <div class="sidebar-card">
+        <div class="section-title">自然环境</div>
+        <div class="env-items">
+          <div class="env-row">
+            <span class="env-label">农业适宜度</span>
+            <div class="env-right">
+              <div class="env-bar"><div class="env-fill good" style="width:72%"></div></div>
+              <span class="env-val">72%</span>
+            </div>
+          </div>
+          <div class="env-row">
+            <span class="env-label">水患风险</span>
+            <div class="env-right">
+              <div class="env-bar"><div class="env-fill warn" style="width:38%"></div></div>
+              <span class="env-val">38%</span>
+            </div>
+          </div>
+          <div class="env-row">
+            <span class="env-label">边患风险</span>
+            <div class="env-right">
+              <div class="env-bar"><div class="env-fill risk" style="width:15%"></div></div>
+              <span class="env-val">15%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Markets (simplified to sidebar) -->
+      <div class="sidebar-card">
+        <div class="section-title">集市概况</div>
+        <div class="mkt-items">
+          <div class="mkt-row">
+            <span class="mkt-name">清平集</span>
+            <span class="mkt-gmv">月贸易额 <span>320 两</span></span>
+          </div>
+          <div class="mkt-row">
+            <span class="mkt-name">南门市</span>
+            <span class="mkt-gmv">月贸易额 <span>145 两</span></span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /sidebar -->
+  </div><!-- /layout -->
+</div><!-- /page-wrap -->
+
+<script>
+// ── Mock data ────────────────────────────────────────────────
+var STATS = [
+  { label: "民心",  value: 61, delta: +3 },
+  { label: "治安",  value: 38, delta: -4 },
+  { label: "商业",  value: 74, delta: +1 },
+  { label: "文教",  value: 52, delta:  0 },
+];
+var INFRA = [
+  { label: "县学", level: 2, max: 3 },
+  { label: "水利", level: 1, max: 3 },
+  { label: "医疗", level: 0, max: 3 },
+  { label: "衙役", level: 2, max: 3 },
+];
+var QUOTA = {
+  agri:   { label: "农业税",   quota: 720, projected: 512, done: false },
+  corvee: { label: "徭役折银", quota: 180, actual: 164,   done: true  },
+};
+var GRAIN = {
+  reserve:   184200,
+  monthly:    76000,
+  population: 10840,
+  harvest_in: 2,
+  per_person: 6,
+};
+var RUMORS = [
+  { tag: "warn",   tag_label: "粮价",   text: "近日粮价连涨，市井皆传今年收成不好，知县大人是否会开仓放粮？百姓议论纷纷，人心惶惶。" },
+  { tag: "folk",   tag_label: "官场",   text: "隔壁汝阳县的钱知县因贪墨粮款被押送入京，吓得不少书吏整日提心吊胆，衙门里人人自危。" },
+  { tag: "threat", tag_label: "乡绅",   text: "东庄王乡绅近日频繁往来府城，与府衙某位典史颇为密切，不知所谋何事，令人生疑。" },
+];
+
+// ── Tier helper ──────────────────────────────────────────────
+function tier(v) {
+  if (v < 25)  return { cls: "tier-red",   label: "差" };
+  if (v < 50)  return { cls: "tier-amber", label: "勉强" };
+  if (v < 75)  return { cls: "tier-olive", label: "稍好" };
+  return             { cls: "tier-jade",  label: "良好" };
+}
+
+// ── Stat cards ───────────────────────────────────────────────
+var grid = document.getElementById("stats-grid");
+STATS.forEach(function(s) {
+  var t = tier(s.value);
+  var dHtml = s.delta > 0
+    ? '<span class="stat-delta up">▲' + s.delta + '</span>'
+    : s.delta < 0
+    ? '<span class="stat-delta down">▼' + Math.abs(s.delta) + '</span>'
+    : '<span class="stat-delta">—</span>';
+  var c = document.createElement("div");
+  c.className = "stat-card " + t.cls;
+  c.innerHTML =
+    '<div class="stat-label">' + s.label + '</div>' +
+    '<div class="stat-value">' + s.value + '</div>' +
+    '<div class="stat-tier-row"><span class="stat-tier-label">' + t.label + '</span>' + dHtml + '</div>' +
+    '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:' + s.value + '%"></div></div>';
+  grid.appendChild(c);
+});
+
+// ── Hero metrics (expandable) ────────────────────────────────
+var heroRow = document.getElementById("hero-row");
+
+function makeHeroWrap(cardHtml, detailHtml, gradientCls) {
+  var wrap = document.createElement("div");
+  wrap.className = "hero-card-wrap";
+
+  var card = document.createElement("div");
+  card.className = "hero-card " + gradientCls + " closed";
+  card.innerHTML = cardHtml + '<span class="hero-chevron">▼</span>';
+
+  var detail = document.createElement("div");
+  detail.className = "hero-detail " + gradientCls;
+  detail.innerHTML = detailHtml;
+  detail.style.display = "none";
+
+  card.addEventListener("click", function() {
+    var open = detail.style.display !== "none";
+    detail.style.display = open ? "none" : "block";
+    card.classList.toggle("expanded", !open);
+    if (!open) {
+      card.classList.remove("closed");
+    } else {
+      card.classList.add("closed");
+    }
+    // trigger bar animations on open
+    if (!open) {
+      detail.querySelectorAll(".hero-detail-bar-fill, .quota-detail-bar-fill").forEach(function(el) {
+        var w = el.style.width;
+        el.style.width = "0";
+        requestAnimationFrame(function() { el.style.transition = "width 0.7s cubic-bezier(0.22,1,0.36,1)"; el.style.width = w; });
+      });
+    }
+  });
+
+  wrap.appendChild(card);
+  wrap.appendChild(detail);
+  return wrap;
+}
+
+// ── Grain card ───────────────────────────────────────────────
+var months   = (GRAIN.reserve / GRAIN.monthly).toFixed(1);
+var grainFill = Math.min(100, (parseFloat(months) / 6) * 100).toFixed(0);
+
+var grainCardHtml =
+  '<div class="hero-label">粮食储备可支撑</div>' +
+  '<div class="hero-num">' + months + '<span class="hero-unit">个月</span></div>' +
+  '<div class="hero-sub">' +
+    '<span>距秋收 ' + GRAIN.harvest_in + ' 月</span>' +
+    '<span class="hero-sub-tag">月均余粮 +' + GRAIN.per_person + ' 斤/人</span>' +
+  '</div>' +
+  '<div class="hero-bar-wrap"><div class="hero-bar-fill" style="width:' + grainFill + '%"></div></div>';
+
+var confidencePct = Math.min(100, Math.max(0, (GRAIN.per_person / 30) * 100)).toFixed(0);
+var daysRemain = Math.floor(GRAIN.reserve / (GRAIN.monthly / 30));
+var grainDetailHtml =
+  '<div class="hero-detail-row"><span class="hero-detail-label">当前储备</span><span class="hero-detail-value">' + GRAIN.reserve.toLocaleString() + ' 斤</span></div>' +
+  '<div class="hero-detail-row"><span class="hero-detail-label">农民总人口</span><span class="hero-detail-value">' + GRAIN.population.toLocaleString() + ' 人</span></div>' +
+  '<div class="hero-detail-row"><span class="hero-detail-label">月均消耗</span><span class="hero-detail-value">' + GRAIN.monthly.toLocaleString() + ' 斤</span></div>' +
+  '<div class="hero-detail-row"><span class="hero-detail-label">人均月余粮</span><span class="hero-detail-value">+' + GRAIN.per_person + ' 斤/人</span></div>' +
+  '<hr class="hero-detail-divider">' +
+  '<div class="hero-detail-row">' +
+    '<span class="hero-detail-label">消费信心</span>' +
+    '<span class="hero-detail-value">' +
+      '<div class="hero-detail-bar-track" style="width:80px;display:inline-block;vertical-align:middle;margin-right:6px">' +
+        '<div class="hero-detail-bar-fill" style="width:' + confidencePct + '%"></div>' +
+      '</div>' + confidencePct + ' / 100' +
+    '</span>' +
+  '</div>' +
+  '<div class="hero-detail-row"><span class="hero-detail-label">距秋收</span><span class="hero-detail-value">' + GRAIN.harvest_in + ' 个月</span></div>' +
+  '<div class="hero-detail-row"><span class="hero-detail-label">当前可支撑</span><span class="hero-detail-value">约 ' + daysRemain + ' 天</span></div>';
+
+heroRow.appendChild(makeHeroWrap(grainCardHtml, grainDetailHtml, "grain"));
+
+// ── Quota card ───────────────────────────────────────────────
+var agriGap  = QUOTA.agri.quota  - (QUOTA.agri.done  ? QUOTA.agri.actual  : QUOTA.agri.projected);
+var corvGap  = QUOTA.corvee.quota - (QUOTA.corvee.done ? QUOTA.corvee.actual : (QUOTA.corvee.projected || 0));
+var totalGap = agriGap + corvGap;
+var totalQ   = QUOTA.agri.quota + QUOTA.corvee.quota;
+var compPct  = Math.round(((totalQ - Math.max(0, totalGap)) / totalQ) * 100);
+var quotaCls = totalGap <= 0 ? "quota-ok" : totalGap < totalQ * 0.2 ? "quota-warn" : "quota-danger";
+var quotaFill = Math.min(100, compPct);
+
+var quotaCardHtml =
+  '<div class="hero-label">当前赋税缺口</div>' +
+  '<div class="hero-num">' + Math.max(0, totalGap) + '<span class="hero-unit">两</span></div>' +
+  '<div class="hero-sub">' +
+    '<span>总配额 ' + totalQ + ' 两</span>' +
+    '<span class="hero-sub-tag">完成率 ' + compPct + '%</span>' +
+  '</div>' +
+  '<div class="hero-bar-wrap"><div class="hero-bar-fill" style="width:' + quotaFill + '%"></div></div>';
+
+function quotaDetailRow(cfg) {
+  var val  = cfg.done ? cfg.actual : cfg.projected;
+  var pct  = Math.min(100, Math.round(val / cfg.quota * 100));
+  var gap  = cfg.quota - val;
+  var bCls = cfg.done ? (gap <= 0 ? "ok" : gap < cfg.quota * 0.3 ? "warn" : "danger") : "proj";
+  var gStr = gap <= 0 ? "✓ 已满足" : "缺 " + gap + " 两";
+  return '<div class="quota-detail-row">' +
+    '<div class="quota-detail-header">' +
+      '<span class="quota-detail-label">' + cfg.label + (!cfg.done ? '（预计）' : '') + '</span>' +
+      '<span class="quota-detail-nums"><strong>' + val + '</strong> / ' + cfg.quota + ' 两 · ' + gStr + '</span>' +
+    '</div>' +
+    '<div class="quota-detail-bar-track"><div class="quota-detail-bar-fill ' + bCls + '" style="width:' + pct + '%"></div></div>' +
+  '</div>';
+}
+
+var quotaDetailHtml =
+  quotaDetailRow(QUOTA.agri) +
+  '<hr class="hero-detail-divider">' +
+  quotaDetailRow(QUOTA.corvee) +
+  '<hr class="hero-detail-divider">' +
+  '<div class="hero-detail-row" style="font-size:0.86em;">' +
+    '<span class="hero-detail-label">合计完成率</span>' +
+    '<span class="hero-detail-value">' + compPct + '% — ' +
+      (totalGap > 0 ? '尚缺 ' + totalGap + ' 两' : '配额已满足') +
+    '</span>' +
+  '</div>';
+
+heroRow.appendChild(makeHeroWrap(quotaCardHtml, quotaDetailHtml, quotaCls));
+
+// ── Infra pips ───────────────────────────────────────────────
+var infraGrid = document.getElementById("infra-grid");
+INFRA.forEach(function(it) {
+  var pipsHtml = "";
+  for (var i = 0; i < it.max; i++) {
+    pipsHtml += '<div class="pip' + (i < it.level ? ' filled' : '') + '"></div>';
+  }
+  var b = document.createElement("div");
+  b.className = "infra-item";
+  b.innerHTML =
+    '<span class="infra-label">' + it.label + '</span>' +
+    '<div class="infra-pips">' + pipsHtml + '<span class="infra-text">' + it.level + '/' + it.max + '</span></div>';
+  infraGrid.appendChild(b);
+});
+
+// Admin toggle
+document.getElementById("admin-toggle").addEventListener("click", function() {
+  var d = document.getElementById("admin-detail");
+  var open = d.style.display !== "none";
+  d.style.display = open ? "none" : "block";
+  this.textContent = open ? "▾ 明细" : "▴ 收起";
+});
+
+// quota rendering is now inside makeHeroWrap above
+
+// ── Rumors ───────────────────────────────────────────────────
+var rumorList = document.getElementById("rumor-list");
+RUMORS.forEach(function(r, i) {
+  var item = document.createElement("div");
+  item.className = "rumor-item";
+  item.innerHTML =
+    '<div class="rumor-index">' + (i + 1) + '</div>' +
+    '<div class="rumor-body">' +
+      '<div class="rumor-text">' +
+        '<span class="rumor-tag ' + r.tag + '">' + r.tag_label + '</span>' +
+        r.text +
+      '</div>' +
+    '</div>';
+  rumorList.appendChild(item);
+});
+</script>
+</body>
+</html>

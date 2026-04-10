@@ -5635,6 +5635,15 @@ body {
   color: #9a8060;
   white-space: nowrap;
 }
+.rumor-urgent {
+  border-left: 3px solid #c0392b;
+  padding-left: 8px;
+}
+.rumor-age {
+  color: #999;
+  font-size: 0.75em;
+  margin-left: 4px;
+}
 
 
 /* ========================================================

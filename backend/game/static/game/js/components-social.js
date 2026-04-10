@@ -476,8 +476,14 @@
     var actionBtn;
     if (a.role === 'CLAN_YOUTH') {
       var nominated = (a.attributes && a.attributes.exam_eligible);
+      var canNominate = !(a.attributes && a.attributes.can_nominate === false);
+      var disabled = nominated || !canNominate;
+      var disabledTitle = nominated
+        ? '举荐已确认，本年度不可更改'
+        : (!canNominate ? '仅可举荐本年度新推举的宗族后生' : '');
       actionBtn = '<button class="btn btn-small btn-clan-nominate rel-action-btn"' +
-        ' data-agent-id="' + a.id + '">' + (nominated ? '取消举荐' : '举荐应试') + '</button>';
+        ' data-agent-id="' + a.id + '"' + (disabled ? ' disabled title="' + escapeHtml(disabledTitle) + '"' : '') + '>' +
+        (nominated ? '已举荐' : (canNominate ? '举荐应试' : '往年后生')) + '</button>';
     } else if (isLocal) {
       actionBtn = '<button class="btn btn-small btn-staff-chat rel-action-btn"' +
         ' data-agent-id="' + a.id + '" data-agent-name="' + escapeHtml(a.name) + '">交谈</button>';
@@ -726,13 +732,11 @@
       panelEl.appendChild(grid);
     }
 
-    // 顺序：幕僚 → 乡绅 → 村民代表 → 六房 → 衙役三班 → 宗族后生
+    // 顺序：幕僚 → 乡绅 → 村民代表 → 宗族后生（六房/衙役三班暂不展示）
     var localSubgroups = [
       { title: "幕僚",    roles: ["ADVISOR", "DEPUTY"] },
       { title: "乡绅",    roles: ["GENTRY"] },
       { title: "村民代表", roles: ["VILLAGER"] },
-      { title: "六房",    roles: ["LIUFANG"] },
-      { title: "衙役三班", roles: ["CONSTABLE", "BAILIFF_CEREMONY", "BAILIFF_LABOR"] },
       { title: "宗族后生", roles: ["CLAN_YOUTH"] },
     ];
     localSubgroups.forEach(function (sg) {
@@ -763,20 +767,31 @@
     renderUpperSection(upperPanel, "中央官员", centralAgents);
     container.appendChild(upperPanel);
 
-    // 绑定「举荐」按钮
+    // 绑定「举荐」按钮（举荐一经确认不可撤销）
     container.querySelectorAll(".btn-clan-nominate").forEach(function (btn) {
+      // 已举荐或非本年候选，直接禁用按钮
+      if (btn.textContent === '已举荐' || btn.textContent === '往年后生') {
+        btn.disabled = true;
+        return;
+      }
       btn.addEventListener("click", function () {
         var agentId = parseInt(btn.dataset.agentId, 10);
         var g = Game.state.currentGame;
         if (!g) return;
+        var agentName = btn.closest('.relationship-card') && btn.closest('.relationship-card').querySelector('.rel-name')
+          ? btn.closest('.relationship-card').querySelector('.rel-name').textContent.trim()
+          : '该后生';
+        // 确认弹窗
+        if (!confirm('确认举荐 ' + agentName + ' 参加府试？\n举荐一经确认，本年度不可更改。')) return;
         btn.disabled = true;
         Game.api.nominateClanYouth(g.id, agentId)
           .then(function (res) {
-            var nominated = res.exam_eligible;
-            btn.textContent = nominated ? '取消举荐' : '举荐应试';
-            btn.disabled = false;
-            Game.components.showToast(res.message || (nominated ? '已举荐应试' : '已取消举荐'), 'success');
-            // 同步内存中的 clan_youth_pending，避免推进月份时仍弹旧提示
+            // 举荐成功后永久禁用按钮并更新文字
+            btn.textContent = '已举荐';
+            btn.disabled = true;
+            btn.title = '举荐已确认，本年度不可更改';
+            Game.components.showToast(res.message || '已举荐应试', 'success');
+            // 同步内存中的 clan_youth_pending
             if (g.county_data && res.clan_youth_pending !== undefined) {
               g.county_data.clan_youth_pending = res.clan_youth_pending;
             }

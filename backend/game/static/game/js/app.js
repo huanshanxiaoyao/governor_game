@@ -2144,9 +2144,15 @@
       "县衙已命" + roleSelf + "与你就此事直陈利害",
     ]);
 
-    // 请愿类无需师爷/县丞代转——直接提示玩家亲自回应
+    // 请愿类提供简短代转话术，后端仍会兜底生成
     if (type === "VILLAGE_REQ_SCHOOL" || type === "VILLAGE_REQ_TAX" || type === "LANDLORD_DEMAND_FACILITY") {
-      return "";  // 请愿类不提供预设代转语，由玩家自行回复
+      if (type === "VILLAGE_REQ_SCHOOL") {
+        return opening + "。" + placeName + "建塾请愿之事，县尊命我先来听取村中所求。";
+      }
+      if (type === "VILLAGE_REQ_TAX") {
+        return opening + "。" + placeName + "减税请愿之事，县尊命我先来核实缘由。";
+      }
+      return opening + "。" + placeName + "设施诉求之事，县尊命我先来商议轻重缓急。";
     }
 
     if (speakerRole === "ADVISOR") {

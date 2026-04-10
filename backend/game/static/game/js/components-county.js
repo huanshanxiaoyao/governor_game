@@ -1973,16 +1973,29 @@
     var title = h("h4", "section-title", "流言板");
     container.appendChild(title);
 
+    var curSeason = (Game.state.currentGame && Game.state.currentGame.current_season) || 0;
+
     var board = document.createElement("div");
     board.className = "rumors-list";
     rumors.forEach(function (r) {
       var catCls = RUMOR_CATEGORY_CLASS[r.category] || "rumor-cat-folk";
+      var isUrgent = r.urgency === "high";
       var item = document.createElement("div");
-      item.className = "rumor-item";
+      item.className = "rumor-item" + (isUrgent ? " rumor-urgent" : "");
+
+      // 时效标记：距今 ≥2 月的旧流言显示"（X月前）"
+      var ageTag = "";
+      if (r.season && curSeason) {
+        var diff = curSeason - r.season;
+        if (diff >= 2) {
+          ageTag = '<span class="rumor-age">（' + diff + '月前）</span>';
+        }
+      }
+
       item.innerHTML =
         '<span class="rumor-cat ' + catCls + '">' + escapeHtml(r.category) + '</span>' +
         '<span class="rumor-text">' + escapeHtml(r.text) + '</span>' +
-        '<span class="rumor-source">— ' + escapeHtml(r.source) + '</span>';
+        '<span class="rumor-source">— ' + escapeHtml(r.source || "") + ageTag + '</span>';
       board.appendChild(item);
     });
     container.appendChild(board);
