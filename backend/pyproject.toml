@@ -1,0 +1,68 @@
+[tool.ruff]
+# Lint the Django backend app. Python project root is ./backend in this repo.
+src = ["."]
+target-version = "py310"
+line-length = 120
+extend-exclude = [
+    "**/migrations/**",
+    "**/static/**",
+    "**/templates/**",
+    "**/__pycache__/**",
+]
+
+[tool.ruff.lint]
+# Phase 1 of lint rollout: pycodestyle + pyflakes only, with a handful of
+# practical ignores so CI can go green today. Expand to I/B/UP in a follow-up
+# once we've tackled the import-sort and modernization churn.
+select = ["E", "W", "F"]
+ignore = [
+    "E501",   # long lines — game uses verbose Chinese strings
+    "E402",   # module-import-not-at-top (used in Django settings, lazy imports)
+    "E741",   # ambiguous var names (l/I/O) — some legit uses
+    "F401",   # unused imports — service __init__ re-exports
+    "F811",   # redefinition (pytest fixtures)
+    "F841",   # unused local variable — often used for LLM temp debugging
+    "F541",   # f-string missing placeholders
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Service __init__ re-exports are intentional
+"game/services/__init__.py" = ["F401"]
+"game/agent_defs/__init__.py" = ["F401"]
+# Django settings pattern: `from .settings import *` then override
+"config/settings_test.py" = ["F403", "F405"]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# mypy — phase 1: opt-in only.
+#
+# We check a *tiny* subset of the codebase (game/services/schemas.py)
+# with strict-ish settings. The rest of the tree is explicitly ignored
+# so "mypy ." terminates in seconds and doesn't drown us in errors from
+# Django models, third-party libs without stubs, and the JSONField-heavy
+# service layer.
+#
+# Adding a file to the "strict-checked" list means its authors commit
+# to keeping it type-clean. New files that use the TypedDicts from
+# services/schemas.py are good candidates for inclusion.
+# ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+# Baseline: ignore the whole tree unless opted in below.
+ignore_errors = true
+# Don't crawl into third-party stubs we don't have.
+ignore_missing_imports = true
+# Don't follow imports out of the opted-in file set.
+follow_imports = "silent"
+warn_unused_ignores = true
+
+# Strict island: only these files are actually type-checked.
+[[tool.mypy.overrides]]
+module = ["game.services.schemas"]
+ignore_errors = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_return_any = true
+strict_equality = true
+

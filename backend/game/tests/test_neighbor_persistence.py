@@ -1,5 +1,6 @@
 """Neighbor baseline/snapshot persistence tests."""
 
+from concurrent.futures import Future
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,33 @@ from django.contrib.auth import get_user_model
 from game.models import GameState, NeighborCounty, NeighborEventLog
 from game.services.county import CountyService
 from game.services.neighbor import NeighborService
+
+
+class _SerialExecutor:
+    """ThreadPoolExecutor stand-in that runs tasks inline.
+
+    Neighbor settlement normally fans out 5 threads writing to the same DB;
+    under in-memory sqlite this triggers "database table is locked" races.
+    Tests patch ThreadPoolExecutor with this serial version so each neighbor
+    settles on the main thread.
+    """
+
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def submit(self, fn, *args, **kwargs):
+        fut = Future()
+        try:
+            fut.set_result(fn(*args, **kwargs))
+        except Exception as exc:  # pragma: no cover - surfaced via Future
+            fut.set_exception(exc)
+        return fut
 
 
 def _build_game(county_type="fiscal_core"):
@@ -59,6 +87,8 @@ def test_create_neighbors_persists_initial_baseline_fields():
 
 
 @pytest.mark.django_db
+@patch("game.services.neighbor.ThreadPoolExecutor", _SerialExecutor)
+@patch("game.services.neighbor.as_completed", lambda futs, timeout=None: list(futs))
 @patch("game.services.neighbor.AIGovernorService.make_decisions", return_value=[])
 def test_advance_all_persists_structured_monthly_snapshot(_mock_decisions):
     game = _build_game()
@@ -101,6 +131,8 @@ def test_advance_all_persists_structured_monthly_snapshot(_mock_decisions):
 
 
 @pytest.mark.django_db
+@patch("game.services.neighbor.ThreadPoolExecutor", _SerialExecutor)
+@patch("game.services.neighbor.as_completed", lambda futs, timeout=None: list(futs))
 @patch("game.services.neighbor.AIGovernorService.make_decisions", return_value=[])
 def test_advance_all_backfills_missing_neighbor_baseline_for_old_saves(_mock_decisions):
     game = _build_game()

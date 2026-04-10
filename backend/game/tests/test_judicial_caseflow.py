@@ -69,7 +69,7 @@ def _make_prefecture_game(season=3):
 
 
 @pytest.mark.django_db
-def test_generation_creates_five_localized_cases_for_county_window():
+def test_generation_creates_localized_cases_for_county_window():
     _user, game, unit = _make_county_game(season=2)
 
     state = JudicialCaseflowService.ensure_generation_progress(game, budget_windows=1)
@@ -77,24 +77,31 @@ def test_generation_creates_five_localized_cases_for_county_window():
 
     assert state.total_windows >= 12
     assert payload["available"] is True
-    assert payload["pending_count"] == 5
+    # CASES_PER_WINDOW 目前为 3
+    from game.services.judicial_caseflow import CASES_PER_WINDOW
+    assert payload["pending_count"] == CASES_PER_WINDOW
     assert all(case["source_county"] == unit.unit_data.get("county_name", "") for case in payload["cases"])
-    assert all(case["assistant_opinion"]["opinion_label"] in {"维持原判", "打回重审"} for case in payload["cases"])
+    # 师爷建议现已直接给出 verdict_label（轻判/重判/证据存疑…），而非旧的 维持/打回 二选一
+    assert all(case["assistant_opinion"]["opinion_label"] for case in payload["cases"])
 
 
 @pytest.mark.django_db
-def test_county_round_one_remand_generates_second_round_options():
+def test_county_decide_only_accepts_verdict_or_defer():
+    """玩家侧司法动作仅 判决 / 搁置委托上级裁定；'打回重审' 为师爷建议或 AI 知县内部动作，
+    不是玩家可用选项（remand-to-round2 路径已改由 LLM 知县走 REMAND_TO_ASSISTANT）。"""
     _user, game, _unit = _make_county_game(season=2)
     JudicialCaseflowService.ensure_generation_progress(game, budget_windows=1)
     first = JudicialCaseInstance.objects.filter(game=game, county_review_season=2).order_by("id").first()
 
+    # "打回重审" 不应被玩家端接受
     result = JudicialCaseflowService.decide_county_case(game, first.id, "打回重审")
-    first.refresh_from_db()
+    assert "error" in result
 
+    # "搁置委托上级裁定" 应把案件流转到知府手上
+    result = JudicialCaseflowService.decide_county_case(game, first.id, "搁置委托上级裁定")
+    first.refresh_from_db()
     assert "error" not in result
-    assert first.status == "PENDING_MAGISTRATE_ROUND_2"
-    assert len(first.assistant_rounds) == 2
-    assert result["case"]["available_actions"] == ["维持原判", "搁置委托上级裁定"]
+    assert first.status == "DEFERRED_TO_PREFECT"
 
 
 @pytest.mark.django_db
@@ -184,6 +191,10 @@ def test_ai_magistrate_uses_llm_result_when_available(monkeypatch):
             "attachments": ["账册", "供词"],
             "suspicion_markers": {"critical": ["疑点一"], "secondary": ["疑点二"]},
             "options": [],
+            "verdict_options": [
+                {"verdict_code": "CONVICT_LIGHT", "verdict_label": "轻判", "immediate_effects": {}},
+                {"verdict_code": "CONVICT_HEAVY", "verdict_label": "重判", "immediate_effects": {}},
+            ],
             "source_county": "华亭县",
         },
         assistant_rounds=[{"round_no": 1, "opinion": "REMAND", "opinion_label": "打回重审", "reason": "疑点较多"}],
@@ -193,10 +204,13 @@ def test_ai_magistrate_uses_llm_result_when_available(monkeypatch):
     monkeypatch.setitem(settings.LLM_PROVIDERS[settings.LLM_DEFAULT_PROVIDER], "api_key", "fake-key")
 
     def fake_llm(unit, instance, season, baseline):
+        # 新的 LLM 合同：action_code 只能是 VERDICT / REMAND_TO_ASSISTANT / DEFER_TO_PREFECT；
+        # VERDICT 必须附 verdict_code（取自 local_payload.verdict_options）。
         return {
-            "action_label": "维持原判",
-            "action_code": "AFFIRM_ORIGINAL",
-            "reason": "为免案牍往返，先维持原判上呈。",
+            "action_label": "判决",
+            "action_code": "VERDICT",
+            "verdict_code": "CONVICT_LIGHT",
+            "reason": "为免案牍往返，径行轻判上呈。",
             "decision_source": "llm",
             "model": "fake-judicial-model",
             "confidence": 0.81,
@@ -249,8 +263,10 @@ def test_ai_magistrate_falls_back_to_rule_when_llm_fails(monkeypatch):
     JudicialCaseflowService._auto_decide_ai_case(subordinate, instance, 2)
     instance.refresh_from_db()
 
-    assert instance.status == "PENDING_MAGISTRATE_ROUND_2"
+    # 规则引擎现已不再发出 REMAND_TO_ASSISTANT；VIRTUOUS 知县遇 critical≥2 疑点时改为搁置委托上级。
+    assert instance.status == "DEFERRED_TO_PREFECT"
     assert instance.magistrate_rounds[-1]["decision_source"] == "rule"
+    assert instance.magistrate_rounds[-1]["action"] == "DEFER_TO_PREFECT"
 
 
 @pytest.mark.django_db

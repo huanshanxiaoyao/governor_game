@@ -259,9 +259,12 @@ class NeighborService:
             neighbors_snap = list(game.neighbors.all())
             if neighbors_snap:
                 def _tier(v):
-                    if v >= 75: return '良好'
-                    if v >= 50: return '尚可'
-                    if v >= 25: return '偏差'
+                    if v >= 75:
+                        return '良好'
+                    if v >= 50:
+                        return '尚可'
+                    if v >= 25:
+                        return '偏差'
                     return '极差'
                 snippets = [
                     f'{n.county_name}（民心{_tier(n.county_data.get("morale", 50))}·治安{_tier(n.county_data.get("security", 50))}）'

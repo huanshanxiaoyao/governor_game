@@ -118,10 +118,11 @@ class LLMClient:
             raise LLMJSONParseError(content or '', ValueError("LLM returned empty content"))
 
         # First parse attempt
+        first_err: Exception
         try:
             return json.loads(_extract_json(content))
-        except (json.JSONDecodeError, TypeError) as first_err:
-            pass
+        except (json.JSONDecodeError, TypeError) as err:
+            first_err = err
 
         # Repair attempt: show model its bad output, ask for pure JSON correction
         try:

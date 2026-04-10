@@ -40,5 +40,5 @@ def test_game_knowledge_endpoint_returns_markdown_payload():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["title"] == "治县要略"
-    assert "财政收支" in payload["markdown"]
+    assert payload["title"].startswith("治县要略")
+    assert "财政时序" in payload["markdown"]

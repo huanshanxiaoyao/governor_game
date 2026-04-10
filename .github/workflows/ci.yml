@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Tests use in-memory sqlite; psycopg2-binary requires libpq headers,
+          # so we install only the subset the test settings actually need.
+          pip install \
+            "Django==4.2.8" \
+            "djangorestframework==3.14.0" \
+            "django-cors-headers==4.3.1" \
+            "celery==5.3.4" \
+            "redis==5.0.1" \
+            "openai>=1.52.0" \
+            "anthropic>=0.40.0" \
+            "python-dotenv==1.0.0" \
+            "whitenoise==6.7.0" \
+            "pytest>=7.0" \
+            "pytest-django>=4.5" \
+            "ruff>=0.6.0" \
+            "mypy>=1.8"
+
+      - name: Ruff lint
+        working-directory: backend
+        run: ruff check game llm config
+
+      - name: Mypy (strict island — see pyproject.toml [[tool.mypy.overrides]])
+        working-directory: backend
+        run: mypy game/services/schemas.py
+
+      - name: Django check
+        working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings_test
+        run: python manage.py check
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest -q
