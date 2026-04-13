@@ -16,18 +16,20 @@ _COMPLIANCE_TABLE = [
 ]
 
 # ── 治安修正档位（月度，per clan） ───────────────────────────────────────────
+# 优化说明：原 affinity=0 基础惩罚 -4.0 偏陡峭，三个大族叠加后月治安下降可达 -11.8，
+# 容易失真。调低惩罚值并收紧总上限以保持合理性。
 _SECURITY_TABLE = [
     (65,  1.5),
     (45,  0.0),
     (20, -1.5),
     (5,  -3.0),
-    (0,  -4.0),
+    (0,  -2.0),   # 原 -4.0，调整后减少极端情况下的治安失真
 ]
 
 # 单个宗族治安修正以此实力为"标准"（修正按 power/REF_POWER 等比缩放）
 _REF_POWER = 80
 _PER_CLAN_SECURITY_CAP = 5.0
-_TOTAL_SECURITY_CAP = 10.0
+_TOTAL_SECURITY_CAP = 6.0   # 原 10.0，收紧以缓解多族同时敌对时的叠加惩罚
 
 # 连续低亲密度月数阈值，触发聚众抗粮事件
 _LOW_AFFINITY_STREAK_THRESHOLD = 2
@@ -66,7 +68,7 @@ def get_county_tax_compliance(county: dict) -> float:
 def get_county_security_delta(county: dict) -> float:
     """
     返回本月宗族关系对治安的总修正值（正/负）。
-    各宗族修正 = 基础值 × (power / REF_POWER)，单个上限 ±8，总计 ±15。
+    各宗族修正 = 基础值 × (power / REF_POWER)，单个上限 ±5，总计 ±6。
     """
     clans = county.get('clans') or {}
     if not clans:

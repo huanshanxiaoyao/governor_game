@@ -85,23 +85,23 @@ class TestClanSecurityDelta(SimpleTestCase):
         self.assertAlmostEqual(get_county_security_delta(county), 1.5)
 
     def test_hostile_clan_negative_delta(self):
-        # affinity < 5 → base=-4.0, power=80 → factor=1.0
+        # affinity < 5 → base=-2.0, power=80 → factor=1.0
         county = {'clans': {'A氏': {'clan_affinity': 3, 'power': 80, 'members': []}}}
-        self.assertAlmostEqual(get_county_security_delta(county), -4.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -2.0)
 
     def test_large_clan_amplifies_delta(self):
-        # power=160 = 2×REF → factor=2.0 (cap), base=-4.0 → -8, per-clan cap=-5
+        # power=160 = 2×REF → factor=2.0, base=-2.0 → -4.0（未超 per-clan cap=5）
         county = {'clans': {'A氏': {'clan_affinity': 3, 'power': 160, 'members': []}}}
-        self.assertAlmostEqual(get_county_security_delta(county), -5.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -4.0)
 
     def test_total_cap_applied(self):
-        # 3 hostile large clans, each would produce -5, total would be -15 → capped at -10
+        # 3 hostile large clans, each produces -4.0, total -12.0 → capped at -6.0
         county = {'clans': {
             'A氏': {'clan_affinity': 3, 'power': 200, 'members': []},
             'B氏': {'clan_affinity': 3, 'power': 200, 'members': []},
             'C氏': {'clan_affinity': 3, 'power': 200, 'members': []},
         }}
-        self.assertAlmostEqual(get_county_security_delta(county), -10.0)
+        self.assertAlmostEqual(get_county_security_delta(county), -6.0)
 
     def test_neutral_affinity_no_delta(self):
         county = {'clans': {'A氏': {'clan_affinity': 50, 'power': 100, 'members': []}}}

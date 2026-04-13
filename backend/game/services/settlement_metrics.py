@@ -240,6 +240,13 @@ class MetricsMixin:
         if county["tax_rate"] >= 0.15:
             delta -= 1
 
+        # 保甲 L2 连坐：平时监视有怨 -0.25/月；灾年共御外患反升 +0.15/月
+        if county.get("baojia_level", 0) >= 2:
+            if county.get("disaster_this_year"):
+                delta += 0.15
+            else:
+                delta -= 0.25
+
         # 直接更新各村，县级聚合
         for v in county["villages"]:
             v["morale"] = max(0.0, min(100.0, float(v.get("morale", 50.0)) + delta))
@@ -263,6 +270,10 @@ class MetricsMixin:
         # 衙役加成（不受分区乘数影响）
         delta += county["bailiff_level"] * 0.67
 
+        # 保甲加成：L1 +0.35/月，L2 +0.80/月
+        baojia_security = (0.0, 0.35, 0.80)[min(county.get("baojia_level", 0), 2)]
+        delta += baojia_security
+
         # 民心联动（使用本月民心结算后的县级聚合值）
         if county["morale"] > 60:
             delta += 0.33
@@ -271,10 +282,13 @@ class MetricsMixin:
 
         # 宗族关系影响治安（按实力加权，各宗族 power 越大影响越显著）
         # 衙役等级越高，宗族负向拉扯越弱；满级衙役应能实质压制乡间失序。
+        # 保甲 L2 连坐制度：负向宗族扰动再减半（邻里互保抑制聚众闹事）。
         clan_delta = get_county_security_delta(county)
         if clan_delta != 0.0:
             if clan_delta < 0:
                 bailiff_mitigation = max(0.25, 1.0 - county.get("bailiff_level", 0) * 0.25)
+                if county.get("baojia_level", 0) >= 2:
+                    bailiff_mitigation *= 0.5
                 clan_delta = round(clan_delta * bailiff_mitigation, 2)
             delta += clan_delta
 

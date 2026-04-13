@@ -87,45 +87,34 @@ class SeasonalMixin:
 
     @classmethod
     def _apply_irrigation_completion_bonus(cls, county, inv, game, report):
+        """水利完工好感奖励：全县地主均 +2；出资 ≥20 两者额外 +1（合计 +3）。"""
         if game is None:
             return
 
         contributions = inv.get('gentry_contributions') or []
-        if not contributions:
-            return
-
-        contribution_ids = [
-            item.get('agent_id')
+        contribution_map = {
+            item['agent_id']: int(item.get('amount', 0) or 0)
             for item in contributions
             if item.get('agent_id')
-        ]
-        agents_by_id = {
-            agent.id: agent
-            for agent in Agent.objects.filter(game=game, id__in=contribution_ids)
         }
+
+        gentry_agents = list(Agent.objects.filter(game=game, role='GENTRY'))
+        if not gentry_agents:
+            return
 
         changed = False
         rewarded_names = []
-        for item in contributions:
-            village_name = item.get('village_name', '')
-            amount = int(item.get('amount', 0) or 0)
-            agent = agents_by_id.get(item.get('agent_id'))
-            if agent is None and village_name:
-                agent = Agent.objects.filter(
-                    game=game,
-                    role='GENTRY',
-                    attributes__village_name=village_name,
-                ).first()
-            if agent is None:
-                continue
-
-            delta = 3 if amount >= 20 else 2
+        for agent in gentry_agents:
+            village_name = (agent.attributes or {}).get('village_name', '')
+            contributed = contribution_map.get(agent.id, 0)
+            delta = 3 if contributed >= 20 else 2
+            extra = f"，此前出资{contributed}两已见成效" if contributed else ""
             if cls._apply_agent_affinity_and_memory(
                 agent,
                 delta=delta,
                 memory_text=(
-                    f"{month_name(game.current_season)}，{village_name}水利完工，"
-                    f"此前出资{amount}两已见成效，对官府观感转好"
+                    f"{month_name(game.current_season)}，水利工程完工{extra}，"
+                    f"{village_name}农田灌溉大为改善，对官府观感转好"
                 ),
             ):
                 changed = True
@@ -134,8 +123,9 @@ class SeasonalMixin:
         if changed:
             from .clan import ClanService
             ClanService._recompute_clan_affinities(game, county)
+            contrib_note = "（出资者额外嘉奖）" if contribution_map else ""
             report['events'].append(
-                f"水利见效，先前出资的乡绅{ '、'.join(rewarded_names) }对官府观感回升"
+                f"水利竣工，全县乡绅{'、'.join(rewarded_names)}好感提升{contrib_note}"
             )
 
     @classmethod
@@ -242,6 +232,20 @@ class SeasonalMixin:
             county["education"] = min(100, county["education"] + 10)
             report["events"].append(
                 f"县学扩建完成，文教+10，县学等级{county['school_level']}")
+            if game is not None:
+                gentry_agents = list(Agent.objects.filter(game=game, role='GENTRY'))
+                for g in gentry_agents:
+                    cls._apply_agent_affinity_and_memory(
+                        g,
+                        delta=3,
+                        memory_text=(
+                            f"{month_name(game.current_season)}，知县扩建县学，"
+                            f"乡间重视教化，对官府礼遇读书人之举颇为赞许"
+                        ),
+                    )
+                if gentry_agents:
+                    from .clan import ClanService
+                    ClanService._recompute_clan_affinities(game, county)
 
         elif action == "build_medical":
             county["medical_level"] = min(INFRA_MAX_LEVEL, county.get("medical_level", 0) + 1)
@@ -293,6 +297,42 @@ class SeasonalMixin:
             report["events"].append(
                 f"河运开通，商业+{actual_gain}（当前商业：{county['commercial']}），"
                 f"第{county['river_transport_count']}条航线投入运营"
+            )
+
+        elif action == "establish_baojia":
+            county["baojia_level"] = 1
+            county["admin_cost"] = county.get("admin_cost", 0) + 4
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["baojia_cost"] = (
+                    county["admin_cost_detail"].get("baojia_cost", 0) + 4
+                )
+            report["events"].append("保甲登记完成，全县编户造册，治安+0.35/月，年行政开支+4两")
+            if game is not None:
+                gentry_agents = list(Agent.objects.filter(game=game, role='GENTRY'))
+                for g in gentry_agents:
+                    cls._apply_agent_affinity_and_memory(
+                        g,
+                        delta=2,
+                        memory_text=(
+                            f"{month_name(game.current_season)}，知县推行保甲，"
+                            f"本地耆老受委任为甲长，颇感荣耀"
+                        ),
+                    )
+                if gentry_agents:
+                    from .clan import ClanService
+                    ClanService._recompute_clan_affinities(game, county)
+
+        elif action == "enforce_baojia":
+            county["baojia_level"] = 2
+            county["admin_cost"] = county.get("admin_cost", 0) + 10
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["baojia_cost"] = (
+                    county["admin_cost_detail"].get("baojia_cost", 0) + 10
+                )
+            security_gain = cls.apply_county_stat_delta(county, "security", 3)
+            report["events"].append(
+                f"保甲巡查推行完成，治安+{security_gain:.1f}（一次性），"
+                f"连坐制度建立，治安+0.8/月（持续），民心-0.25/月，年行政开支+10两"
             )
 
         elif inv.get("custom_policy_id") is not None:

@@ -94,6 +94,18 @@ class InvestmentService:
             "requires_village": False,
             "description": "开通河运",
         },
+        "establish_baojia": {
+            "cost": 8,
+            "delay_months": 1,
+            "requires_village": False,
+            "description": "建立保甲册",
+        },
+        "enforce_baojia": {
+            "cost": 15,
+            "delay_months": 2,
+            "requires_village": False,
+            "description": "推行保甲巡查",
+        },
     }
 
     # 基建 action → county 中对应的 level 字段名
@@ -483,6 +495,21 @@ class InvestmentService:
                 return False, "衙役已达最高等级(3)"
             if action in active_actions:
                 return False, "衙役募集训练中"
+
+        if action == "establish_baojia":
+            if county.get("baojia_level", 0) >= 1:
+                return False, "保甲户籍册已建立"
+            if action in active_actions:
+                return False, "保甲登记进行中"
+
+        if action == "enforce_baojia":
+            if county.get("baojia_level", 0) < 1:
+                return False, "需先建立保甲户籍册（建立保甲册）"
+            if county.get("baojia_level", 0) >= 2:
+                return False, "保甲巡查制度已推行"
+            if action in active_actions:
+                return False, "保甲巡查推行中"
+
         if action == "build_granary" and county.get("has_granary", False):
             return False, "义仓已建成"
 
@@ -582,6 +609,22 @@ class InvestmentService:
                 msg = f"增设衙役已启动（花费{actual_cost}两），但将在任期结束后才完成"
             else:
                 msg = f"增设衙役已启动（花费{actual_cost}两），预计{month_name(completion)}完成"
+            return actual_cost, msg
+
+        if action in ("establish_baojia", "enforce_baojia"):
+            delay = spec["delay_months"]
+            completion = season + delay
+            investment = {
+                "action": action,
+                "started_season": season,
+                "completion_season": completion,
+                "description": spec["description"],
+            }
+            county["active_investments"].append(investment)
+            if completion > MAX_MONTH:
+                msg = f"{spec['description']}已启动（花费{actual_cost}两），但将在任期结束后才完成"
+            else:
+                msg = f"{spec['description']}已启动（花费{actual_cost}两），预计{month_name(completion)}完成"
             return actual_cost, msg
 
         if action == "build_granary":

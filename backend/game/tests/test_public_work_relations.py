@@ -206,4 +206,4 @@ def test_irrigation_completion_offsets_part_of_contributor_affinity_loss():
     gentry.refresh_from_db()
     assert gentry.attributes["player_affinity"] == 20
     assert county_after_negotiation["clans"]["测试府张氏"]["clan_affinity"] == 20
-    assert any("观感回升" in event for event in report["events"])
+    assert any("好感提升" in event for event in report["events"])
