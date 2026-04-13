@@ -229,9 +229,9 @@ class MetricsMixin:
         # 基础衰减：-1.0/月（分区乘数调整）
         delta = -1.0 * cls._zone_multiplier(old_county)
 
-        # 文教贡献：文教>30时加成，连续渐变 (edu-30)/40（文教80→+1.25）
-        if county["education"] > 30:
-            delta += (county["education"] - 30) / 40
+        # 文教贡献：文教>40时加成，连续渐变 (edu-40)/60（文教100→+1.0）
+        if county["education"] > 40:
+            delta += (county["education"] - 40) / 60
 
         # 治安联动：连续渐变 (security-50)/40（治安75→+0.625，治安30→-0.5）
         delta += (county["security"] - 50) / 40

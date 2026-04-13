@@ -23,7 +23,7 @@ class MoraleSecurityLinkTests(SimpleTestCase):
 
         当前公式（见 settlement_metrics._update_morale）：
             delta = -1.0 * zone_multiplier(old_morale)
-                  + (edu - 30)/40 if edu > 30 else 0
+                  + (edu - 40)/60 if edu > 40 else 0
                   + (security - 50)/40
                   - 1 if tax_rate >= 0.15 else 0
         此测试里 old_morale=50 → zone_mult=1.0；edu=0；tax=0.12。
