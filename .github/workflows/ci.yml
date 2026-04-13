@@ -54,6 +54,12 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings_test
         run: python manage.py check
 
+      - name: Check for missing migrations
+        working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings_test
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Run tests
         working-directory: backend
         run: pytest -q

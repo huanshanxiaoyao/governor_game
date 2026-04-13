@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+
+  - repo: local
+    hooks:
+      - id: django-migrations-check
+        name: Check for missing Django migrations
+        entry: bash -c 'cd backend && DJANGO_SETTINGS_MODULE=config.settings_test python manage.py makemigrations --check --dry-run'
+        language: system
+        pass_filenames: false
+        files: ^backend/game/models\.py$
