@@ -30,6 +30,8 @@ backend/
       county.py           # CountyService — 县域初始化
       state.py            # load/save county state 工具函数
       ledger.py           # 双账本（村民/地主）工具
+      schemas.py          # county_data JSON schema 定义
+      fiscal.py           # 配额口径计算（ytd_quota_remitted, get_quota_progress）
       # ── 结算引擎（settlement.py 组合以下 mixin）──
       settlement.py           # SettlementService — advance_season 主入口
       settlement_seasonal.py  # 春夏秋冬季节结算（农业税、宗族折减等）
@@ -40,22 +42,45 @@ backend/
       # ── 施政与投资 ──
       investment.py       # InvestmentService — 施政动作执行
       policy_review.py    # PolicyReviewService — 省布政使异步审批自创施政
+      policy_sync.py      # 自创施政同步
+      counsel.py          # CounselService — 幕僚对话
       # ── 年度 / 考核 ──
       annual_review.py    # AnnualReviewService — 年度考核、三年大考
       new_term.py         # 新任期初始化
+      career_track.py     # 仕途升迁
+      promotion_event.py  # 升迁事件
       # ── AI 行为 ──
       ai_prefect.py       # PrefectAIService — 知府月度行动
       ai_governor.py      # GovernorAIService — 省级 AI（知府游戏）
+      ai_negotiation.py   # AI 谈判策略
       # ── 司法 ──
       judicial_caseflow.py# JudicialCaseflowService — 案件流转 + 知府异步复审
       # ── 社交 / 信息 ──
+      agent.py            # AgentService — NPC 对话 + 上下文构建
       rumors.py           # RumorsService — 流言板生成
+      llm_rumors.py       # LLM 驱动的流言生成
       letter.py           # LetterService — 书信投递与 NPC 回信
       promise.py          # PromiseService — 承诺追踪
       negotiation.py      # NegotiationService — 谈判会话
+      bribery.py          # 行贿/受贿机制
+      # ── 宗族 ──
+      clan.py             # 宗族配合系数 / 治安修正
+      clan_youth.py       # ClanYouthService — 宗族子弟举荐 / 年度重置
       # ── 多县 / 邻县 ──
       neighbor.py         # NeighborService — 邻县 AI 推进 + 预计算
       prefecture.py       # PrefectureService — 知府游戏（府级管理）
+      # ── 其他 ──
+      emergency.py        # 应急机制（借粮、拨粮）
+      eventlog.py         # EventLog 工具
+      feedback.py         # 玩家反馈收集
+      imperial_tour.py    # 皇帝巡视事件
+      local_npc.py        # 本地 NPC 管理
+      llm_role_reviews.py # LLM 角色评审
+      magistrate_service.py # 知县核心服务
+      npc_debug.py        # NPC 调试工具
+      officialdom.py      # 官场体系
+      officialdom_constants.py # 官场常量
+      village_events.py   # 村庄事件
     agent_defs/     # NPC 蓝图数据
       agents.py     # MVP_AGENTS
       relationships.py  # MVP_RELATIONSHIPS
