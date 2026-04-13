@@ -9,15 +9,9 @@ from rest_framework.permissions import IsAuthenticated
 
 from .models import GameState, ProposedPolicy
 from .services.state import load_county_state, save_player_state
+from .view_helpers import game_view
 
 logger = logging.getLogger('game')
-
-
-def _get_game(request, game_id):
-    try:
-        return GameState.objects.get(id=game_id, user=request.user), None
-    except GameState.DoesNotExist:
-        return None, Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
 
 def _enrich_suggested_actions(game, county, suggested_actions):
@@ -71,11 +65,8 @@ class CounselMessageView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def post(self, request, game, *, game_id):
         message = (request.data.get('message') or '').strip()
         if not message:
             return Response({"error": "消息不能为空"}, status=status.HTTP_400_BAD_REQUEST)
@@ -118,11 +109,8 @@ class CounselProposeView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def post(self, request, game, *, game_id):
         if game.current_season > 36:
             return Response({"error": "游戏已结束"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -186,11 +174,8 @@ class CounselPoliciesView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def get(self, request, game, *, game_id):
         policies = ProposedPolicy.objects.filter(
             game=game,
         ).exclude(
@@ -233,11 +218,8 @@ class CounselPendingNotificationsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def get(self, request, game, *, game_id):
         county = load_county_state(game)
         notifications = county.pop('pending_policy_notifications', [])
         if notifications:
@@ -259,11 +241,8 @@ class CounselProactiveView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def get(self, request, game, *, game_id):
         county = load_county_state(game)
         from .services.counsel import CounselService
         trigger = CounselService.check_proactive_trigger(
@@ -688,11 +667,8 @@ class CounselPolicyDiscardView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id, policy_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def post(self, request, game, *, game_id, policy_id):
         try:
             pp = ProposedPolicy.objects.get(
                 id=policy_id,

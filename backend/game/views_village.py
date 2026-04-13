@@ -21,6 +21,7 @@ from .services.clan_youth import ClanYouthService
 from .services.constants import year_of
 from .services.state import load_county_state, save_player_state
 from .services.settlement_metrics import MetricsMixin
+from .view_helpers import game_view
 
 logger = logging.getLogger('game')
 
@@ -32,12 +33,8 @@ class NpcRequestRespondView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id, request_id):
-        try:
-            game = GameState.objects.get(id=game_id, user=request.user)
-        except GameState.DoesNotExist:
-            return Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
-
+    @game_view()
+    def post(self, request, game, *, game_id, request_id):
         action = request.data.get('action')
         if action not in ('accept', 'refuse'):
             return Response({"error": "action 必须为 accept 或 refuse"}, status=400)
@@ -199,12 +196,8 @@ class ClanYouthListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        try:
-            game = GameState.objects.get(id=game_id, user=request.user)
-        except GameState.DoesNotExist:
-            return Response({"error": "游戏不存在"}, status=404)
-
+    @game_view()
+    def get(self, request, game, *, game_id):
         ClanYouthService.normalize_game_nominations(game)
         youths = Agent.objects.filter(game=game, role='CLAN_YOUTH').order_by('created_at')
         result = []
@@ -233,12 +226,8 @@ class ClanYouthNominateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id, agent_id):
-        try:
-            game = GameState.objects.get(id=game_id, user=request.user)
-        except GameState.DoesNotExist:
-            return Response({"error": "游戏不存在"}, status=404)
-
+    @game_view()
+    def post(self, request, game, *, game_id, agent_id):
         ClanYouthService.normalize_game_nominations(game)
         try:
             agent = Agent.objects.get(id=agent_id, game=game, role='CLAN_YOUTH')

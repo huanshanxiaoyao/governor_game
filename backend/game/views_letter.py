@@ -9,15 +9,9 @@ from rest_framework.permissions import IsAuthenticated
 
 from .models import Agent, GameState, Letter
 from .services.letter import LetterService
+from .view_helpers import game_view
 
 logger = logging.getLogger('game')
-
-
-def _get_game(request, game_id):
-    try:
-        return GameState.objects.get(id=game_id, user=request.user), None
-    except GameState.DoesNotExist:
-        return None, Response({"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class LetterInboxView(APIView):
@@ -27,10 +21,8 @@ class LetterInboxView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id):
         letters = (
             Letter.objects.filter(game=game, player_is_recipient=True)
             .exclude(status__in=[
@@ -54,11 +46,8 @@ class LetterInboxView(APIView):
             "results": LetterService.serialize_list(letters),
         })
 
-    def post(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
-
+    @game_view()
+    def post(self, request, game, *, game_id):
         agent_id        = request.data.get('recipient_agent_id')
         letter_type     = request.data.get('letter_type', Letter.LetterType.PERSONAL)
         confidentiality = request.data.get('confidentiality', Letter.Confidentiality.PERSONAL)
@@ -111,10 +100,8 @@ class LetterSentView(APIView):
     """GET /api/games/<game_id>/letters/sent/ — 发件箱"""
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id):
         letters = (
             Letter.objects.filter(game=game, player_is_sender=True)
             .select_related('recipient_agent')
@@ -127,10 +114,8 @@ class LetterPendingView(APIView):
     """GET /api/games/<game_id>/letters/pending/ — 待回复"""
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id):
         letters = (
             Letter.objects.filter(
                 game=game,
@@ -154,10 +139,8 @@ class LetterBlockingCheckView(APIView):
     """GET /api/games/<game_id>/letters/blocking-check/ — 推进前检查"""
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id):
         blockers = LetterService.blocking_check(game, game.current_season)
         return Response({"blocked": bool(blockers), "blocking_letters": blockers})
 
@@ -166,10 +149,8 @@ class LetterSummaryView(APIView):
     """GET /api/games/<game_id>/letters/summary/ — 徽标用摘要（未读数、阻断数）"""
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id):
         return Response(LetterService.get_inbox_summary(game))
 
 
@@ -177,10 +158,8 @@ class LetterDetailView(APIView):
     """GET /api/games/<game_id>/letters/<letter_id>/ — 详情，触发已读"""
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, game_id, letter_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def get(self, request, game, *, game_id, letter_id):
         try:
             letter = Letter.objects.select_related(
                 'sender_agent', 'recipient_agent', 'parent_letter',
@@ -214,10 +193,8 @@ class LetterReplyView(APIView):
     """POST /api/games/<game_id>/letters/<letter_id>/reply/"""
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id, letter_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def post(self, request, game, *, game_id, letter_id):
         try:
             letter = Letter.objects.get(
                 id=letter_id, game=game, player_is_recipient=True,
@@ -263,10 +240,8 @@ class LetterArchiveView(APIView):
     """POST /api/games/<game_id>/letters/<letter_id>/archive/"""
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, game_id, letter_id):
-        game, err = _get_game(request, game_id)
-        if err:
-            return err
+    @game_view()
+    def post(self, request, game, *, game_id, letter_id):
         try:
             letter = Letter.objects.get(id=letter_id, game=game)
         except Letter.DoesNotExist:
