@@ -1443,9 +1443,9 @@ class PrefectureService:
             total_pop = sum(v.get('population', 0) for v in cd.get('villages', []))
             aq = cd.get('annual_quota', {})
             aq_total = aq.get('total', 0) if isinstance(aq, dict) else 0
-            fy = cd.get('fiscal_year', {})
-            fy_done = fy.get('agri_remitted', 0) + fy.get('commercial_tax', 0) + fy.get('corvee_tax', 0)
-            quota_pct = (fy_done / aq_total * 100) if aq_total else 100.0
+            from . import fiscal
+            _progress = fiscal.get_quota_progress(cd)
+            quota_pct = _progress['completion_pct'] if aq_total else 100.0
 
             sys_p, usr_p = PR.render(
                 'confront_response',

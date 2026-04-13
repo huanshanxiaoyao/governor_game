@@ -235,6 +235,9 @@ class PromiseSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(
         source='get_status_display', read_only=True,
     )
+    direction_display = serializers.CharField(
+        source='get_direction_display', read_only=True,
+    )
     agent_id = serializers.IntegerField(source='agent.id', read_only=True)
     agent_name = serializers.CharField(source='agent.name', read_only=True)
 
@@ -242,6 +245,7 @@ class PromiseSerializer(serializers.ModelSerializer):
         model = Promise
         fields = [
             'id', 'promise_type', 'promise_type_display',
+            'direction', 'direction_display',
             'description', 'status', 'status_display',
             'season_made', 'deadline_season', 'context',
             'agent_id', 'agent_name', 'created_at', 'resolved_at',

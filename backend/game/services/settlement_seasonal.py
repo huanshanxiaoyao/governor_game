@@ -229,8 +229,9 @@ class SeasonalMixin:
         elif action == "build_irrigation":
             county["irrigation_level"] = min(INFRA_MAX_LEVEL, county.get("irrigation_level", 0) + 1)
             new_maint = calculate_infra_maint("irrigation", county["irrigation_level"], county)
-            county["admin_cost_detail"]["irrigation_maint"] = new_maint
-            county["admin_cost"] = sum(county["admin_cost_detail"].values())
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["irrigation_maint"] = new_maint
+                county["admin_cost"] = sum(county["admin_cost_detail"].values())
             report["events"].append(
                 f"水利工程完工，水利等级提升至{county['irrigation_level']}，"
                 f"年维护费{new_maint}两")
@@ -245,8 +246,9 @@ class SeasonalMixin:
         elif action == "build_medical":
             county["medical_level"] = min(INFRA_MAX_LEVEL, county.get("medical_level", 0) + 1)
             new_maint = calculate_infra_maint("medical", county["medical_level"], county)
-            county["admin_cost_detail"]["medical_maint"] = new_maint
-            county["admin_cost"] = sum(county["admin_cost_detail"].values())
+            if "admin_cost_detail" in county:
+                county["admin_cost_detail"]["medical_maint"] = new_maint
+                county["admin_cost"] = sum(county["admin_cost_detail"].values())
             report["events"].append(
                 f"医疗设施建成，医疗等级提升至{county['medical_level']}，"
                 f"年维护费{new_maint}两")
