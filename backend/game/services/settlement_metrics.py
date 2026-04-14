@@ -112,6 +112,20 @@ class MetricsMixin:
         months_to_harvest = cls._months_to_harvest(month, pre_harvest=pre_harvest)
         reserve = float(county.get("peasant_grain_reserve", 0.0))
 
+        # ── 五月前预扣徭役折银所需粮食 ──────────────────────────────────────
+        # 徭役折银（每人0.3两=30斤）在五月一次性征收，是确定支出
+        # 1-4月快照须提前扣除，使人均余粮/月均余粮反映真实可支配储备
+        moy = ((month - 1) % 12) + 1
+        pending_corvee_grain = 0
+        if 1 <= moy <= 4:
+            liable_pop = sum(
+                v.get("peasant_ledger", {}).get("registered_population", v.get("population", 0))
+                for v in county.get("villages", [])
+            )
+            corvee_total = liable_pop * CORVEE_PER_CAPITA  # 0.3两/人
+            pending_corvee_grain = corvee_total * GRAIN_PER_LIANG  # 100斤/两
+            reserve -= pending_corvee_grain
+
         emergency = county.get("emergency") or {}
         halve = bool(emergency.get("halve_consumption_this_month"))
 
@@ -150,6 +164,7 @@ class MetricsMixin:
 
         county["peasant_surplus"] = {
             "reserve": round(reserve),
+            "pending_corvee_grain": round(pending_corvee_grain),  # 五月徭役折银预扣量
             "months_to_harvest": months_to_harvest,
             "per_capita_surplus": round(per_capita_surplus, 1),
             "monthly_per_capita_surplus": round(per_capita_surplus / max(months_to_harvest, 1), 1),

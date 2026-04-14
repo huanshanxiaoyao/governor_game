@@ -825,6 +825,19 @@ class RumorsService:
             ])
             return {"category": "舆情", "text": t, "source": "坊间传闻", "season": log_season}
 
+        # ── 知府嘉奖 ──
+        if et == "prefect_praise":
+            affinity_delta = data.get("affinity_delta", 2)
+            if affinity_delta > 0:
+                t = random.choice([
+                    "知县老爷得了知府嘉奖，说是治县有方，街上都在传呢！",
+                    "听说知府给咱们知县发了嘉奖文书，百姓都说这是光耀门楣的大好事！",
+                    "知府来文嘉奖知县，说各县之中咱们县办得最好，乡亲们听了都高兴！",
+                ])
+            else:
+                t = "知县得了知府嘉奖，不过大家私下说知府这嘉奖水分不小。"
+            return {"category": "舆情", "text": t, "source": "茶馆议论", "season": log_season, "severity": min(3, abs(affinity_delta))}
+
         return None
 
     # ── 年度考核结果（最多 1 条） ──────────────────────────────────────────────

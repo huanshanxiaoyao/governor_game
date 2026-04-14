@@ -143,19 +143,35 @@ def cls_handle_trade_route(action, req, game, county):
     agent_name = req.get('agent_name', '地主')
     est_gain = int(req.get('est_gain', 5))
 
+    def _update_agent_and_clan(agent_obj, delta):
+        """更新 agent player_affinity，并同步 county clans 中该 clan 的 clan_affinity。"""
+        attrs = agent_obj.attributes or {}
+        attrs['player_affinity'] = max(-99, min(99, int(attrs.get('player_affinity', 50)) + delta))
+        agent_obj.attributes = attrs
+        agent_obj.save(update_fields=['attributes'])
+        # 同步更新 county['clans'] 中对应 clan 的 clan_affinity
+        clan_id = attrs.get('clan_id')
+        if clan_id and clan_id != '__local__':
+            clans = county.get('clans') or {}
+            if clan_id in clans:
+                member_ids = clans[clan_id].get('local_members', [])
+                if member_ids:
+                    members = Agent.objects.filter(id__in=member_ids).only('attributes')
+                    avg = sum((m.attributes or {}).get('player_affinity', 50) for m in members) / len(members)
+                    clans[clan_id]['clan_affinity'] = round(avg)
+
     if action == 'accept':
         # commercial 是县级独立指标，直接更新县级值（不经过村级）
         old = float(county.get('commercial', 50))
         county['commercial'] = min(100.0, old + est_gain)
         actual_gain = round(county['commercial'] - old, 1)
 
-        # 地主好感 +5
+        # 地主好感 +5，并同步 clan_affinity
         if agent_id:
             try:
                 agent = Agent.objects.get(id=agent_id, game=game)
+                _update_agent_and_clan(agent, 5)
                 attrs = agent.attributes or {}
-                attrs['player_affinity'] = min(99, int(attrs.get('player_affinity', 50)) + 5)
-                # 记录期望：明年举荐宗族后生
                 attrs['expects_nomination_year'] = year_of(game.current_season) + 1
                 agent.attributes = attrs
                 agent.save(update_fields=['attributes'])
@@ -176,14 +192,11 @@ def cls_handle_trade_route(action, req, game, county):
 
         return {"message": f"已允准{agent_name}引荐商路，{village_name}商业+{actual_gain}，并承诺明年举荐其族中后生"}
     else:
-        # 拒绝：地主好感 -5
+        # 拒绝：地主好感 -5，并同步 clan_affinity
         if agent_id:
             try:
                 agent = Agent.objects.get(id=agent_id, game=game)
-                attrs = agent.attributes or {}
-                attrs['player_affinity'] = max(-99, int(attrs.get('player_affinity', 50)) - 5)
-                agent.attributes = attrs
-                agent.save(update_fields=['attributes'])
+                _update_agent_and_clan(agent, -5)
             except Agent.DoesNotExist:
                 pass
         return {"message": f"婉拒{agent_name}引荐商路，机会已过，对方略感失望"}

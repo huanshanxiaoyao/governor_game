@@ -504,7 +504,9 @@
       var autumnDone         = (fy.agri_remitted || 0) > 0 || autumnAssessment.status === "PAID";
       var agriProjected      = autumnDone ? agriRemittedActual : (paymentPending ? pendingRemit : expectedAgriRemit);
       var agriGap            = Math.round(agriQuota - agriProjected);
-      var projectedTotal     = agriProjected + corveeRemitted;
+      // 五月前徭役折银未征时，将预计数计入总缺口
+      var pendingCorvee = corveeCollected ? 0 : corveeQuota;
+      var projectedTotal     = agriProjected + corveeRemitted + pendingCorvee;
       var totalGap           = Math.round(quota.total - projectedTotal);
       var compPct            = Math.round(Math.min(100, (projectedTotal / quota.total) * 100));
       var quotaGradCls = totalGap <= 0 ? "hero-quota-ok"
@@ -535,6 +537,10 @@
       var quotaDetailHtml =
         _quotaDetailSection("农业税", agriProjected, agriQuota, autumnDone) +
         '<div class="hd-divider"></div>' +
+        (pendingCorvee > 0 ? (
+          '<div class="hd-row hd-row-warn"><span class="hd-label">五月徭役折银</span><span class="hd-value">预计 ' + corveeQuota + ' 两已从粮食储备预扣</span></div>' +
+          '<div class="hd-divider"></div>'
+        ) : '') +
         _quotaDetailSection("徭役折银", corveeRemitted, corveeQuota, corveeCollected) +
         '<div class="hd-divider"></div>' +
         '<div class="hd-row"><span class="hd-label">合计完成率</span><span class="hd-value">' + compPct + '%</span></div>';
