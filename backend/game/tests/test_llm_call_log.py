@@ -90,7 +90,7 @@ def test_llm_client_logs_when_context_provided():
     )
     mock_resp = _make_mock_response('回复内容', prompt_tokens=100, completion_tokens=50)
 
-    with patch('openai.OpenAI') as MockOpenAI:
+    with patch('llm.client.OpenAI') as MockOpenAI:
         mock_client = MagicMock()
         MockOpenAI.return_value = mock_client
         mock_client.chat.completions.create.return_value = mock_resp
@@ -116,7 +116,7 @@ def test_llm_client_no_log_without_context():
 
     mock_resp = _make_mock_response('回复')
 
-    with patch('openai.OpenAI') as MockOpenAI:
+    with patch('llm.client.OpenAI') as MockOpenAI:
         mock_client = MagicMock()
         MockOpenAI.return_value = mock_client
         mock_client.chat.completions.create.return_value = mock_resp

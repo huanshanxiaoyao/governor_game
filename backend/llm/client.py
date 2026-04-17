@@ -19,7 +19,8 @@ BACKOFF_CAP = 30  # seconds
 class LLMClient:
     """Unified LLM client that works with any OpenAI-compatible provider."""
 
-    def __init__(self, provider=None, config=None, timeout=None, max_retries=None):
+    def __init__(self, provider=None, config=None, timeout=None,
+                 max_retries=None, context=None):
         """Initialize client.
 
         Args:
@@ -27,6 +28,8 @@ class LLMClient:
             config: ProviderConfig instance (takes precedence over provider).
             timeout: Request timeout in seconds (default 60).
             max_retries: Max retry attempts on transient errors (default 3).
+            context: llm.context.LLMContext 实例，有值时每次调用后写 LLMCallLog；
+                     None 则不写日志（dev/admin 工具使用场景）。
         """
         if config is not None:
             self.config = config
@@ -35,6 +38,7 @@ class LLMClient:
 
         self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
         self._timeout = timeout or DEFAULT_TIMEOUT
+        self._context = context
 
         if self.config.sdk_type == 'anthropic':
             self._backend = _AnthropicBackend(self.config, self._timeout)
@@ -67,9 +71,11 @@ class LLMClient:
         )
 
         last_error = None
+        t_start = time.time()
+
         for attempt in range(1, self.max_retries + 1):
             try:
-                content = self._backend.chat(
+                content, usage = self._backend.chat(
                     messages=messages,
                     model=model,
                     json_mode=json_mode,
@@ -80,6 +86,7 @@ class LLMClient:
                     "LLM response: provider=%s model=%s",
                     self.config.name, model,
                 )
+                self._log(usage, int((time.time() - t_start) * 1000), success=True)
                 return content
             except Exception as e:
                 if _is_transient(e):
@@ -93,8 +100,12 @@ class LLMClient:
                         )
                         time.sleep(delay)
                     continue
+                # 非瞬时错误：记录失败日志后直接抛出
+                self._log(None, int((time.time() - t_start) * 1000), success=False)
                 raise
 
+        # 重试耗尽
+        self._log(None, int((time.time() - t_start) * 1000), success=False)
         logger.warning(
             "LLM request failed after %d attempts (provider=%s error=%s: %s)",
             self.max_retries, self.config.name, type(last_error).__name__, last_error,
@@ -143,6 +154,30 @@ class LLMClient:
         _log_llm_parse_failure(messages, content, str(first_err))
         raise LLMJSONParseError(content, first_err)
 
+    def _log(self, usage, latency_ms, success):
+        """写 LLMCallLog 行。context 为 None 时跳过；写入失败不影响主流程。"""
+        if self._context is None:
+            return
+        try:
+            from .models import LLMCallLog
+            LLMCallLog.objects.create(
+                user_id           = self._context.user_id,
+                game_id           = self._context.game_id,
+                season            = self._context.season,
+                call_source       = self._context.call_source,
+                provider          = self.config.name,
+                model             = self.config.default_model,
+                prompt_tokens     = (usage or {}).get('prompt_tokens', 0),
+                completion_tokens = (usage or {}).get('completion_tokens', 0),
+                total_tokens      = (usage or {}).get('total_tokens', 0),
+                latency_ms        = latency_ms,
+                success           = success,
+            )
+        except Exception as exc:
+            logger.warning('LLMCallLog write failed (non-fatal): %s', exc)
+
+
+# ── 私有工具函数 ────────────────────────────────────────────────────────────
 
 def _extract_json(text):
     """从模型输出中健壮地提取第一个完整 JSON 对象。
@@ -244,6 +279,7 @@ class _OpenAIBackend:
         return content, reasoning or None
 
     def chat(self, messages, model, json_mode, temperature, max_tokens):
+        """返回 (content, usage_dict | None)。"""
         kwargs = {
             'model': model,
             'messages': messages,
@@ -253,7 +289,15 @@ class _OpenAIBackend:
         if json_mode:
             kwargs['response_format'] = {'type': 'json_object'}
         response = self._client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content or ''
+        content = response.choices[0].message.content or ''
+        usage = None
+        if response.usage:
+            usage = {
+                'prompt_tokens':     response.usage.prompt_tokens,
+                'completion_tokens': response.usage.completion_tokens,
+                'total_tokens':      response.usage.total_tokens,
+            }
+        return content, usage
 
 
 class _AnthropicBackend:
@@ -270,9 +314,11 @@ class _AnthropicBackend:
 
     def chat_raw(self, messages, model, temperature, max_tokens):
         """返回 (content, None)，Anthropic backend 暂不暴露 thinking 块。"""
-        return self.chat(messages, model, False, temperature, max_tokens), None
+        content, _usage = self.chat(messages, model, False, temperature, max_tokens)
+        return content, None
 
     def chat(self, messages, model, json_mode, temperature, max_tokens):
+        """返回 (content, usage_dict | None)。"""
         # 将 OpenAI 格式的消息列表分离为 system 和 user/assistant 消息
         system_parts = []
         conv_messages = []
@@ -292,9 +338,23 @@ class _AnthropicBackend:
             kwargs['system'] = '\n\n'.join(system_parts)
 
         response = self._client.messages.create(**kwargs)
-        # 提取 text 块（thinking 块是内部推理过程，不作为响应内容）
+        content = None
         for block in response.content:
             if getattr(block, 'type', None) == 'text':
-                return block.text
-        # 未找到 text 块（可能是纯 thinking 响应或空响应），抛出可重试错误
-        raise ValueError(f"LLM returned no text block (blocks={[getattr(b,'type',None) for b in response.content]})")
+                content = block.text
+                break
+        if content is None:
+            raise ValueError(
+                f"LLM returned no text block "
+                f"(blocks={[getattr(b,'type',None) for b in response.content]})"
+            )
+        usage = None
+        if response.usage:
+            input_t  = response.usage.input_tokens
+            output_t = response.usage.output_tokens
+            usage = {
+                'prompt_tokens':     input_t,
+                'completion_tokens': output_t,
+                'total_tokens':      input_t + output_t,
+            }
+        return content, usage
