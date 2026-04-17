@@ -467,7 +467,14 @@ class NegotiationService:
         )
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
             logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
@@ -534,7 +541,14 @@ class NegotiationService:
         )
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
             logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
@@ -602,7 +616,14 @@ class NegotiationService:
         )
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
             logger.warning("Negotiation LLM failed for %s: %s", session.agent.name, e)
@@ -1165,7 +1186,14 @@ class NegotiationService:
         messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.75, max_tokens=384)
         except Exception as e:
             logger.warning("VILLAGE_REQ_SCHOOL LLM failed: %s", e)
@@ -1257,7 +1285,14 @@ class NegotiationService:
         messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.75, max_tokens=384)
         except Exception as e:
             logger.warning("VILLAGE_REQ_TAX LLM failed: %s", e)
@@ -1315,7 +1350,14 @@ class NegotiationService:
         messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.80, max_tokens=384)
         except Exception as e:
             logger.warning("LANDLORD_DEMAND_FACILITY LLM failed: %s", e)
@@ -1373,7 +1415,14 @@ class NegotiationService:
         messages = cls._build_negotiation_messages(system_prompt, user_prompt, game, session)
 
         try:
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.80, max_tokens=384)
         except Exception as e:
             logger.warning("GENTRY_RELIEF_OFFER LLM failed: %s", e)
@@ -1586,7 +1635,14 @@ class NegotiationService:
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': opening_user},
             ]
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.85, max_tokens=200)
             dialogue = (result.get('dialogue') or '').strip()
             if not dialogue:
@@ -1665,7 +1721,14 @@ class NegotiationService:
                         f'请向大人简要陈述分析与建议，不超过120字，古风口吻。\n'
                         '（以JSON格式回复：{"brief": "师爷的分析与建议"}）'
                     )
-                    client = LLMClient()
+                    from llm.context import LLMContext
+                    from llm import call_sources
+                    client = LLMClient(context=LLMContext(
+                        call_source=call_sources.NEGOTIATION,
+                        game_id=game.id,
+                        season=game.current_season,
+                        user_id=game.user_id,
+                    ))
                     result = client.chat_json(
                         [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
                         temperature=0.7, max_tokens=256,
@@ -1755,7 +1818,14 @@ class NegotiationService:
                 {'role': 'system', 'content': system},
                 {'role': 'user', 'content': user},
             ]
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.NEGOTIATION,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.7, max_tokens=256)
             brief = (result.get('brief') or '').strip()
             if not brief:
@@ -1827,7 +1897,14 @@ class NegotiationService:
             {'role': 'user', 'content': user_prompt},
         ]
 
-        client = LLMClient()
+        from llm.context import LLMContext
+        from llm import call_sources
+        client = LLMClient(context=LLMContext(
+            call_source=call_sources.NEGOTIATION,
+            game_id=game.id,
+            season=game.current_season,
+            user_id=game.user_id,
+        ))
         result = client.chat_json(messages_llm, temperature=0.2, max_tokens=400)
         summary = {
             'conclusion': (result.get('conclusion') or '').strip()[:60],

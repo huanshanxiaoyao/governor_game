@@ -27,7 +27,7 @@ class AIGovernorNegotiationService:
     # ==================== 兼并事件 ====================
 
     @classmethod
-    def run_annexation_negotiation(cls, county, village):
+    def run_annexation_negotiation(cls, county, village, game=None):
         """AI知县处理地主兼并事件。
 
         Returns:
@@ -50,6 +50,7 @@ class AIGovernorNegotiationService:
                 governor_meta, profile, village, 'annexation',
                 willingness, leverage, round_num,
                 event_desc=f'{gentry_name}趁民心低迷大肆收购村民田地，图谋进一步扩充田产。',
+                game=game,
             )
             willingness = cls._update_willingness_annexation(willingness, stance, leverage)
             gentry_reply = _gentry_response_annexation(willingness, gentry_name)
@@ -66,7 +67,7 @@ class AIGovernorNegotiationService:
     # ==================== 隐田事件 ====================
 
     @classmethod
-    def run_hidden_land_negotiation(cls, county, village, hidden_land):
+    def run_hidden_land_negotiation(cls, county, village, hidden_land, game=None):
         """AI知县处理隐匿田产事件。
 
         Returns:
@@ -92,6 +93,7 @@ class AIGovernorNegotiationService:
                     f'修建水利时发现{gentry_name}隐匿田产{hidden_land}亩，'
                     f'要求其主动申报，否则强制清丈。'
                 ),
+                game=game,
             )
             willingness = cls._update_willingness_hidden(willingness, stance, leverage)
             gentry_reply = _gentry_response_hidden(willingness, gentry_name)
@@ -108,13 +110,23 @@ class AIGovernorNegotiationService:
 
     @classmethod
     def _governor_turn(cls, meta, profile, village, event_type,
-                       willingness, leverage, round_num, event_desc):
+                       willingness, leverage, round_num, event_desc, game=None):
         """调用 LLM 决定知县本轮策略，失败时回退到规则引擎。"""
         try:
             ctx = cls._build_ctx(meta, profile, village, event_type,
                                  willingness, leverage, round_num, event_desc)
             system_prompt, user_prompt = PromptRegistry.render('ai_governor_negotiation', **ctx)
-            client = LLMClient(timeout=12.0, max_retries=1)
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(
+                timeout=12.0, max_retries=1,
+                context=LLMContext(
+                    call_source=call_sources.NEGOTIATION,
+                    game_id=game.id if game else None,
+                    season=game.current_season if game else None,
+                    user_id=game.user_id if game else None,
+                ),
+            )
             result = client.chat_json(
                 [{'role': 'system', 'content': system_prompt},
                  {'role': 'user', 'content': user_prompt}],

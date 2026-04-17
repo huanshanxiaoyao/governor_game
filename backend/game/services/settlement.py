@@ -571,7 +571,7 @@ class SettlementService(
                 if is_ai_negotiation_enabled():
                     try:
                         ratio, neg_events = AIGovernorNegotiationService.run_hidden_land_negotiation(
-                            county, v, hidden,
+                            county, v, hidden, game=game,
                         )
                     except Exception as exc:
                         logger.warning('AI hidden-land negotiation error: %s', exc)
@@ -793,7 +793,7 @@ class SettlementService(
                 if is_ai_negotiation_enabled():
                     try:
                         stopped, neg_events = AIGovernorNegotiationService.run_annexation_negotiation(
-                            county, v,
+                            county, v, game=game,
                         )
                     except Exception as exc:
                         logger.warning('AI annexation negotiation error: %s', exc)
