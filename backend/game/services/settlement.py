@@ -181,9 +181,6 @@ class SettlementService(
                 f"{item.get('event_type_display', '谈判')}已超过3个月未推进，系统已关闭"
             )
 
-        # 0. Reset per-month counters
-        county["advisor_questions_used"] = 0
-
         # Load peer counties for autumn
         neighbor_counties = []
         for neighbor in game.neighbors.all():

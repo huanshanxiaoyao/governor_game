@@ -296,7 +296,6 @@ class NewTermService:
         county.setdefault("irrigation_level", 0)
         county.setdefault("medical_level", 0)
         county.setdefault("bailiff_level", 0)
-        county.setdefault("advisor_level", 1)
         county.setdefault("has_granary", False)
         county.setdefault("granary_needs_rebuild", False)
         county.setdefault("granary_rebuild_cost", None)
@@ -308,7 +307,6 @@ class NewTermService:
         county.setdefault("active_investments", [])
         county.setdefault("road_repair_count", 0)
         county.setdefault("commercial_tax_rate", 0.03)
-        county.setdefault("advisor_questions_used", 0)
         county.setdefault("price_index", 1.0)
         county.setdefault("remit_ratio", 0.6)
 

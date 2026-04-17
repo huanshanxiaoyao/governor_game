@@ -670,18 +670,6 @@ class AgentService:
     @classmethod
     def chat_with_agent(cls, game, agent, player_message):
         """与NPC对话的完整流程"""
-        # 0. 师爷问策次数限制
-        if agent.role == 'ADVISOR':
-            county = load_county_state(game)
-            level = county.get('advisor_level', 1)
-            used = county.get('advisor_questions_used', 0)
-            if used >= level:
-                return {
-                    'error': '本月师爷已无余力回答更多问题，请推进到下一月',
-                    'questions_used': used,
-                    'questions_limit': level,
-                }
-
         # 1. 保存玩家消息
         DialogueMessage.objects.create(
             game=game,
@@ -701,13 +689,7 @@ class AgentService:
         else:
             result = cls._chat_light(ctx, game, agent)
 
-        # 4. 师爷问策次数计数
-        if agent.role == 'ADVISOR' and 'error' not in result:
-            county = load_county_state(game)
-            county['advisor_questions_used'] = county.get('advisor_questions_used', 0) + 1
-            save_player_state(game, county)
-
-        # 5. 异步提取承诺（本县 NPC 角色）
+        # 4. 异步提取承诺（本县 NPC 角色）
         if 'error' not in result and agent.role in ('ADVISOR', 'DEPUTY', 'GENTRY', 'VILLAGER'):
             import threading
             from .promise import PromiseService

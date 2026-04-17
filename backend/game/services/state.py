@@ -52,8 +52,6 @@ _COUNTY_DEFAULTS: list[tuple[str, object]] = [
     # 基建
     ("bailiff_level", 0),
     ("baojia_level", 0),
-    ("advisor_level", 1),
-    ("advisor_questions_used", 0),
     ("school_level", 1),
     ("irrigation_level", 0),
     ("medical_level", 0),

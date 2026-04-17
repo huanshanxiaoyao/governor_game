@@ -1029,7 +1029,6 @@ class StaffInfoView(APIView):
     @game_view()
     def get(self, request, game, *, game_id):
         county = load_county_state(game)
-        advisor_level = county.get("advisor_level", 1)
 
         # Advisor (师爷)
         advisor_data = None
@@ -1039,9 +1038,6 @@ class StaffInfoView(APIView):
                 "agent_id": advisor.id,
                 "name": advisor.name,
                 "role_title": advisor.role_title,
-                "level": advisor_level,
-                "questions_used": county.get("advisor_questions_used", 0),
-                "questions_limit": advisor_level,
                 "bio": advisor.attributes.get("bio", ""),
                 "affinity": advisor.attributes.get("player_affinity", 50),
             }

@@ -174,8 +174,6 @@ class County(TypedDict, total=False):
 
     # 施政状态
     bailiff_level: int
-    advisor_level: int
-    advisor_questions_used: int
     school_level: int
     irrigation_level: int
     medical_level: int

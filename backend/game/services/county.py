@@ -77,8 +77,6 @@ class CountyService:
             "agriculture_bonus": 0,  # 农业类施政累积加成，单位：百分点，结算时乘入秋收
             "admin_cost_detail": dict(ADMIN_COST_DETAIL[county_type]),
             "admin_cost": sum(ADMIN_COST_DETAIL[county_type].values()),
-            "advisor_level": 1,
-            "advisor_questions_used": 0,
             "price_index": base["price_index"],
 
             # 全局环境 (doc 06 §2)
