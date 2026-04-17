@@ -190,7 +190,14 @@ class PolicyReviewService:
             {'role': 'user',   'content': user_prompt},
         ]
 
-        client = LLMClient()
+        from llm.context import LLMContext
+        from llm import call_sources
+        client = LLMClient(context=LLMContext(
+            call_source=call_sources.POLICY_REVIEW,
+            game_id=game.id,
+            season=game.current_season,
+            user_id=game.user_id,
+        ))
         raw = client.chat_json(messages, max_tokens=2000)
 
         # 兼容裸数组或包装对象

@@ -47,8 +47,15 @@ class PromiseService:
             {'role': 'user', 'content': user_prompt},
         ]
 
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            client = LLMClient()
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.PROMISE_EXTRACT,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.2, max_tokens=512)
         except Exception as e:
             logger.error("Promise extraction LLM failed: %s", e)

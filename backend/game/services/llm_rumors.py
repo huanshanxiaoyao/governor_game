@@ -72,7 +72,7 @@ class LLMRumorsService:
             if game.county_data.get("llm_generated_season") == context["month"]:
                 return
 
-            rumors = cls._call_llm_monthly(context)
+            rumors = cls._call_llm_monthly(context, game=game)
             if not rumors:
                 return
 
@@ -82,7 +82,7 @@ class LLMRumorsService:
             logger.warning("[LLM月报流言] game=%s 失败: %s", game_id, e)
 
     @classmethod
-    def _call_llm_monthly(cls, ctx: dict) -> list:
+    def _call_llm_monthly(cls, ctx: dict, game=None) -> list:
         from llm.client import LLMClient
 
         # 构建 user prompt
@@ -109,7 +109,14 @@ class LLMRumorsService:
             {"role": "user", "content": user_prompt},
         ]
 
-        client = LLMClient()
+        from llm.context import LLMContext
+        from llm import call_sources
+        client = LLMClient(context=LLMContext(
+            call_source=call_sources.RUMORS,
+            game_id=game.id if game else None,
+            season=game.current_season if game else None,
+            user_id=game.user_id if game else None,
+        ))
         raw = client.chat_json(messages, temperature=0.9, max_tokens=400)
         return cls._validate_rumors(raw, ctx.get("month", 0))
 
@@ -148,7 +155,7 @@ class LLMRumorsService:
             if not unseen_cases:
                 return
 
-            rumors = cls._call_llm_judicial(unseen_cases, village_names)
+            rumors = cls._call_llm_judicial(unseen_cases, village_names, game=game)
             if not rumors:
                 return
 
@@ -160,7 +167,7 @@ class LLMRumorsService:
             logger.warning("[LLM司法流言] game=%s 失败: %s", game_id, e)
 
     @classmethod
-    def _call_llm_judicial(cls, cases, village_names: list) -> list:
+    def _call_llm_judicial(cls, cases, village_names: list, game=None) -> list:
         from llm.client import LLMClient
 
         case_lines = []
@@ -185,7 +192,14 @@ class LLMRumorsService:
             {"role": "user", "content": user_prompt},
         ]
 
-        client = LLMClient()
+        from llm.context import LLMContext
+        from llm import call_sources
+        client = LLMClient(context=LLMContext(
+            call_source=call_sources.RUMORS,
+            game_id=game.id if game else None,
+            season=game.current_season if game else None,
+            user_id=game.user_id if game else None,
+        ))
         raw = client.chat_json(messages, temperature=0.9, max_tokens=300)
         return cls._validate_rumors(raw, 0)
 

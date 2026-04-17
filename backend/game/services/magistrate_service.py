@@ -82,8 +82,18 @@ class MagistrateService:
             f"直接输出两句话，不要任何前缀或解释。"
         )
 
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            client = LLMClient(timeout=10.0, max_retries=1)
+            client = LLMClient(
+                timeout=10.0, max_retries=1,
+                context=LLMContext(
+                    call_source=call_sources.OTHER,
+                    game_id=None,
+                    season=None,
+                    user_id=None,
+                ),
+            )
             bio = client.chat(
                 [{'role': 'system', 'content': system_msg},
                  {'role': 'user', 'content': user_msg}],
