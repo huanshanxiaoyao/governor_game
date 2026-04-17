@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_prefecture, views_letter, views_counsel, views_bench, views_village
+from . import views, views_prefecture, views_letter, views_counsel, views_bench, views_village, views_token_usage
 
 urlpatterns = [
     path("admin/player-stats/", views.AdminPlayerStatsView.as_view(), name="admin-player-stats"),
@@ -18,6 +18,7 @@ urlpatterns = [
     path("npc/debug/page/", views.NPCDebugPageView.as_view(), name="npc-debug-page"),
     path("games/", views.GameListCreateView.as_view(), name="game-list-create"),
     path("games/<int:game_id>/feedback/", views.GameFeedbackView.as_view(), name="game-feedback"),
+    path("games/<int:game_id>/token-usage/", views_token_usage.TokenUsageView.as_view(), name="token-usage"),
     # LLM bench APIs
     path("bench/games/", views_bench.BenchGamesView.as_view(), name="bench-games"),
     path("bench/context/", views_bench.BenchContextView.as_view(), name="bench-context"),
