@@ -1267,7 +1267,17 @@ class AnnualReviewService:
             {"role": "user", "content": user_prompt},
         ]
 
-        client = LLMClient(timeout=12.0, max_retries=2)
+        from llm.context import LLMContext
+        from llm import call_sources
+        client = LLMClient(
+            timeout=12.0, max_retries=2,
+            context=LLMContext(
+                call_source=call_sources.ANNUAL_REVIEW,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ),
+        )
         try:
             result = client.chat_json(messages, temperature=0.6, max_tokens=700)
         except Exception:

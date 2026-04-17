@@ -1460,7 +1460,17 @@ class PrefectureService:
                 pressure_label=pressure_label,
                 message=message or f"本府对尔县近况甚为关切，请如实汇报。",
             )
-            client = LLMClient(timeout=10, max_retries=1)
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(
+                timeout=10, max_retries=1,
+                context=LLMContext(
+                    call_source=call_sources.AI_PREFECT,
+                    game_id=game.id,
+                    season=game.current_season,
+                    user_id=game.user_id,
+                ),
+            )
             result = client.chat_json(
                 [{'role': 'system', 'content': sys_p}, {'role': 'user', 'content': usr_p}],
                 temperature=0.75, max_tokens=350,

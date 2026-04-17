@@ -949,9 +949,17 @@ class JudicialCaseflowService:
     def _request_llm_magistrate_decision(cls, unit, instance: JudicialCaseInstance, season: int, baseline: dict) -> dict:
         ctx = cls._build_llm_review_context(unit, instance, season, baseline)
         system_prompt, user_prompt = PromptRegistry.render("magistrate_judicial_review", **ctx)
+        from llm.context import LLMContext
+        from llm import call_sources
         client = LLMClient(
             timeout=getattr(settings, "JUDICIAL_MAGISTRATE_LLM_TIMEOUT", 8),
             max_retries=getattr(settings, "JUDICIAL_MAGISTRATE_LLM_MAX_RETRIES", 1),
+            context=LLMContext(
+                call_source=call_sources.JUDICIAL,
+                game_id=unit.game_id,
+                season=season,
+                user_id=None,
+            ),
         )
         started = time.monotonic()
         result = client.chat_json(
@@ -1173,7 +1181,7 @@ class JudicialCaseflowService:
                     verdict_options, factors, magistrate_verdict_code,
                     magistrate_verdict_label, is_deferred,
                 )
-                llm_result = cls._request_llm_prefect_decision(ctx, verdict_options)
+                llm_result = cls._request_llm_prefect_decision(ctx, verdict_options, game=game)
                 if llm_result:
                     prefect_verdict_code = llm_result['verdict_code']
                     llm_letter = llm_result.get('letter', '')
@@ -1459,13 +1467,23 @@ class JudicialCaseflowService:
         }
 
     @classmethod
-    def _request_llm_prefect_decision(cls, ctx: dict, verdict_options: list) -> Optional[dict]:
+    def _request_llm_prefect_decision(cls, ctx: dict, verdict_options: list, game=None) -> Optional[dict]:
         """调用 LLM 获取知府判决。返回 {'verdict_code': ..., 'letter': ...} 或 None。"""
         from llm.client import LLMClient
         from llm.prompts import PromptRegistry
+        from llm.context import LLMContext
+        from llm import call_sources
 
         system_prompt, user_prompt = PromptRegistry.render('prefect_judicial_review', **ctx)
-        client = LLMClient(timeout=10, max_retries=1)
+        client = LLMClient(
+            timeout=10, max_retries=1,
+            context=LLMContext(
+                call_source=call_sources.JUDICIAL,
+                game_id=game.id if game else None,
+                season=game.current_season if game else None,
+                user_id=game.user_id if game else None,
+            ),
+        )
         result = client.chat_json(
             [
                 {'role': 'system', 'content': system_prompt},

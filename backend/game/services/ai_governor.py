@@ -215,7 +215,17 @@ class AIGovernorService:
         try:
             system_prompt, user_prompt = PromptRegistry.render(
                 'ai_governor_decision', **ctx)
-            client = LLMClient(timeout=10.0, max_retries=1)
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(
+                timeout=10.0, max_retries=1,
+                context=LLMContext(
+                    call_source=call_sources.NEIGHBOR_AI,
+                    game_id=neighbor.game_id,
+                    season=season,
+                    user_id=None,   # 邻县是 AI，无玩家 user_id
+                ),
+            )
             result = client.chat_json(
                 [{'role': 'system', 'content': system_prompt},
                  {'role': 'user', 'content': user_prompt}],

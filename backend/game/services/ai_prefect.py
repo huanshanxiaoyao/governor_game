@@ -71,7 +71,7 @@ class PrefectAIService:
             # 规则已确定指令类型，尝试 LLM 生成文案（注入 trigger 信息）
             context['_directive_trigger_type'] = trigger_type
             context['_directive_trigger_info'] = trigger_info
-            decision = cls._try_llm_decision(context)
+            decision = cls._try_llm_decision(context, game=game)
             if decision is None:
                 affinity = county.get('prefect_affinity', 50)
                 decision = cls._directive_template(trigger_type, trigger_info, county, affinity)
@@ -292,7 +292,7 @@ class PrefectAIService:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _try_llm_decision(cls, context: dict) -> dict | None:
+    def _try_llm_decision(cls, context: dict, game=None):
         """尝试 LLM 决策，失败返回 None（静默降级）。"""
         try:
             system_prompt, user_prompt = PromptRegistry.render(
@@ -302,7 +302,17 @@ class PrefectAIService:
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt},
             ]
-            client = LLMClient(timeout=10, max_retries=1)
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(
+                timeout=10, max_retries=1,
+                context=LLMContext(
+                    call_source=call_sources.AI_PREFECT,
+                    game_id=game.id if game else None,
+                    season=game.current_season if game else None,
+                    user_id=game.user_id if game else None,
+                ),
+            )
             result = client.chat_json(messages, temperature=0.7, max_tokens=400)
 
             if not isinstance(result, dict):
@@ -790,7 +800,14 @@ class PrefectAIService:
                 incident_note=incident_note,
                 directive_section=directive_section,
             )
-            client = LLMClient()
+            from llm.context import LLMContext
+            from llm import call_sources
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.AI_PREFECT,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(
                 [
                     {'role': 'system', 'content': system_prompt},
