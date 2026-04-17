@@ -191,8 +191,15 @@ class CounselService:
                 messages.append({'role': h['role'], 'content': h['content']})
         messages.append({'role': 'user', 'content': user_template})
 
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            client = LLMClient()
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.COUNSEL,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             raw = client.chat_json(messages, max_tokens=800)
         except LLMJSONParseError as e:
             logger.warning('counsel_chat: JSON parse error: %s', e)

@@ -515,8 +515,15 @@ class LetterService:
         ctx['original_body'] = original_letter.body
 
         system, user = PromptRegistry.render('letter_npc_reply', **ctx)
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            result = LLMClient().chat_json(
+            result = LLMClient(context=LLMContext(
+                call_source=call_sources.NPC_LETTER,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            )).chat_json(
                 [{"role": "system", "content": system},
                  {"role": "user", "content": user}],
                 max_tokens=600,

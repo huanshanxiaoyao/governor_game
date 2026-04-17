@@ -739,8 +739,15 @@ class AgentService:
         messages.append({'role': 'user', 'content': user_prompt})
 
         # 调用LLM
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            client = LLMClient()
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.AGENT_CHAT,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             result = client.chat_json(messages, temperature=0.8, max_tokens=512)
         except Exception as e:
             logger.error("LLM chat failed for agent %s: %s", agent.name, e)
@@ -805,8 +812,15 @@ class AgentService:
             {'role': 'user', 'content': user_prompt},
         ]
 
+        from llm.context import LLMContext
+        from llm import call_sources
         try:
-            client = LLMClient()
+            client = LLMClient(context=LLMContext(
+                call_source=call_sources.AGENT_CHAT,
+                game_id=game.id,
+                season=game.current_season,
+                user_id=game.user_id,
+            ))
             dialogue = client.chat(messages, temperature=0.8, max_tokens=256)
         except Exception as e:
             logger.error("LLM chat failed for light agent %s: %s", agent.name, e)
