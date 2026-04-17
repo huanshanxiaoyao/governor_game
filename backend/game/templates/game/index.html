@@ -222,6 +222,31 @@
         <div id="surplus-info" style="display:none"></div>
       </div>
     </div>
+    <!-- Token 用量面板 -->
+    <div id="token-usage-panel" class="token-usage-panel hidden">
+      <div class="token-usage-header" id="token-usage-toggle" role="button" tabindex="0">
+        <span class="token-usage-title">本局 Token 用量</span>
+        <span id="token-usage-total" class="token-usage-total">—</span>
+        <span class="token-usage-arrow">▶</span>
+      </div>
+      <div id="token-usage-body" class="token-usage-body hidden">
+        <table class="token-usage-table">
+          <thead>
+            <tr>
+              <th>月份</th>
+              <th>合计</th>
+              <th>对话</th>
+              <th>幕僚室</th>
+              <th>书信</th>
+              <th>谈判</th>
+              <th>AI 行动</th>
+              <th>其他</th>
+            </tr>
+          </thead>
+          <tbody id="token-usage-rows"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- Tab: Villages -->

@@ -2545,6 +2545,85 @@
     }
   }
 
+  // ==================== Token 用量面板 ====================
+
+  var TOKEN_SOURCE_GROUPS = {
+    '对话':   ['agent_chat'],
+    '幕僚室': ['counsel'],
+    '书信':   ['npc_letter'],
+    '谈判':   ['negotiation'],
+    'AI行动': ['ai_prefect', 'neighbor_ai', 'ai_governor'],
+  };
+  var TOKEN_ALL_GROUPED = Object.keys(TOKEN_SOURCE_GROUPS).reduce(function (acc, k) {
+    TOKEN_SOURCE_GROUPS[k].forEach(function (s) { acc.push(s); });
+    return acc;
+  }, []);
+
+  function _groupTokens(bySrc) {
+    var result = {};
+    Object.keys(TOKEN_SOURCE_GROUPS).forEach(function (label) {
+      var total = 0;
+      TOKEN_SOURCE_GROUPS[label].forEach(function (src) {
+        total += (bySrc[src] || 0);
+      });
+      result[label] = total;
+    });
+    var otherTotal = 0;
+    Object.keys(bySrc).forEach(function (src) {
+      if (TOKEN_ALL_GROUPED.indexOf(src) === -1) otherTotal += (bySrc[src] || 0);
+    });
+    result['其他'] = otherTotal;
+    return result;
+  }
+
+  function _fmtTokens(n) {
+    return n ? n.toLocaleString() : '—';
+  }
+
+  function loadTokenUsage(gameId) {
+    var panel = document.getElementById('token-usage-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+
+    api.getTokenUsage(gameId).then(function (data) {
+      var totalEl = document.getElementById('token-usage-total');
+      if (totalEl) totalEl.textContent = _fmtTokens(data.total_tokens) + ' tokens';
+
+      var tbody = document.getElementById('token-usage-rows');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      (data.by_season || []).forEach(function (s) {
+        var grouped = _groupTokens(s.by_source || {});
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + (s.season_name || s.season) + '</td>' +
+          '<td>' + _fmtTokens(s.total_tokens) + '</td>' +
+          '<td>' + _fmtTokens(grouped['对话']) + '</td>' +
+          '<td>' + _fmtTokens(grouped['幕僚室']) + '</td>' +
+          '<td>' + _fmtTokens(grouped['书信']) + '</td>' +
+          '<td>' + _fmtTokens(grouped['谈判']) + '</td>' +
+          '<td>' + _fmtTokens(grouped['AI行动']) + '</td>' +
+          '<td>' + _fmtTokens(grouped['其他']) + '</td>';
+        tbody.appendChild(tr);
+      });
+    }).catch(function () {
+      // 静默失败，不影响游戏
+    });
+  }
+
+  // 折叠/展开
+  var _tokenUsageToggle = document.getElementById('token-usage-toggle');
+  if (_tokenUsageToggle) {
+    _tokenUsageToggle.addEventListener('click', function () {
+      var body = document.getElementById('token-usage-body');
+      if (!body) return;
+      var open = !body.classList.contains('hidden');
+      body.classList.toggle('hidden', open);
+      _tokenUsageToggle.classList.toggle('open', !open);
+    });
+  }
+
   var _origSetGame = Game.setGame;
   Game.setGame = function (data) {
     _origSetGame(data);
@@ -2559,6 +2638,10 @@
     // 每次游戏状态更新后刷新流言板（仅知县模式）
     if (data && data.player_role === "COUNTY_MAGISTRATE") {
       loadRumorsBoard();
+    }
+    // token 用量面板（知县模式）
+    if (data && data.player_role === "COUNTY_MAGISTRATE" && data.id) {
+      loadTokenUsage(data.id);
     }
     // 新手引导（前三局首次加载时触发）
     if (data && data.player_role === "COUNTY_MAGISTRATE" &&

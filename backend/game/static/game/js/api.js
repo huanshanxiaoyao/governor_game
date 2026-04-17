@@ -360,5 +360,9 @@
       var qs = params.length > 0 ? "?" + params.join("&") : "";
       return request("GET", "/api/games/" + gameId + "/events/" + qs);
     },
+    // Token 用量
+    getTokenUsage: function (gameId) {
+      return request("GET", "/api/games/" + gameId + "/token-usage/");
+    },
   };
 })();

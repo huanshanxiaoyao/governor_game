@@ -6643,3 +6643,47 @@ body {
   color: #6a7a6a;
   font-style: italic;
 }
+
+/* ── Token 用量面板 ─────────────────────────────── */
+.token-usage-panel {
+  margin-top: 12px;
+  border: 1px solid var(--border, #d0c8b0);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.82em;
+}
+.token-usage-panel.hidden { display: none; }
+
+.token-usage-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-muted, #f5f0e8);
+  cursor: pointer;
+  user-select: none;
+}
+.token-usage-title { font-weight: 600; flex: 1; }
+.token-usage-total { color: var(--text-muted, #888); font-size: 0.9em; }
+.token-usage-arrow { font-size: 0.75em; transition: transform 0.2s; }
+.token-usage-header.open .token-usage-arrow { transform: rotate(90deg); }
+
+.token-usage-body { overflow-x: auto; }
+.token-usage-body.hidden { display: none; }
+
+.token-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.token-usage-table th,
+.token-usage-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border, #d0c8b0);
+  text-align: right;
+  white-space: nowrap;
+}
+.token-usage-table th:first-child,
+.token-usage-table td:first-child { text-align: left; }
+.token-usage-table th { background: var(--bg-muted, #f5f0e8); font-weight: 600; }
+.token-usage-table tr:last-child td { border-bottom: none; }
