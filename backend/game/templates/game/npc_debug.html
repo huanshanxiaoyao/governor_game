@@ -69,13 +69,13 @@
 <body>
   <div class="page">
     <div class="top-nav">
-      <a href="/api/admin/tools/">返回工具索引</a>
-      <a href="/api/admin/panel/">玩家统计面板</a>
+      <a href="/g1/api/admin/tools/">返回工具索引</a>
+      <a href="/g1/api/admin/panel/">玩家统计面板</a>
     </div>
 
     <div class="panel">
       <h2>选择存档</h2>
-      <form method="get" action="/api/npc/debug/page/" class="toolbar">
+      <form method="get" action="/g1/api/npc/debug/page/" class="toolbar">
         <select name="game_id" onchange="this.form.submit()">
           <option value="">请选择游戏存档</option>
           {% for item in game_options %}
@@ -128,7 +128,7 @@
             {% for item in npc_items %}
               <a
                 class="npc-card {% if item.npc_key == selected_npc_key %}active{% endif %}"
-                href="/api/npc/debug/page/?game_id={{ game.id }}&npc_key={{ item.npc_key }}"
+                href="/g1/api/npc/debug/page/?game_id={{ game.id }}&npc_key={{ item.npc_key }}"
                 data-npc-kind="{{ item.npc_kind }}"
                 data-role-title="{{ item.role_title }}"
                 data-search-text="{{ item.name }} {{ item.role_title }} {{ item.group_label }} {{ item.summary.county_name|default:'' }} {{ item.village_name|default:'' }} {{ item.summary.bio|default:'' }}"

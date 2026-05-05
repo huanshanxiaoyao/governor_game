@@ -140,7 +140,7 @@
       </div>
       <div class="top-actions">
         <a class="btn secondary" href="/">返回游戏首页</a>
-        <a class="btn" href="/api/admin/panel/">玩家统计面板</a>
+        <a class="btn" href="/g1/api/admin/panel/">玩家统计面板</a>
       </div>
     </div>
 
@@ -153,7 +153,7 @@
         <h2>玩家运营</h2>
         <p>查看账号登录、开档数量、推进月数、在线时长等汇总数据。</p>
         <div class="links">
-          <a class="btn" href="/api/admin/panel/">打开玩家统计面板</a>
+          <a class="btn" href="/g1/api/admin/panel/">打开玩家统计面板</a>
         </div>
         <div class="path">/api/admin/panel/</div>
       </div>
@@ -162,7 +162,7 @@
         <h2>司法调试（统一页）</h2>
         <p>按存档选择查看司法实例化、知县处理、知府复审状态。</p>
         <div class="links">
-          <a class="btn" href="/api/judicial/debug/page/">打开统一司法调试页</a>
+          <a class="btn" href="/g1/api/judicial/debug/page/">打开统一司法调试页</a>
         </div>
         <div class="path">/api/judicial/debug/page/</div>
       </div>
@@ -171,7 +171,7 @@
         <h2>NPC 调试</h2>
         <p>查看 NPC 画像、记忆、运行态、Prompt 预览与关系数据。</p>
         <div class="links">
-          <a class="btn" href="/api/npc/debug/page/">打开 NPC 调试页</a>
+          <a class="btn" href="/g1/api/npc/debug/page/">打开 NPC 调试页</a>
         </div>
         <div class="path">/api/npc/debug/page/</div>
       </div>
@@ -189,7 +189,7 @@
         <h2>施政提议审核调试</h2>
         <p>测试自创施政提议是否通过省布政使审核，分析投入/收益是否合理，以及效果是否需要新增后端代码。</p>
         <div class="links">
-          <a class="btn" href="/api/admin/policy-review/">打开调试页</a>
+          <a class="btn" href="/g1/api/admin/policy-review/">打开调试页</a>
         </div>
         <div class="path">/api/admin/policy-review/</div>
       </div>
@@ -198,7 +198,7 @@
         <h2>施政队列管理</h2>
         <p>查看所有已批准的自创施政。Tier 1 只读展示；Tier 2 支持标记开发完成、激活（仅本局）、全局推广三步操作。</p>
         <div class="links">
-          <a class="btn" href="/api/admin/policy-queue/">打开队列管理</a>
+          <a class="btn" href="/g1/api/admin/policy-queue/">打开队列管理</a>
         </div>
         <div class="path">/api/admin/policy-queue/</div>
       </div>
@@ -237,7 +237,7 @@
 
       <div class="quick-row">
         <label>施政队列管理</label>
-        <button class="btn" type="button" onclick="window.location.href='/api/admin/policy-queue/'">打开</button>
+        <button class="btn" type="button" onclick="window.location.href='/g1/api/admin/policy-queue/'">打开</button>
         <span class="hint">/api/admin/policy-queue/</span>
       </div>
     </div>
@@ -253,31 +253,31 @@
     function openCountyJudicial() {
       var gameId = _readId("county-game-id");
       if (!gameId) return;
-      window.location.href = "/api/games/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
+      window.location.href = "/g1/api/games/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
     }
 
     function openPrefectureJudicial() {
       var gameId = _readId("prefecture-game-id");
       if (!gameId) return;
-      window.location.href = "/api/prefecture/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
+      window.location.href = "/g1/api/prefecture/" + encodeURIComponent(gameId) + "/judicial/debug/page/";
     }
 
     function openNpcDebug() {
       var gameId = _readId("npc-game-id");
       if (!gameId) {
-        window.location.href = "/api/npc/debug/page/";
+        window.location.href = "/g1/api/npc/debug/page/";
         return;
       }
-      window.location.href = "/api/npc/debug/page/?game_id=" + encodeURIComponent(gameId);
+      window.location.href = "/g1/api/npc/debug/page/?game_id=" + encodeURIComponent(gameId);
     }
 
     function openPolicyReview() {
       var gameId = _readId("policy-review-game-id");
       if (!gameId) {
-        window.location.href = "/api/admin/policy-review/";
+        window.location.href = "/g1/api/admin/policy-review/";
         return;
       }
-      window.location.href = "/api/admin/policy-review/?game_id=" + encodeURIComponent(gameId);
+      window.location.href = "/g1/api/admin/policy-review/?game_id=" + encodeURIComponent(gameId);
     }
   </script>
 </body>

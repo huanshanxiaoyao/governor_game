@@ -102,7 +102,7 @@
 <body>
 <div class="page">
   <div class="top-actions">
-    <a class="btn btn-gray" href="/api/admin/tools/">← 返回工具索引</a>
+    <a class="btn btn-gray" href="/g1/api/admin/tools/">← 返回工具索引</a>
   </div>
   <h1>施政队列管理</h1>
   <div class="sub">Tier 1（无需代码改动，已可执行）与 Tier 2（需开发者改代码）的自创施政审批队列。</div>
@@ -320,7 +320,7 @@
   }
 
   function markDevComplete(policyId) {
-    apiPost('/api/admin/policy-queue/' + policyId + '/mark-dev-complete/', function(data) {
+    apiPost('/g1/api/admin/policy-queue/' + policyId + '/mark-dev-complete/', function(data) {
       var statusEl = document.getElementById('status-' + policyId);
       var actionsEl = document.getElementById('actions-' + policyId);
       if (statusEl) statusEl.innerHTML = '<span class="badge badge-blue">开发完成</span>';
@@ -331,7 +331,7 @@
   }
 
   function activate(policyId) {
-    apiPost('/api/admin/policy-queue/' + policyId + '/activate/', function(data) {
+    apiPost('/g1/api/admin/policy-queue/' + policyId + '/activate/', function(data) {
       var statusEl = document.getElementById('status-' + policyId);
       var actionsEl = document.getElementById('actions-' + policyId);
       if (statusEl) statusEl.innerHTML = '<span class="badge badge-green">已激活</span>';
@@ -343,7 +343,7 @@
 
   function promoteGlobal(policyId) {
     if (!confirm('确认将此施政设为全局推广？将同步至所有邻县。')) return;
-    apiPost('/api/admin/policy-queue/' + policyId + '/promote-global/', function(data) {
+    apiPost('/g1/api/admin/policy-queue/' + policyId + '/promote-global/', function(data) {
       var statusEl = document.getElementById('status-' + policyId);
       var actionsEl = document.getElementById('actions-' + policyId);
       if (statusEl) statusEl.innerHTML = '<span class="badge badge-green">已激活</span>'

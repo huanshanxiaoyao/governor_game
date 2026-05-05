@@ -339,7 +339,7 @@
 </head>
 <body>
 <div class="page">
-  <a class="back-link" href="/api/admin/tools/">← 返回工具索引</a>
+  <a class="back-link" href="/g1/api/admin/tools/">← 返回工具索引</a>
 
   <h1>施政提议审核调试</h1>
   <div class="sub">模拟省布政使对自创施政提议的裁定，检查效果键是否有对应后端实现。</div>
@@ -453,7 +453,7 @@ function runReview() {
   var body = { policy_name: policyName, description: description };
   if (gameId) body.game_id = gameId;
 
-  fetch('/api/admin/policy-review/run/', {
+  fetch('/g1/api/admin/policy-review/run/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

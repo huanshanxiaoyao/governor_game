@@ -60,7 +60,7 @@
 
   <div class="toolbar">
     <button class="btn" id="refreshBtn" onclick="load()">刷新数据</button>
-    <a class="btn" href="/api/admin/tools/">工具索引</a>
+    <a class="btn" href="/g1/api/admin/tools/">工具索引</a>
     <label class="toggle-label">
       <input type="checkbox" id="hideStaff" checked onchange="rerender()"> 隐藏开发账号（staff）
     </label>
@@ -96,7 +96,7 @@ var allPlayers = [];
 function load() {
   document.getElementById('refreshBtn').disabled = true;
   document.getElementById('statusTxt').textContent = '加载中…';
-  fetch('/api/admin/player-stats/', { credentials: 'same-origin' })
+  fetch('/g1/api/admin/player-stats/', { credentials: 'same-origin' })
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(data) {
       allPlayers = data.players;

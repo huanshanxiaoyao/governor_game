@@ -57,13 +57,13 @@
 <body>
   <div class="page">
     <div class="top-nav">
-      <a href="/api/admin/tools/">返回工具索引</a>
-      <a href="/api/admin/panel/">玩家统计面板</a>
+      <a href="/g1/api/admin/tools/">返回工具索引</a>
+      <a href="/g1/api/admin/panel/">玩家统计面板</a>
     </div>
 
     <div class="panel">
       <h2>选择存档</h2>
-      <form method="get" action="/api/judicial/debug/page/" class="toolbar">
+      <form method="get" action="/g1/api/judicial/debug/page/" class="toolbar">
         <select name="game_id" onchange="this.form.submit()">
           <option value="">请选择游戏存档</option>
           {% for item in game_options %}
