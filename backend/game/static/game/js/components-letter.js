@@ -6,6 +6,7 @@
 
   var api = window.Game.api;
   var components = window.Game.components;
+  var esc = components.escapeHtml;
 
   function el(id) { return document.getElementById(id); }
 
@@ -99,7 +100,7 @@
       });
     }).catch(function (err) {
       listPane.innerHTML =
-        '<p class="letter-error">加载失败：' + (err.message || "未知错误") + "</p>";
+        '<p class="letter-error">加载失败：' + esc(err.message || "未知错误") + "</p>";
     });
   }
 
@@ -142,10 +143,10 @@
     return (
       '<div class="' + cls + '" data-id="' + l.id + '">' +
         '<div class="letter-item-header">' +
-          '<span class="letter-counterpart">' + (counterpart || "—") + "</span>" +
+          '<span class="letter-counterpart">' + esc(counterpart || "—") + "</span>" +
           '<span class="letter-date">' + dateLabel + "</span>" +
         "</div>" +
-        '<div class="letter-subject">' + l.subject + "</div>" +
+        '<div class="letter-subject">' + esc(l.subject || "") + "</div>" +
         '<div class="letter-tags">' + typeTag + confTag + blockingTag + replyTag + deadline + "</div>" +
       "</div>"
     );
@@ -206,7 +207,7 @@
         });
       }
     }).catch(function (err) {
-      detailPane.innerHTML = '<p class="letter-error">加载失败：' + (err.message || "未知错误") + "</p>";
+      detailPane.innerHTML = '<p class="letter-error">加载失败：' + esc(err.message || "未知错误") + "</p>";
     });
   }
 
@@ -226,8 +227,8 @@
   }
 
   function renderDetail(d) {
-    var sender    = d.player_is_sender ? "玩家（你）" : d.sender_name;
-    var recipient = d.player_is_sender ? d.recipient_name : "玩家（你）";
+    var sender    = d.player_is_sender ? "玩家（你）" : esc(d.sender_name || "");
+    var recipient = d.player_is_sender ? esc(d.recipient_name || "") : "玩家（你）";
 
     var metaHtml =
       '<div class="letter-detail-meta">' +
@@ -251,15 +252,15 @@
     if (d.parent_summary) {
       parentHtml =
         '<div class="letter-parent-ref">↩ 原信：' +
-        d.parent_summary.subject + "（" + monthLabel(d.parent_summary.sent_month) + "）" +
+        esc(d.parent_summary.subject || "") + "（" + monthLabel(d.parent_summary.sent_month) + "）" +
         "</div>";
     }
 
     var replyHtml = "";
     if (d.status === "REPLIED") {
       var replyContent = d.reply_choice_id
-        ? ("选项：" + d.reply_choice_id + (d.reply_body ? "；" + d.reply_body : ""))
-        : d.reply_body;
+        ? ("选项：" + esc(d.reply_choice_id) + (d.reply_body ? "；" + esc(d.reply_body) : ""))
+        : esc(d.reply_body || "");
       replyHtml =
         '<div class="letter-replied-notice">' +
           '<strong>已回复（' + monthLabel(d.replied_month) + '）：</strong><br>' +
@@ -271,9 +272,9 @@
           '<div class="letter-reply-area"><p class="letter-reply-label">请选择回复方式：</p>' +
           d.reply_options.map(function (opt) {
             return (
-              '<button class="btn btn-small letter-choice-btn" data-choice="' + opt.id + '">' +
-                opt.text +
-                (opt.hint ? '<span class="letter-choice-hint"> — ' + opt.hint + "</span>" : "") +
+              '<button class="btn btn-small letter-choice-btn" data-choice="' + esc(String(opt.id)) + '">' +
+                esc(opt.text || "") +
+                (opt.hint ? '<span class="letter-choice-hint"> — ' + esc(opt.hint) + "</span>" : "") +
               "</button>"
             );
           }).join("") +
@@ -299,9 +300,9 @@
     return (
       '<button id="btn-letter-back" class="btn btn-small letter-back-btn">← 返回列表</button>' +
       '<div class="letter-detail-card">' +
-        '<h4 class="letter-detail-subject">' + d.subject + "</h4>" +
+        '<h4 class="letter-detail-subject">' + esc(d.subject || "") + "</h4>" +
         metaHtml + parentHtml + burnNotice +
-        '<div class="letter-detail-body">' + (d.body || "").replace(/\n/g, "<br>") + "</div>" +
+        '<div class="letter-detail-body">' + esc(d.body || "").replace(/\n/g, "<br>") + "</div>" +
         replyHtml + archiveBtn +
       "</div>"
     );
@@ -315,7 +316,7 @@
     var modal  = el("letter-compose-modal");
     var select = el("letter-compose-recipient");
     select.innerHTML = agents.map(function (a) {
-      return '<option value="' + a.id + '">' + a.role_title + " " + a.name + "</option>";
+      return '<option value="' + a.id + '">' + esc((a.role_title || "") + " " + (a.name || "")) + "</option>";
     }).join("");
     el("letter-compose-body").value = "";
     modal.classList.remove("hidden");

@@ -43,10 +43,15 @@
     }
     // Load agents for village table and profile modal
     if (Game.api && data && data.id) {
-      Game.api.getAgents(data.id).then(function (agents) {
+      var requestedId = data.id;
+      Game.api.getAgents(requestedId).then(function (agents) {
+        var current = Game.state.currentGame;
+        if (!current || current.id !== requestedId) return;  // stale response
         Game.state.agents = agents;
         Game.components.renderVillages();
       }).catch(function () {
+        var current = Game.state.currentGame;
+        if (!current || current.id !== requestedId) return;
         Game.state.agents = [];
       });
     }

@@ -119,6 +119,9 @@ def _judicial_error_response(exc):
     message = str(exc) or "司法系统暂不可用"
     if isinstance(exc, (OperationalError, ProgrammingError)):
         message = "司法系统数据库未初始化，请先执行迁移。"
+        logger.warning("Judicial view DB not ready: %s", exc)
+    else:
+        logger.exception("Judicial view failed: %s", exc)
     return Response({"error": message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 

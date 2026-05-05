@@ -39,6 +39,22 @@ from .ledger import (
 from .state import load_county_state, save_player_state
 
 
+def _village_agent_map(game, role):
+    """Return {village_name: Agent} for a given role, built in one query.
+
+    Agents whose attributes lack ``village_name`` are skipped. Used to avoid
+    per-village Agent.objects.filter() calls inside settlement loops.
+    """
+    if game is None:
+        return {}
+    out = {}
+    for a in Agent.objects.filter(game=game, role=role):
+        name = (a.attributes or {}).get('village_name')
+        if name and name not in out:
+            out[name] = a
+    return out
+
+
 class SettlementService(
     PopulationMixin,
     DisasterMixin,
@@ -406,6 +422,8 @@ class SettlementService(
             for inv in county.get('active_investments', [])
         )
 
+        gentry_by_village = _village_agent_map(game, 'GENTRY')
+
         for v in county['villages']:
             ensure_village_ledgers(v)
             if v.get('hidden_land_discovered', False):
@@ -438,10 +456,7 @@ class SettlementService(
                     county.get('rejected_bribes', {}).pop(_hbk, None)
                     v['hidden_land_report_sent'] = False
 
-                    gentry = Agent.objects.filter(
-                        game=game, role='GENTRY',
-                        attributes__village_name=village_name,
-                    ).first()
+                    gentry = gentry_by_village.get(village_name)
                     if gentry is None:
                         continue
 
@@ -661,6 +676,8 @@ class SettlementService(
         welfare_w = goals.get('welfare', 0.2)
         bailiff_level = county.get('bailiff_level', 0)
 
+        gentry_by_village = _village_agent_map(game, 'GENTRY')
+
         for v in county['villages']:
             ensure_village_ledgers(v)
 
@@ -704,11 +721,7 @@ class SettlementService(
                     break
 
                 # Player path: create negotiation session
-                gentry = Agent.objects.filter(
-                    game=game,
-                    role='GENTRY',
-                    attributes__village_name=village_name,
-                ).first()
+                gentry = gentry_by_village.get(village_name)
                 if gentry is None:
                     continue
 

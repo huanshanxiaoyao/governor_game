@@ -335,7 +335,15 @@ class _AnthropicBackend:
             'temperature': temperature,
         }
         if system_parts:
-            kwargs['system'] = '\n\n'.join(system_parts)
+            # Send system as a structured block with cache_control so long,
+            # repeated system prompts (negotiation / counsel) hit the prompt cache.
+            # Anthropic ignores cache_control when the prompt is below the
+            # per-model minimum cacheable length, so this is safe to always set.
+            kwargs['system'] = [{
+                'type': 'text',
+                'text': '\n\n'.join(system_parts),
+                'cache_control': {'type': 'ephemeral'},
+            }]
 
         response = self._client.messages.create(**kwargs)
         content = None

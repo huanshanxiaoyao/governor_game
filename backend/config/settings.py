@@ -6,11 +6,24 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
-
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or ('dev-secret-key-change-in-production' if DEBUG else None)
+if not SECRET_KEY:
+    raise RuntimeError(
+        'DJANGO_SECRET_KEY must be set when DEBUG is False. '
+        'Refusing to start with the development fallback key.'
+    )
+
+_allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '').strip()
+if _allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0', 'backend']
+else:
+    raise RuntimeError(
+        'ALLOWED_HOSTS must be set (comma-separated) when DEBUG is False.'
+    )
 
 # Application definition
 INSTALLED_APPS = [

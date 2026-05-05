@@ -13,6 +13,11 @@ from .view_helpers import game_view
 
 logger = logging.getLogger('game')
 
+# Max chat turns accepted from client; anything older is truncated to
+# cap context size and prevent DOS via oversized history payloads.
+COUNSEL_HISTORY_MAX_TURNS = 20
+COUNSEL_MESSAGE_MAX_CHARS = 2000
+
 
 def _enrich_suggested_actions(game, county, suggested_actions):
     """补全建议施政卡片字段，确保主动建议与普通对话返回结构一致。"""
@@ -70,10 +75,26 @@ class CounselMessageView(APIView):
         message = (request.data.get('message') or '').strip()
         if not message:
             return Response({"error": "消息不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(message) > COUNSEL_MESSAGE_MAX_CHARS:
+            return Response(
+                {"error": f"消息过长（上限 {COUNSEL_MESSAGE_MAX_CHARS} 字）"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        history = request.data.get('history', [])
-        if not isinstance(history, list):
-            history = []
+        raw_history = request.data.get('history', [])
+        if not isinstance(raw_history, list):
+            raw_history = []
+        history = []
+        for item in raw_history[-COUNSEL_HISTORY_MAX_TURNS:]:
+            if not isinstance(item, dict):
+                continue
+            role = item.get('role')
+            content = item.get('content')
+            if role in ('user', 'assistant') and isinstance(content, str):
+                history.append({
+                    'role': role,
+                    'content': content[:COUNSEL_MESSAGE_MAX_CHARS],
+                })
 
         county = load_county_state(game)
 
