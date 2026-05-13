@@ -37,6 +37,37 @@ def _load_game_knowledge():
 
 _GAME_KNOWLEDGE_DOC = _load_game_knowledge()
 
+# 知府（PREFECT）对话示例 — 按 (archetype, style) 分档
+_PREFECT_SPEECH_EXAMPLES = {
+    ('VIRTUOUS', 'minben'): [
+        '本府以为，治下百姓苦不苦，吾辈当亲见亲闻。',
+        '官府之于民，犹父母之于子。岂可苛之？',
+    ],
+    ('VIRTUOUS', 'zhengji'): [
+        '为政者，当以政绩昭世人。然政绩之本，仍在民生。',
+        '本府不喜虚言，只看实事。',
+    ],
+    ('MIDDLING', 'baoshou'): [
+        '依祖制行事，便不会有大错。新法之事，从长计议。',
+        '本府年事渐高，求稳为上。',
+    ],
+    ('CORRUPT', 'jinqu'): [
+        '凡事得讲个分寸。该送的礼，自然要送；该有的孝敬，岂能少？',
+        '本府是个明白人，知县大人也莫装糊涂。',
+    ],
+}
+_PREFECT_DEFAULT_EXAMPLES = [
+    '本府听闻贵县近来颇有动静，知县大人可有要事禀报？',
+    '为官一任，造福一方。望知县大人勉之。',
+]
+
+
+def _derive_prefect_speech_examples(archetype, style):
+    """根据 (archetype, style) 返回知府对话示例；未命中则返回通用默认值。"""
+    return _PREFECT_SPEECH_EXAMPLES.get(
+        (archetype, style), _PREFECT_DEFAULT_EXAMPLES,
+    )
+
 
 class AIGovernorService:
     """AI知县每月通过LLM做出施政决策，LLM失败时规则引擎兜底"""
@@ -194,12 +225,16 @@ class AIGovernorService:
         if "governor_meta" not in county:
             # 执政风格从属性动态推导，不存储为静态字段
             derived_style = derive_governor_style(profile)
+            derived_archetype = getattr(neighbor, "governor_archetype", "MIDDLING")
             county["governor_meta"] = {
                 "name": getattr(neighbor, "governor_name", ""),
                 "bio": getattr(neighbor, "governor_bio", ""),
                 "style": derived_style,
-                "archetype": getattr(neighbor, "governor_archetype", "MIDDLING"),
+                "archetype": derived_archetype,
                 "county_name": getattr(neighbor, "county_name", ""),
+                "speech_examples": _derive_prefect_speech_examples(
+                    derived_archetype, derived_style
+                ),
             }
         # 威名初始化（默认40，与 PlayerProfile.authority 对齐）
         if 'governor_authority' not in county:
