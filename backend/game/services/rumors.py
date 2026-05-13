@@ -166,6 +166,32 @@ class RumorsService:
         return cls._legacy_generate(game, county)
 
     @classmethod
+    def get_audible_for(cls, game, agent, limit=3):
+        """按 NPC 角色过滤可听流言。官员（ADVISOR/DEPUTY/PREFECT）听所有；非官员只听 民间/舆情 category。
+
+        Args:
+            game: GameState instance
+            agent: Agent instance (has .role attribute)
+            limit: 最多返回多少条流言文本 (default: 3)
+
+        Returns:
+            List of rumor text strings
+        """
+        rumors = cls.get_county_rumors(game) or []
+        official_roles = {'ADVISOR', 'DEPUTY', 'PREFECT'}
+        if agent.role in official_roles:
+            picked = rumors
+        else:
+            picked = [r for r in rumors
+                      if r.get('category') in ('民间', '舆情')]
+        out = []
+        for r in picked[:limit]:
+            text = r.get('text') or r.get('content') or ''
+            if text:
+                out.append(text)
+        return out
+
+    @classmethod
     def _legacy_generate(cls, game, county):
         """旧存档兼容：实时生成流言（不写缓存、不去重）。"""
         season = game.current_season
