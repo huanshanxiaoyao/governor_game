@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import GameState, PlayerProfile, Agent, Relationship, EventLog, DialogueMessage, NegotiationSession, Promise, UserLoginLog, ProposedPolicy, StandardPolicy
+from .models import GameState, PlayerProfile, Agent, Relationship, EventLog, DialogueMessage, NegotiationSession, Promise, UserLoginLog, ProposedPolicy, StandardPolicy, AgentMemory
 
 
 @admin.register(UserLoginLog)
@@ -121,3 +121,11 @@ class PromiseAdmin(admin.ModelAdmin):
     @admin.display(description='描述预览')
     def description_preview(self, obj):
         return obj.description[:60] + '...' if len(obj.description) > 60 else obj.description
+
+
+@admin.register(AgentMemory)
+class AgentMemoryAdmin(admin.ModelAdmin):
+    list_display = ('agent', 'topic', 'importance', 'season', 'source', 'created_at')
+    list_filter = ('topic', 'source')
+    search_fields = ('agent__name', 'text')
+    raw_id_fields = ('agent',)
