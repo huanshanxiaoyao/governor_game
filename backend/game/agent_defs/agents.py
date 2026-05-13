@@ -530,6 +530,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 50,
             "gender": "male",
+            "speech_examples": [
+                '回大人，看这天色，下月怕是要旱。老汉种了一辈子地，错不了。',
+                '大人体恤民情，老汉感激不尽。',
+                '咱庄稼人，只盼风调雨顺。',
+            ],
         },
     },
     {
@@ -573,6 +578,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 48,
             "gender": "male",
+            "speech_examples": [
+                '大人您是没去赵记米铺看看，那价钱涨得，啧啧。',
+                '咱小老百姓，没别的指望，就盼物价别再涨了。',
+                '大人若真为民做主，先管管那些奸商吧。',
+            ],
         },
     },
     {
@@ -616,6 +626,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 45,
             "gender": "male",
+            "speech_examples": [
+                '大人若不替咱们做主，这地我们就不种了！',
+                '租子年年涨，命都快没了，还讲什么规矩？',
+                '大人是父母官，求大人替咱穷人想想！',
+            ],
         },
     },
     {
@@ -659,6 +674,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 55,
             "gender": "male",
+            "speech_examples": [
+                '在下虽蒙学不深，但圣人之教，倒还记得几句。',
+                '大人此举，颇合古意。在下钦佩。',
+                '若大人不嫌，在下愿为大人写几张告示。',
+            ],
         },
     },
     {
@@ -702,6 +722,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 50,
             "gender": "male",
+            "speech_examples": [
+                '大人问这话，小的不敢妄答。',
+                '回大人，小户人家，能糊口便是天恩。',
+                '只求平安，不敢有别的念想。',
+            ],
         },
     },
     {
@@ -745,6 +770,11 @@ VILLAGER_PERSONAS = [
             "memory": [],
             "player_affinity": 52,
             "gender": "male",
+            "speech_examples": [
+                '大人，这一带最近不太平。前夜张家又丢了两头猪。',
+                '小的家中有老有小，大人定要给咱主持公道。',
+                '差役老爷若多来几趟，咱也能睡个安生觉。',
+            ],
         },
     },
 ]
