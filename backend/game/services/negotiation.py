@@ -968,6 +968,7 @@ class NegotiationService:
                 'annexed_land': annexed_land,
             },
         )
+        cls._record_negotiation_memory(session, outcome, event_label='兼并田产')
 
     @classmethod
     def _apply_hidden_land_outcome(cls, session, outcome):
@@ -1053,6 +1054,7 @@ class NegotiationService:
                 'discovered': discovered,
             },
         )
+        cls._record_negotiation_memory(session, outcome, event_label='隐田核查')
 
     @classmethod
     def _apply_irrigation_outcome(cls, session, outcome):
@@ -1116,6 +1118,7 @@ class NegotiationService:
                 'treasury_after': round(county.get('treasury', 0), 1),
             },
         )
+        cls._record_negotiation_memory(session, outcome, event_label='水利兴修')
 
     # ------------------------------------------------------------------
     # Authority (威名) — Gentry Complaint
@@ -1269,6 +1272,7 @@ class NegotiationService:
                         'deadline_season': deadline_season,
                     },
                 )
+        cls._record_negotiation_memory(session, outcome, event_label='村中兴学')
 
     # ------------------------------------------------------------------
     # 村民请愿·减税（VILLAGE_REQ_TAX）
@@ -1335,6 +1339,7 @@ class NegotiationService:
             description=desc,
             data={'decision': decision, 'new_tax_rate': county.get('tax_rate')},
         )
+        cls._record_negotiation_memory(session, outcome, event_label='赋税减免')
 
     # ------------------------------------------------------------------
     # 地主要求·升级公共设施（LANDLORD_DEMAND_FACILITY）
@@ -1398,6 +1403,7 @@ class NegotiationService:
             data={'village_name': village_name, 'decision': decision,
                   'low_facilities': session.context_data.get('low_facilities', '')},
         )
+        cls._record_negotiation_memory(session, outcome, event_label='地主索建设施')
 
     # ------------------------------------------------------------------
     # G3: 地主主动救济·开仓放粮（GENTRY_RELIEF_OFFER）
@@ -1538,10 +1544,32 @@ class NegotiationService:
                     'decision': decision,
                 },
             )
+        cls._record_negotiation_memory(session, outcome, event_label='地主助赈')
 
     # ------------------------------------------------------------------
     # 辅助：NPC请愿类响应归一化
     # ------------------------------------------------------------------
+
+    @classmethod
+    def _record_negotiation_memory(cls, session, outcome, event_label):
+        from . import AgentMemoryService
+        if not session.agent:
+            return
+        try:
+            text = f'与大人就{event_label}交涉：{outcome}'
+            AgentMemoryService.record(
+                session.agent, text=text, topic='NEGOTIATION',
+                importance=9, source='event:negotiation',
+                season=session.game.current_season,
+                related_entities={
+                    'session_id': session.id,
+                    'outcome': str(outcome),
+                    'event_type': session.event_type,
+                },
+            )
+        except Exception:
+            import logging
+            logging.getLogger('game').exception('negotiation memory hook failed')
 
     @classmethod
     def _normalize_npc_request_response(cls, result):
