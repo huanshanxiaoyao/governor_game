@@ -592,6 +592,95 @@ class AgentService:
         return '\n'.join(f'- {g}' for g in goals)
 
     @staticmethod
+    def _describe_capability(attrs):
+        parts = []
+        intel = int(attrs.get('intelligence', 50))
+        if intel >= 80:
+            parts.append('心思缜密')
+        elif intel >= 60:
+            parts.append('颇有见识')
+        elif intel >= 40:
+            parts.append('心思尚算清明')
+        else:
+            parts.append('反应迟钝')
+
+        charisma = int(attrs.get('charisma', 50))
+        if charisma >= 80:
+            parts.append('言谈讨喜，颇受推崇')
+        elif charisma >= 60:
+            parts.append('言语得体')
+        elif charisma >= 40:
+            parts.append('言语平实')
+        else:
+            parts.append('木讷寡言')
+
+        loyalty = int(attrs.get('loyalty', 50))
+        if loyalty >= 80:
+            parts.append('对大人忠心耿耿')
+        elif loyalty >= 60:
+            parts.append('与大人尚算同心')
+        elif loyalty >= 40:
+            parts.append('对大人态度中立')
+        else:
+            parts.append('对大人心存芥蒂')
+        return '；'.join(parts) + '。'
+
+    @staticmethod
+    def _describe_reputation(attrs):
+        rep = attrs.get('reputation') or {}
+        parts = []
+        integrity = int(rep.get('integrity', 50))
+        if integrity >= 70:
+            parts.append('在乡里清名素著')
+        elif integrity <= 30:
+            parts.append('清名稍欠')
+        competence = int(rep.get('competence', 50))
+        if competence >= 70:
+            parts.append('办事颇有干才')
+        elif competence <= 30:
+            parts.append('办事多有疏漏')
+        popularity = int(rep.get('popularity', 50))
+        if popularity >= 70:
+            parts.append('在乡邻间颇有人缘')
+        elif popularity <= 30:
+            parts.append('乡邻多有微词')
+        authority = int(rep.get('authority', 50))
+        if authority >= 70:
+            parts.append('威名颇重，村民敬畏')
+        elif authority <= 30:
+            parts.append('威望平平')
+        return '；'.join(parts) + '。' if parts else '声望平平。'
+
+    @staticmethod
+    def _describe_age_gender(attrs, game):
+        age_base = int(attrs.get('age_base', 40))
+        years_elapsed = max(0, (getattr(game, 'current_season', 1) - 1) // 12)
+        age = age_base + years_elapsed
+        gender = attrs.get('gender', '男')
+        if age >= 60:
+            age_word = '年逾花甲'
+        elif age >= 50:
+            age_word = '年近五旬'
+        elif age >= 35:
+            age_word = '正当壮年'
+        elif age >= 20:
+            age_word = '年轻力壮'
+        else:
+            age_word = '尚是少年'
+        return f'{age_word}的{gender}子'
+
+    @staticmethod
+    def get_speech_examples(agent):
+        attrs = agent.attributes or {}
+        ex = attrs.get('speech_examples')
+        if ex:
+            return list(ex)
+        if agent.role == 'PREFECT':
+            gm = (agent.game.county_data or {}).get('governor_meta') or {}
+            return list(gm.get('speech_examples') or [])
+        return []
+
+    @staticmethod
     def _describe_relationships(agent):
         """描述该Agent与其他NPC的关系"""
         rels_a = agent.relationships_as_a.select_related('agent_b').all()
