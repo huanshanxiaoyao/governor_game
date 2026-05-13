@@ -703,6 +703,11 @@ class InvestmentService:
 
         save_player_state(game, county)
         cls._log_investment(game, action, msg, actual_cost, target_village, county["treasury"])
+        try:
+            cls._record_investment_memory(game, action, target_village)
+        except Exception:
+            import logging
+            logging.getLogger('game').exception('investment memory hook failed')
         return True, msg
 
     @classmethod
@@ -835,6 +840,53 @@ class InvestmentService:
             })
 
         return result
+
+    _POLICY_ACTION_LABELS = {
+        'build_irrigation': '修水利',
+        'fund_village_school': '兴学堂',
+        'expand_school': '扩学堂',
+        'build_medical': '设医馆',
+        'build_granary': '建粮仓',
+        'repair_roads': '修路',
+        'reclaim_land': '垦荒',
+        'hire_bailiffs': '增差役',
+    }
+
+    @classmethod
+    def _record_investment_memory(cls, game, action, target_village):
+        from ..models import Agent, AgentMemory
+        from . import AgentMemoryService
+        label = cls._POLICY_ACTION_LABELS.get(action)
+        if not label:
+            return
+        source = f'event:investment:{action}'
+        if target_village:
+            agents = Agent.objects.filter(
+                game=game, attributes__village_name=target_village,
+                role__in=['GENTRY', 'VILLAGER'],
+            )
+            related = {'village': target_village, 'policy_type': action}
+            text = f'大人在{target_village}{label}'
+        else:
+            agents = Agent.objects.filter(
+                game=game,
+                role__in=['GENTRY', 'VILLAGER', 'ADVISOR', 'DEPUTY'],
+            )
+            related = {'policy_type': action}
+            text = f'大人在全县{label}'
+
+        for agent in agents:
+            already = AgentMemory.objects.filter(
+                agent=agent, source=source, season=game.current_season,
+                related_entities=related,
+            ).exists()
+            if already:
+                continue
+            AgentMemoryService.record(
+                agent, text=text, topic='POLICY', importance=7,
+                source=source, season=game.current_season,
+                related_entities=related,
+            )
 
     @classmethod
     def _log_investment(cls, game, action, msg, cost, target_village, treasury_after):
