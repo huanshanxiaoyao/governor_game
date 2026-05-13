@@ -507,40 +507,98 @@ class AgentService:
         county_type_desc = cls.COUNTY_TYPE_DESCS.get(county_type, '')
         return cls.GAME_KNOWLEDGE_TEMPLATE.format(county_type_desc=county_type_desc)
 
-    @classmethod
-    def build_system_context(cls, agent, game):
-        """构建模板渲染所需的全部 kwargs"""
-        attrs = agent.attributes
-        village_name = attrs.get('village_name', '')
-        village_summary = ''
-        if village_name:
-            village_summary = cls._get_village_summary(game, village_name)
+    @staticmethod
+    def _build_recent_policy_brief(game, max_items=5):
+        from ..models import EventLog
+        season = game.current_season
+        logs = EventLog.objects.filter(
+            game=game,
+            category__in=('INVESTMENT', 'POLICY'),
+            season__gte=season - 3,
+        ).order_by('-season', '-id')[:max_items]
+        lines = [f'  - 第{log.season}月：{log.description}' for log in logs]
+        return '\n'.join(lines) if lines else '（近期无显著施政）'
 
-        # 师爷和县丞获得治县要略
-        game_knowledge = ''
-        if agent.role in ('ADVISOR', 'DEPUTY'):
-            game_knowledge = cls._build_game_knowledge(game)
+    @staticmethod
+    def _build_recent_history_with_player(game, agent, max_promises=3, max_events=5):
+        from ..models import Promise, EventLog
+        lines = []
+        promises = Promise.objects.filter(
+            game=game, agent=agent,
+            status__in=('PENDING', 'BROKEN'),
+        ).order_by('-season_made')[:max_promises]
+        for p in promises:
+            tag = '未兑现' if p.status == 'BROKEN' else f'尚未兑现（截止第{p.deadline_season}月）'
+            lines.append(f'  - 大人曾许：{p.description}（{tag}）')
+        events = EventLog.objects.filter(
+            game=game, data__agent_id=agent.id,
+        ).order_by('-season', '-id')[:max_events]
+        for ev in events:
+            lines.append(f'  - 第{ev.season}月：{ev.description}')
+        return '\n'.join(lines) if lines else '（近期无具体往来）'
+
+    @classmethod
+    def build_system_context(cls, game, agent, player_message=''):
+        """构建模板渲染所需的全部 kwargs（统一 ctx 字典，含稳定段与动态段）"""
+        from . import AgentMemoryService
+        from .rumors import RumorsService
+        attrs = agent.attributes or {}
 
         # 知府对话使用专属上下文（模糊县情）
         if agent.role == 'PREFECT':
             from .ai_prefect import PrefectAIService
             return PrefectAIService.build_chat_context(agent, game)
 
-        return {
+        ctx = {
+            # 稳定段
             'agent_name': agent.name,
             'role_title': agent.role_title,
             'bio': attrs.get('bio', ''),
+            'backstory': attrs.get('backstory', ''),
+            'age_desc': cls._describe_age_gender(attrs, game),
+            'gender': attrs.get('gender', '男'),
+            'capability_desc': cls._describe_capability(attrs),
             'personality_desc': cls._describe_personality(attrs),
             'ideology_desc': cls._describe_ideology(attrs),
+            'reputation_desc': cls._describe_reputation(attrs),
             'goals_desc': cls._describe_goals(attrs),
             'relationships_desc': cls._describe_relationships(agent),
-            'memory_desc': cls._describe_recent_memory(agent),
+            'speech_examples': '\n'.join(
+                f'  - {ex}' for ex in cls.get_speech_examples(agent)
+            ) or '（无）',
+
+            # 动态段
             'county_summary': cls._summarize_county(game),
-            'village_summary': village_summary,
-            'game_knowledge': game_knowledge,
+            'recent_policy_brief': cls._build_recent_policy_brief(game),
+            'audible_rumors': '\n'.join(
+                f'  - {r}' for r in RumorsService.get_audible_for(
+                    game, agent, limit=3)
+            ) or '（暂无传闻）',
+            'recent_history_with_player': cls._build_recent_history_with_player(
+                game, agent),
+            'relevant_memories': '\n'.join(
+                f'  - [{m.topic}] {m.text}' for m in
+                AgentMemoryService.fetch_relevant(
+                    agent, current_season=game.current_season,
+                    query_text=player_message, limit=8)
+            ) or '（无相关记忆）',
+            'affinity': int(attrs.get('player_affinity', 50)),
             'season': game.current_season,
-            'affinity': attrs.get('player_affinity', 50),
+            'player_message': player_message,
+
+            # 向后兼容：旧调用者可能直接读 memory_desc / village_summary / game_knowledge
+            'memory_desc': cls._describe_recent_memory(agent),
+            'village_summary': '',
+            'game_knowledge': '',
         }
+
+        if agent.role in ('ADVISOR', 'DEPUTY'):
+            ctx['game_knowledge'] = cls._build_game_knowledge(game)
+        if agent.role in ('GENTRY', 'VILLAGER'):
+            ctx['village_summary'] = cls._get_village_summary(
+                game, attrs.get('village_name'))
+
+        return ctx
 
     @staticmethod
     def _describe_personality(attrs):
@@ -769,8 +827,7 @@ class AgentService:
         )
 
         # 2. 构建上下文
-        ctx = cls.build_system_context(agent, game)
-        ctx['player_message'] = player_message
+        ctx = cls.build_system_context(game, agent, player_message=player_message)
 
         # 3. 根据tier选择不同处理方式
         if agent.tier == 'FULL':

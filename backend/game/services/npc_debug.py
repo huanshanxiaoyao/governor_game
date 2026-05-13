@@ -163,7 +163,7 @@ class NPCDebugService:
     @classmethod
     def _build_agent_detail(cls, game: GameState, agent: Agent) -> dict:
         attrs = copy.deepcopy(agent.attributes or {})
-        context = AgentService.build_system_context(agent, game)
+        context = AgentService.build_system_context(game, agent)
         prompt_preview = cls._build_agent_prompt_preview(agent, context)
         relationships = cls._build_agent_relationships(agent)
         dialogues = cls._serialize_dialogues(

@@ -508,7 +508,7 @@ class LetterService:
         agent = original_letter.recipient_agent
 
         # 复用 AgentService 的完整上下文（bio/性格/关系/县情/村庄等）
-        ctx = AgentService.build_system_context(agent, game)
+        ctx = AgentService.build_system_context(game, agent)
         # 补充书信专属字段
         ctx['current_month'] = current_month
         ctx['original_subject'] = original_letter.subject

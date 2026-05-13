@@ -254,8 +254,7 @@ class NegotiationService:
 
         # 3. Build LLM context
         agent = session.agent
-        ctx = AgentService.build_system_context(agent, game)
-        ctx['player_message'] = llm_player_message
+        ctx = AgentService.build_system_context(game, agent, player_message=llm_player_message)
 
         # Add negotiation-specific context
         ctx['current_round'] = session.current_round
@@ -1631,7 +1630,7 @@ class NegotiationService:
             cd = session.context_data or {}
             agent = session.agent
 
-            ctx = AgentService.build_system_context(agent, game)
+            ctx = AgentService.build_system_context(game, agent)
             ctx['current_round'] = 1
             ctx['max_rounds'] = session.max_rounds
             ctx['round_pressure'] = ''
