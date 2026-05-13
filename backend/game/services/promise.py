@@ -440,3 +440,27 @@ class PromiseService:
                 'integrity_change': integrity_change,
             },
         )
+
+        # Write promise memory for the agent
+        try:
+            if promise.agent:
+                from . import AgentMemoryService
+                if new_status == 'FULFILLED':
+                    text = f'大人兑现了第{promise.season_made}月许的诺言：{promise.description}'
+                    importance = 8
+                else:
+                    text = f'大人未能兑现第{promise.season_made}月许的诺言：{promise.description}'
+                    importance = 10
+                AgentMemoryService.record(
+                    promise.agent, text=text, topic='PROMISE',
+                    importance=importance,
+                    source=f'event:promise:{new_status.lower()}',
+                    season=game.current_season,
+                    related_entities={
+                        'promise_id': promise.id,
+                        'promise_type': promise.promise_type,
+                        'status': new_status,
+                    },
+                )
+        except Exception:
+            logger.exception('promise memory hook failed')
