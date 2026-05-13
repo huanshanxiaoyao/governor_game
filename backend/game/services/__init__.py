@@ -33,6 +33,7 @@ from .settlement import SettlementService
 from .ai_governor import AIGovernorService
 from .neighbor import NeighborService
 from .agent import AgentService
+from .agent_memory import AgentMemoryService
 from .negotiation import NegotiationService
 from .promise import PromiseService
 from .llm_role_reviews import LLMRoleReviewService
@@ -86,6 +87,7 @@ __all__ = [
     "AIGovernorService",
     "NeighborService",
     "AgentService",
+    "AgentMemoryService",
     "NegotiationService",
     "PromiseService",
     "LLMRoleReviewService",
