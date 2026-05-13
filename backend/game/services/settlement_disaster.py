@@ -150,5 +150,38 @@ class DisasterMixin:
                             'severity': round(severity, 3),
                         },
                     )
+                    try:
+                        cls._record_disaster_memory(game, county, county["disaster_this_year"])
+                    except Exception:
+                        import logging
+                        logging.getLogger('game').exception('disaster memory hook failed')
 
                 break  # only one disaster per year
+
+    @classmethod
+    def _record_disaster_memory(cls, game, county_data, disaster):
+        from ..models import Agent
+        from . import AgentMemoryService
+        if not disaster:
+            return
+        dtype = disaster.get('type', '灾害')
+        severity = disaster.get('severity', 0)
+        text = f'今年{dtype}（严重度{severity}）'
+        related = {
+            'disaster_type': dtype,
+            'severity': severity,
+            'season': game.current_season,
+        }
+        agents = Agent.objects.filter(game=game).exclude(role='PREFECT')
+        for agent in agents:
+            already = agent.memories.filter(
+                source='event:disaster', season=game.current_season,
+                related_entities__disaster_type=dtype,
+            ).exists()
+            if already:
+                continue
+            AgentMemoryService.record(
+                agent, text=text, topic='DISASTER', importance=8,
+                source='event:disaster', season=game.current_season,
+                related_entities=related,
+            )
