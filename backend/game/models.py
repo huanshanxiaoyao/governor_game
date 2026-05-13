@@ -901,7 +901,6 @@ class AgentMemory(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'agent_memories'
         indexes = [
             models.Index(fields=['agent', '-importance', '-season']),
             models.Index(fields=['agent', 'topic']),
