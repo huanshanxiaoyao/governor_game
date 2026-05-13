@@ -876,3 +876,36 @@ class Letter(models.Model):
 
     def __str__(self):
         return f"Letter#{self.id} [{self.letter_type}] {self.subject[:30]}"
+
+
+class AgentMemory(models.Model):
+    """Agent内存 — 结构化的NPC记忆（施政、承诺、灾害、交涉、闲谈等）"""
+    TOPIC_CHOICES = [
+        ('POLICY', '施政'),
+        ('PROMISE', '承诺'),
+        ('DISASTER', '灾害'),
+        ('NEGOTIATION', '交涉'),
+        ('CHAT', '闲谈'),
+        ('OTHER', '其他'),
+    ]
+
+    agent = models.ForeignKey(
+        'Agent', related_name='memories', on_delete=models.CASCADE,
+    )
+    text = models.TextField()
+    topic = models.CharField(max_length=20, choices=TOPIC_CHOICES, default='OTHER')
+    importance = models.SmallIntegerField(default=5)  # 1-10
+    season = models.SmallIntegerField()
+    source = models.CharField(max_length=40)
+    related_entities = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'agent_memories'
+        indexes = [
+            models.Index(fields=['agent', '-importance', '-season']),
+            models.Index(fields=['agent', 'topic']),
+        ]
+
+    def __str__(self):
+        return f'{self.agent.name}/{self.topic}/imp={self.importance}'
