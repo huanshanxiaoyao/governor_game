@@ -513,7 +513,7 @@ class AgentService:
         season = game.current_season
         logs = EventLog.objects.filter(
             game=game,
-            category__in=('INVESTMENT', 'POLICY'),
+            category='INVESTMENT',
             season__gte=season - 3,
         ).order_by('-season', '-id')[:max_items]
         lines = [f'  - 第{log.season}月：{log.description}' for log in logs]
