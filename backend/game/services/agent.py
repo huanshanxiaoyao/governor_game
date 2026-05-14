@@ -926,6 +926,9 @@ class AgentService:
 
         # 7. 记录 NPC 请求到 EventLog
         for req in result.get('requests', []):
+            if not isinstance(req, dict):
+                # LLM 偶尔返字符串；跳过非字典项，避免 .get() 崩溃
+                continue
             req_type = req.get('type', 'OTHER')
             req_desc = req.get('description', '')
             if req_desc:
