@@ -864,6 +864,7 @@ class PrefectAIService:
     def build_chat_context(cls, prefect, game) -> dict:
         """供 AgentService._chat_full 使用，返回 prefect_chat_json 模板所需 kwargs。"""
         from .state import load_county_state
+        from .agent import AgentService
         attrs = prefect.attributes
         county = load_county_state(game)
         personality_desc, ideology_desc, goals_desc = cls._describe_attrs(attrs)
@@ -872,6 +873,11 @@ class PrefectAIService:
             'prefect_name': prefect.name,
             'prefecture_name': attrs.get('prefecture', '本府'),
             'bio': attrs.get('bio', ''),
+            'capability_desc': AgentService._describe_capability(attrs),
+            'reputation_desc': AgentService._describe_reputation(attrs),
+            'speech_examples': '\n'.join(
+                f'  - {ex}' for ex in AgentService.get_speech_examples(prefect)
+            ) or '（无）',
             'personality_desc': personality_desc,
             'ideology_desc': ideology_desc,
             'goals_desc': goals_desc,
