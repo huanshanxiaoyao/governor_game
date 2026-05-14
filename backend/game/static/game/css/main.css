@@ -6687,3 +6687,9 @@ body {
 .token-usage-table td:first-child { text-align: left; }
 .token-usage-table th { background: var(--bg-muted, #f5f0e8); font-weight: 600; }
 .token-usage-table tr:last-child td { border-bottom: none; }
+
+/* Chat hint bar (chat-revamp) */
+.chat-hint { padding: 4px 12px; }
+.chat-topics { font-size: 12px; color: #888; }
+.chat-focus { font-size: 13px; color: #553; background: #fef9e6;
+  padding: 4px 8px; border-radius: 4px; margin-top: 4px; }

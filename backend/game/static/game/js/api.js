@@ -195,6 +195,9 @@
     getAgentChatHistory: function (gameId, agentId) {
       return request("GET", "/api/games/" + gameId + "/agents/" + agentId + "/chat/");
     },
+    getChatSnapshot: function (gameId, agentId) {
+      return request("GET", "/api/games/" + gameId + "/agents/" + agentId + "/chat-snapshot/");
+    },
     // Promises
     getPromises: function (gameId, promiseStatus, agentId) {
       var params = [];

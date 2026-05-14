@@ -1079,11 +1079,30 @@
     el("staff-chat-subtitle").textContent = "";
     el("staff-chat-messages").innerHTML = '<p class="hint">加载中...</p>';
     el("staff-chat-input").value = "";
+    var hintEl = el("staff-chat-hint");
+    if (hintEl) hintEl.innerHTML = "";
     modal.classList.remove("hidden");
 
     // Load chat history
     var g = Game.state.currentGame;
     if (!g) return;
+
+    // Load chat snapshot (topics + recent_focus); silent on failure
+    if (hintEl) {
+      Game.api.getChatSnapshot(g.id, agentId).then(function (snap) {
+        var html = "";
+        if (snap.topics_of_concern && snap.topics_of_concern.length) {
+          html += '<div class="chat-topics">关心：' +
+            escapeHtml(snap.topics_of_concern.slice(0, 2).join(" / ")) + '</div>';
+        }
+        if (snap.recent_focus) {
+          var warn = snap.has_unresolved_promise ? "⚠ " : "";
+          html += '<div class="chat-focus">📜 ' + warn +
+            escapeHtml(snap.recent_focus) + '</div>';
+        }
+        hintEl.innerHTML = html;
+      }).catch(function () { /* silent */ });
+    }
 
     Game.api.getAgentChatHistory(g.id, agentId).then(function (data) {
       var container = el("staff-chat-messages");
