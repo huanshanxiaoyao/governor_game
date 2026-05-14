@@ -1135,6 +1135,40 @@ class AgentService:
         return result
 
     @classmethod
+    def get_chat_snapshot(cls, game, agent):
+        """对话弹窗顶部 hint 数据：关心点、近期焦点、未兑承诺标记。"""
+        from ..models import Promise
+        from . import AgentMemoryService
+        attrs = agent.attributes or {}
+
+        topics = []
+        for g in (attrs.get('goals') or [])[:2]:
+            if isinstance(g, dict):
+                topics.append(g.get('label') or g.get('name') or '')
+            else:
+                topics.append(str(g))
+        topics = [t for t in topics if t]
+
+        has_unresolved = Promise.objects.filter(
+            game=game, agent=agent, status='PENDING',
+        ).exists()
+
+        memories = AgentMemoryService.fetch_relevant(
+            agent, current_season=game.current_season, limit=8)
+        high = [m for m in memories if m.importance >= 8]
+        hint = high[0].text if high else ''
+        recent_focus = '；'.join(m.text for m in high[:2]) if high else ''
+
+        return {
+            'agent_id': agent.id,
+            'agent_name': agent.name,
+            'topics_of_concern': topics,
+            'recent_focus': recent_focus,
+            'has_unresolved_promise': has_unresolved,
+            'highest_importance_memory_hint': hint,
+        }
+
+    @classmethod
     def get_dialogue_history(cls, game, agent, limit=20):
         """返回最近对话历史"""
         messages = DialogueMessage.objects.filter(

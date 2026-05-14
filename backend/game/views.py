@@ -1137,6 +1137,29 @@ class AgentChatView(APIView):
         })
 
 
+class ChatSnapshotView(APIView):
+    """
+    GET /api/games/{id}/agents/{agent_id}/chat-snapshot/
+    对话弹窗顶部 hint 数据：关心点、近期焦点、未兑承诺标记。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id, agent_id):
+        try:
+            game = GameState.objects.get(id=game_id, user=request.user)
+        except GameState.DoesNotExist:
+            return Response(
+                {"error": "游戏不存在"}, status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            agent = Agent.objects.get(id=agent_id, game=game)
+        except Agent.DoesNotExist:
+            return Response(
+                {"error": "该NPC不存在"}, status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(AgentService.get_chat_snapshot(game, agent))
+
+
 class ActiveNegotiationView(APIView):
     """
     GET /api/games/{id}/negotiations/active/  — get active negotiation

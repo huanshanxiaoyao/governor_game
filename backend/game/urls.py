@@ -45,6 +45,7 @@ urlpatterns = [
     path("games/<int:game_id>/staff/", views.StaffInfoView.as_view(), name="game-staff"),
     path("games/<int:game_id>/agents/", views.AgentListView.as_view(), name="game-agents"),
     path("games/<int:game_id>/agents/<int:agent_id>/chat/", views.AgentChatView.as_view(), name="agent-chat"),
+    path("games/<int:game_id>/agents/<int:agent_id>/chat-snapshot/", views.ChatSnapshotView.as_view(), name="chat-snapshot"),
     # Event logs
     path("games/<int:game_id>/events/", views.EventLogListView.as_view(), name="game-events"),
     # Promises
