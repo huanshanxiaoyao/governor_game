@@ -856,12 +856,12 @@ class AgentService:
     @classmethod
     def _chat_full(cls, ctx, game, agent):
         """FULL agent: LLM JSON对话"""
-        if agent.role == 'ADVISOR':
-            template_name = 'advisor_chat_json'
+        if agent.role in ('ADVISOR', 'DEPUTY'):
+            template_name = 'official_chat_json'
         elif agent.role == 'PREFECT':
             template_name = 'prefect_chat_json'
         else:
-            template_name = 'agent_full_chat_json'
+            template_name = 'commoner_chat_json'
         system_prompt, user_prompt = PromptRegistry.render(
             template_name, **ctx,
         )
@@ -992,12 +992,11 @@ class AgentService:
 
     @staticmethod
     def _normalize_response(result):
-        """确保响应包含所有必要字段"""
+        """确保响应包含所有必要字段。new_memory 兼容 字符串/对象/缺失 三种形态。"""
         defaults = {
             'dialogue': '（沉默不语）',
             'reasoning': '',
             'attitude_change': 0,
-            'new_memory': '',
             'requests': [],
         }
         for key, default in defaults.items():
@@ -1013,6 +1012,32 @@ class AgentService:
         # Ensure requests is a list
         if not isinstance(result.get('requests'), list):
             result['requests'] = []
+
+        # new_memory: 兼容 字符串(旧) / dict(新) / 缺失
+        valid_topics = ('POLICY', 'PROMISE', 'DISASTER',
+                        'NEGOTIATION', 'CHAT', 'OTHER')
+        nm = result.get('new_memory')
+        if isinstance(nm, str):
+            if nm:
+                result['new_memory'] = {
+                    'text': nm, 'topic': 'CHAT', 'importance': 5,
+                }
+            else:
+                result['new_memory'] = None
+        elif isinstance(nm, dict):
+            text = nm.get('text', '') if isinstance(nm.get('text'), str) else ''
+            topic = nm.get('topic') or 'CHAT'
+            if topic not in valid_topics:
+                topic = 'OTHER'
+            try:
+                importance = max(1, min(10, int(nm.get('importance', 5))))
+            except (TypeError, ValueError):
+                importance = 5
+            result['new_memory'] = {
+                'text': text, 'topic': topic, 'importance': importance,
+            }
+        else:
+            result['new_memory'] = None
 
         return result
 
