@@ -1043,25 +1043,23 @@ class AgentService:
 
     @staticmethod
     def _apply_chat_effects(agent, result):
-        """更新Agent的记忆（好感度仅由结局决定，对话轮不直接改affinity）"""
-        attrs = agent.attributes
-
+        """写入结构化记忆。好感度仅由谈判结局决定，对话轮不直接改 affinity。"""
         # 对话轮 attitude_change 不再写入 player_affinity，
         # 仅用于影响LLM下一轮的语气和willingness参数。
         # 好感度由谈判结局硬编码决定（见 negotiation.py 各 _apply_*_outcome）。
 
-        # 追加记忆
-        new_mem = result.get('new_memory', '')
-        if new_mem:
-            memory = attrs.get('memory', [])
-            memory.append(new_mem)
-            # 最多保留20条记忆
-            if len(memory) > 20:
-                memory = memory[-20:]
-            attrs['memory'] = memory
-
-        agent.attributes = attrs
-        agent.save(update_fields=['attributes'])
+        nm = result.get('new_memory')
+        if nm and isinstance(nm, dict) and nm.get('text'):
+            from . import AgentMemoryService
+            AgentMemoryService.record(
+                agent,
+                text=nm['text'],
+                topic=nm.get('topic', 'CHAT'),
+                importance=nm.get('importance', 5),
+                source='chat',
+                season=agent.game.current_season,
+                related_entities={},
+            )
 
     # ------------------------------------------------------------------
     # 4. Query Helpers
