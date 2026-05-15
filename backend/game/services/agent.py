@@ -922,7 +922,7 @@ class AgentService:
         )
 
         # 6. 更新好感度和记忆
-        cls._apply_chat_effects(agent, result)
+        cls._apply_chat_effects(game, agent, result)
 
         # 7. 记录 NPC 请求到 EventLog
         for req in result.get('requests', []):
@@ -946,6 +946,9 @@ class AgentService:
                         'description': req_desc,
                     },
                 )
+
+        from . import AgentMemoryService
+        AgentMemoryService.compact_if_needed(agent)
 
         return result
 
@@ -1045,7 +1048,7 @@ class AgentService:
         return result
 
     @staticmethod
-    def _apply_chat_effects(agent, result):
+    def _apply_chat_effects(game, agent, result):
         """写入结构化记忆。好感度仅由谈判结局决定，对话轮不直接改 affinity。"""
         # 对话轮 attitude_change 不再写入 player_affinity，
         # 仅用于影响LLM下一轮的语气和willingness参数。
@@ -1060,7 +1063,7 @@ class AgentService:
                 topic=nm.get('topic', 'CHAT'),
                 importance=nm.get('importance', 5),
                 source='chat',
-                season=agent.game.current_season,
+                season=game.current_season,
                 related_entities={},
             )
 

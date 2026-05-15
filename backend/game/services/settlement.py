@@ -1111,7 +1111,7 @@ class SettlementService(
             return
         prefect = Agent.objects.filter(game=game, role='PREFECT').first()
         if prefect:
-            attrs = prefect.attributes
+            attrs = dict(prefect.attributes or {})
             attrs['player_affinity'] = max(-99, attrs.get('player_affinity', 50) - 15)
             prefect.attributes = attrs
             prefect.save(update_fields=['attributes'])

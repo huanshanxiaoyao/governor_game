@@ -318,13 +318,13 @@ class NPCDebugService:
         ctx = dict(context)
         ctx["player_message"] = "（后台调试预览）"
         if agent.tier == "FULL":
-            if agent.role == "ADVISOR":
-                template_name = "advisor_chat_json"
+            if agent.role in ("ADVISOR", "DEPUTY"):
+                template_name = "official_chat_json"
             elif agent.role == "PREFECT":
                 # 知府走专属模板，ctx 由 PrefectAIService.build_chat_context 提供
                 template_name = "prefect_chat_json"
             else:
-                template_name = "agent_full_chat_json"
+                template_name = "commoner_chat_json"
         else:
             template_name = "agent_light_chat"
         system_prompt, user_prompt = PromptRegistry.render(template_name, **ctx)

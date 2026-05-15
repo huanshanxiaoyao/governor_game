@@ -98,7 +98,10 @@ class AgentMemoryService:
         Returns:
             排序后的 AgentMemory 列表（最多 limit 条，高重要性记忆可能额外追加）
         """
-        memories = list(AgentMemory.objects.filter(agent=agent))
+        memories = list(
+            AgentMemory.objects.filter(agent=agent)
+            .order_by('-importance', '-season')[:200]
+        )
         if not memories:
             return []
         keywords = _extract_keywords(query_text, agent)

@@ -176,10 +176,10 @@ class SeasonalMixin:
                             attributes__village_name=village_name,
                         ).first()
                         if villager:
-                            attrs = villager.attributes
+                            attrs = dict(villager.attributes or {})
                             attrs['player_affinity'] = min(
                                 99, attrs.get('player_affinity', 50) + 5)
-                            memory = attrs.get('memory', [])
+                            memory = list(attrs.get('memory', []))
                             memory.append(
                                 f"{month_name(game.current_season)}，知县大人下令开垦荒地，"
                                 f"{village_name}百姓新增耕地，感激不已")

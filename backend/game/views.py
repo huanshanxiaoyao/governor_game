@@ -1293,7 +1293,10 @@ class EventLogListView(APIView):
             except (ValueError, TypeError):
                 pass
 
-        limit = min(int(request.query_params.get('limit', 50)), 200)
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 200)
+        except (ValueError, TypeError):
+            limit = 50
         qs = qs[:limit]
 
         serializer = EventLogSerializer(qs, many=True)
@@ -1597,7 +1600,10 @@ class NeighborEventsView(APIView):
             neighbor_county=neighbor,
         ).order_by('-created_at')
 
-        limit = min(int(request.query_params.get('limit', 50)), 200)
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 200)
+        except (ValueError, TypeError):
+            limit = 50
         qs = qs[:limit]
 
         serializer = NeighborEventLogSerializer(qs, many=True)

@@ -322,7 +322,7 @@ class NegotiationService:
         )
 
         # 5. Update affinity and memory
-        AgentService._apply_chat_effects(agent, result)
+        AgentService._apply_chat_effects(game, agent, result)
 
         # 6. Check resolution
         resolved = False
