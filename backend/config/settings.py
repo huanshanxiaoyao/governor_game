@@ -120,19 +120,20 @@ TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 USE_TZ = True
 
-# Static files
-STATIC_URL = 'static/'
+# Reverse proxy: when deployed behind Nginx that strips a path prefix (e.g. /g1),
+# set FORCE_SCRIPT_NAME=/g1 via env so Django generates correct URLs.
+# Leave unset for local Docker dev (app runs at /).
+_script_name = os.getenv('FORCE_SCRIPT_NAME', '').rstrip('/')
+if _script_name:
+    FORCE_SCRIPT_NAME = _script_name
+
+# Static files: make the prefix explicit so asset URLs remain correct even when
+# Nginx strips the deployment prefix before proxying the request to Gunicorn.
+STATIC_URL = f'{_script_name}/static/' if _script_name else '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Reverse proxy: when deployed behind Nginx that strips a path prefix (e.g. /g1),
-# set FORCE_SCRIPT_NAME=/g1 via env so Django generates correct URLs (admin, static, etc.).
-# Leave unset for local Docker dev (app runs at /).
-_script_name = os.getenv('FORCE_SCRIPT_NAME', '')
-if _script_name:
-    FORCE_SCRIPT_NAME = _script_name
 
 # AI Negotiation — set True to enable LLM-driven negotiation for neighbor counties
 # (adds ~2 LLM calls per annexation/hidden-land event; keep False when many AI counties run)
